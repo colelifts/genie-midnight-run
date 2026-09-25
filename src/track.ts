@@ -320,19 +320,34 @@ function makePavingTexture() {
   canvas.width = canvas.height = 512;
   const ctx = canvas.getContext('2d')!;
   const rng = seededRandom(13579);
-  ctx.fillStyle = '#62545f';
+  ctx.fillStyle = '#504958';
   ctx.fillRect(0, 0, 512, 512);
-  const palette = ['#78666e', '#74626b', '#70606b', '#7d6b72', '#75636e'];
+  const palette = ['#786a74', '#716570', '#776b75', '#80717a', '#6d626f', '#796971'];
   for (let row = 0; row < 10; row++) {
     for (let col = -1; col < 7; col++) {
       const x = col * 90 + (row % 2) * 45;
       const y = row * 52;
       ctx.fillStyle = palette[Math.floor(rng() * palette.length)];
       ctx.fillRect(x + 2, y + 2, 87, 49);
-      ctx.fillStyle = 'rgba(255,211,180,0.045)';
+      ctx.fillStyle = 'rgba(255,221,192,0.095)';
       ctx.fillRect(x + 4, y + 4, 83, 3);
-      ctx.fillStyle = 'rgba(30,23,42,0.055)';
+      ctx.fillStyle = 'rgba(27,25,43,0.12)';
       ctx.fillRect(x + 4, y + 47, 83, 2);
+      for (let fleck = 0; fleck < 18; fleck++) {
+        ctx.fillStyle = fleck % 3 === 0 ? 'rgba(255,225,196,0.09)' : 'rgba(38,36,56,0.075)';
+        ctx.fillRect(x + 6 + rng() * 77, y + 6 + rng() * 39, 0.7 + rng() * 3.1, 0.5 + rng() * 1.5);
+      }
+      if (rng() < 0.32) {
+        const scratchX = x + 12 + rng() * 62;
+        const scratchY = y + 10 + rng() * 26;
+        ctx.strokeStyle = 'rgba(43,40,60,0.12)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(scratchX, scratchY);
+        ctx.lineTo(scratchX + 5, scratchY + 2);
+        ctx.lineTo(scratchX + 9, scratchY + 1);
+        ctx.stroke();
+      }
     }
   }
   const texture = new THREE.CanvasTexture(canvas);
@@ -1674,23 +1689,126 @@ export class RaceTrack {
 
   private makePalace() {
     const palace = new THREE.Group();
-    const body = box(35, 15, 20, stoneLight);
-    body.position.y = 7.5;
-    palace.add(body);
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(10, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), roofMat);
-    dome.position.y = 15;
-    palace.add(dome);
-    for (const x of [-15, 15]) {
-      const tower = box(6, 23, 6, stone);
-      tower.position.set(x, 11.5, 0);
-      palace.add(tower);
-      const towerDome = new THREE.Mesh(new THREE.SphereGeometry(3.7, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2), roofMat);
-      towerDome.position.set(x, 23, 0);
-      palace.add(towerDome);
+    const ivory = new THREE.MeshStandardMaterial({ color: 0xe6b990, map: stone.map, roughness: 0.82 });
+    const shadedStone = new THREE.MeshStandardMaterial({ color: 0x9b6c6e, map: stone.map, roughness: 0.9 });
+    const glazedTile = new THREE.MeshStandardMaterial({ color: 0x4d83a0, metalness: 0.18, roughness: 0.42 });
+    const deepBlue = new THREE.MeshStandardMaterial({ color: 0x243b67, roughness: 0.7 });
+    const warmWindow = new THREE.MeshBasicMaterial({ color: 0xffd28a, toneMapped: false });
+    const foundation = box(112, 2.2, 38, shadedStone);
+    foundation.position.y = 1.1;
+    palace.add(foundation);
+    for (const [width, height, depth, x] of [[47, 27, 25, 0], [24, 17, 21, -35], [24, 17, 21, 35]] as const) {
+      const block = box(width, height, depth, ivory);
+      block.position.set(x, 2.2 + height / 2, -1.5);
+      block.castShadow = block.receiveShadow = true;
+      palace.add(block);
+      const parapet = box(width + 1.4, 0.9, depth + 1.4, stoneLight);
+      parapet.position.set(x, 2.2 + height, -1.5);
+      palace.add(parapet);
+      const enamel = box(width + 1.1, 0.34, depth + 1.1, glazedTile);
+      enamel.position.set(x, 1.2 + height, -1.5);
+      palace.add(enamel);
     }
+    const portal = box(12, 13, 0.2, deepBlue);
+    portal.position.set(0, 8.6, 11.15);
+    palace.add(portal);
+    const portalCrown = new THREE.Mesh(new THREE.SphereGeometry(6, 24, 12, 0, Math.PI, 0, Math.PI / 2), deepBlue);
+    portalCrown.scale.z = 0.08;
+    portalCrown.position.set(0, 15.1, 11.16);
+    palace.add(portalCrown);
+    for (const side of [-1, 1]) {
+      const jamb = box(0.65, 15.8, 0.64, gold);
+      jamb.position.set(side * 6.25, 9.4, 11.55);
+      palace.add(jamb);
+      const lantern = box(0.8, 1.6, 0.38, warmWindow);
+      lantern.position.set(side * 8.8, 9.2, 11.25);
+      palace.add(lantern);
+      const halo = lanternHalo(5.6, 0xffc16c);
+      halo.position.copy(lantern.position);
+      palace.add(halo);
+    }
+    const archTrim = new THREE.Mesh(new THREE.TorusGeometry(6.25, 0.28, 8, 32, Math.PI), gold);
+    archTrim.position.set(0, 15.2, 11.55);
+    palace.add(archTrim);
+    const entranceSteps = [0, 1, 2].map((level) => {
+      const step = box(18 + level * 3, 0.38, 2.6, level % 2 ? stoneLight : ivory);
+      step.position.set(0, 0.2 + level * 0.38, 18 - level * 2.3);
+      return step;
+    });
+    palace.add(...entranceSteps);
+    for (const x of [-40, -31, -22, -13, 13, 22, 31, 40]) {
+      const wing = Math.abs(x) > 20;
+      const facadeZ = wing ? 9.25 : 11.15;
+      const height = wing ? 7.2 : 10.8;
+      const inset = box(3.1, height, 0.16, deepBlue);
+      inset.position.set(x, 4.2 + height / 2, facadeZ);
+      palace.add(inset);
+      const light = box(2.0, height * 0.65, 0.11, warmWindow);
+      light.position.set(x, 4.6 + height / 2, facadeZ + 0.12);
+      palace.add(light);
+      const arch = new THREE.Mesh(new THREE.SphereGeometry(1.62, 16, 8, 0, Math.PI, 0, Math.PI / 2), glazedTile);
+      arch.scale.z = 0.18;
+      arch.position.set(x, 4.2 + height, facadeZ + 0.06);
+      palace.add(arch);
+      const sill = box(3.7, 0.28, 0.55, gold);
+      sill.position.set(x, 4.0, facadeZ + 0.24);
+      palace.add(sill);
+    }
+    const centralDrum = new THREE.Mesh(new THREE.CylinderGeometry(13.2, 14.4, 5.1, 28), ivory);
+    centralDrum.position.y = 32;
+    palace.add(centralDrum);
+    for (const y of [29.6, 34.6]) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(13.8, 0.32, 8, 48), gold);
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = y;
+      palace.add(ring);
+    }
+    const centralDome = new THREE.Mesh(new THREE.SphereGeometry(13.5, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), glazedTile);
+    centralDome.position.y = 34.6;
+    centralDome.castShadow = true;
+    palace.add(centralDome);
+    for (let i = 0; i < 8; i++) {
+      const angle = i * Math.PI / 4;
+      const meridian = new THREE.QuadraticBezierCurve3(
+        new THREE.Vector3(Math.sin(angle) * 13.4, 34.6, Math.cos(angle) * 13.4),
+        new THREE.Vector3(Math.sin(angle) * 11.5, 45.5, Math.cos(angle) * 11.5),
+        new THREE.Vector3(0, 48.1, 0),
+      );
+      palace.add(new THREE.Mesh(new THREE.TubeGeometry(meridian, 16, 0.17, 5, false), gold));
+    }
+    for (const side of [-1, 1]) {
+      const x = side * 53;
+      const tower = new THREE.Mesh(new THREE.CylinderGeometry(4.8, 5.6, 30, 18), ivory);
+      tower.position.set(x, 17.2, -3.5);
+      tower.castShadow = true;
+      palace.add(tower);
+      for (const y of [4, 21, 31]) {
+        const balcony = new THREE.Mesh(new THREE.CylinderGeometry(6, 6.2, 0.75, 18), y === 21 ? glazedTile : gold);
+        balcony.position.set(x, y, -3.5);
+        palace.add(balcony);
+      }
+      for (const y of [11, 25]) {
+        const window = box(1.4, 3.8, 0.14, warmWindow);
+        window.position.set(x, y, 1.65);
+        palace.add(window);
+        const frame = box(1.8, 0.32, 0.52, gold);
+        frame.position.set(x, y + 2.05, 1.82);
+        palace.add(frame);
+      }
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(5.6, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), glazedTile);
+      cap.position.set(x, 32, -3.5);
+      palace.add(cap);
+      const finial = new THREE.Mesh(new THREE.ConeGeometry(0.65, 3.6, 10), gold);
+      finial.position.set(x, 39, -3.5);
+      palace.add(finial);
+    }
+    const topFinial = new THREE.Mesh(new THREE.ConeGeometry(0.9, 4.4, 12), gold);
+    topFinial.position.y = 51;
+    palace.add(topFinial);
     const sample = this.mainSamples[Math.floor(0.46 * this.mainSamples.length)];
     palace.position.copy(sample.position).addScaledVector(sample.right, -(sample.width / 2 + 53));
     palace.position.y = 0;
+    palace.rotation.y = Math.atan2(sample.right.x, sample.right.z);
     this.group.add(palace);
   }
 

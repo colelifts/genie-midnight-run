@@ -1202,7 +1202,7 @@ class GenieRace {
       this.sparks.update(dt);
       this.updatePulses(dt);
       this.updateFlashes(dt);
-      this.audio.update(this.racers[0].speed, this.racers[0].drifting, this.racers[0].ultimateTime > 0, this.mode === 'race', this.track.zone(this.racers[0].progress), this.racers[0].lap >= 3);
+      this.audio.update(this.racers[0].speed, this.racers[0].drifting, this.racers[0].ultimateTime > 0, this.mode === 'race', this.track.zone(this.racers[0].progress), this.racers[0].lap >= 3, this.racers[0].progress);
       if (this.announcementTime > 0) {
         this.announcementTime -= dt;
         if (this.announcementTime <= 0) ultimateAnnouncement.classList.add('hidden');

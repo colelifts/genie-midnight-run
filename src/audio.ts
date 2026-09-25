@@ -22,6 +22,8 @@ export class GameAudio {
   private engineGain: GainNode | null = null;
   private windGain: GainNode | null = null;
   private windFilter: BiquadFilterNode | null = null;
+  private fountainGain: GainNode | null = null;
+  private fountainFilter: BiquadFilterNode | null = null;
   private skidGain: GainNode | null = null;
   private hatGain: GainNode | null = null;
   private nextBeat = 0;
@@ -63,6 +65,15 @@ export class GameAudio {
     noiseSource.connect(windFilter);
     windFilter.connect(windGain);
     windGain.connect(master);
+    const fountainFilter = context.createBiquadFilter();
+    fountainFilter.type = 'bandpass';
+    fountainFilter.frequency.value = 650;
+    fountainFilter.Q.value = 0.55;
+    const fountainGain = context.createGain();
+    fountainGain.gain.value = 0;
+    noiseSource.connect(fountainFilter);
+    fountainFilter.connect(fountainGain);
+    fountainGain.connect(master);
     const skidFilter = context.createBiquadFilter();
     skidFilter.type = 'bandpass';
     skidFilter.frequency.value = 1450;
@@ -87,6 +98,8 @@ export class GameAudio {
     this.engineGain = engineGain;
     this.windGain = windGain;
     this.windFilter = windFilter;
+    this.fountainGain = fountainGain;
+    this.fountainFilter = fountainFilter;
     this.skidGain = skidGain;
     this.hatGain = hatGain;
     this.nextBeat = context.currentTime + 0.1;
@@ -97,7 +110,7 @@ export class GameAudio {
     if (this.master && this.context) this.master.gain.setTargetAtTime(value ? 0 : 0.33, this.context.currentTime, 0.05);
   }
 
-  update(speed: number, drifting: boolean, ultimate: boolean, active: boolean, zone: string, finalLap = false) {
+  update(speed: number, drifting: boolean, ultimate: boolean, active: boolean, zone: string, finalLap = false, progress = 0) {
     if (!this.context || !this.engineOscillator || !this.engineGain) return;
     const now = this.context.currentTime;
     this.engineOscillator.frequency.setTargetAtTime(75 + speed * (ultimate ? 5.7 : 4.1) + (drifting ? 18 : 0), now, 0.08);
@@ -106,6 +119,10 @@ export class GameAudio {
     const garden = zone === 'PALACE GARDEN';
     this.windGain?.gain.setTargetAtTime(active ? cave ? 0.055 : garden ? 0.019 : 0.031 : 0, now, 0.35);
     this.windFilter?.frequency.setTargetAtTime(cave ? 300 : garden ? 710 : 480 + Math.min(speed, 45) * 9, now, 0.4);
+    const fountainDistance = Math.abs(progress - 0.44);
+    const fountainPresence = garden ? Math.max(0, 1 - fountainDistance / 0.065) : 0;
+    this.fountainGain?.gain.setTargetAtTime(active ? fountainPresence * (0.015 + Math.sin(now * 3.4) * 0.003) : 0, now, 0.2);
+    this.fountainFilter?.frequency.setTargetAtTime(620 + Math.sin(now * 1.8) * 110, now, 0.25);
     this.skidGain?.gain.setTargetAtTime(active && drifting ? 0.055 + Math.min(speed, 40) * 0.0014 : 0, now, 0.075);
     if (!active || this.muted) return;
     if (this.nextBeat < now - 0.25) this.nextBeat = now + 0.03;

@@ -477,6 +477,7 @@ export class RaceTrack {
   readonly gardenSamples: RoadPoint[] = [];
   readonly obstacles: Obstacle[] = [];
   readonly boostPads: BoostPad[] = [];
+  readonly fountainPosition = new THREE.Vector3();
   birdLaunches = 0;
   readonly length: number;
   private readonly rng = seededRandom(626);
@@ -1548,6 +1549,7 @@ export class RaceTrack {
   private makeFountain() {
     const sample = this.mainSamples[Math.floor(0.44 * this.mainSamples.length)];
     const position = sample.position.clone().addScaledVector(sample.right, -(sample.width / 2 + 22));
+    this.fountainPosition.copy(position);
     const basin = new THREE.Mesh(new THREE.CylinderGeometry(8, 8.6, 1.2, 8), stoneLight);
     basin.position.copy(position);
     basin.position.y = 0.6;

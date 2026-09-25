@@ -91,6 +91,7 @@ interface Racer {
   offTrackTime: number;
   lastPad: number;
   drifting: boolean;
+  driftDirection: number;
   driftCharge: number;
   jumpTime: number;
   jumpDuration: number;
@@ -492,7 +493,7 @@ class GenieRace {
       const racer: Racer = {
         id: i, character, visual, itemOrbit, position: gridPosition.clone(), previousPosition: gridPosition.clone(), yaw, moveYaw: yaw, yawRate: 0, speed: 0, progress: starts[i], lap: 1, finishPlace: 0,
         boostTime: 0, padBoostTime: 0, shieldTime: 0, oceanBarrierTime: 0, ultimateTime: 0, ultimateMeter: 0, signatureCooldown: 0, item: null, tripleSparks: 0, fogTime: 0, featherTime: 0, mirrorTime: 0, wishUpgrade: false, curseTime: 0, iceSpeedTime: 0, luckyEscapeCooldown: 0, wobbleTime: 0, hauntedTime: 0, hotHeadTime: 0, laserReadyTime: 0, powerTick: 0, stunTime: 0, hitCooldown: 0, offTrackTime: 0, lastPad: 0,
-        drifting: false, driftCharge: 0, jumpTime: 0, jumpDuration: 0, jumpPower: 0, trickReady: false, trickBoost: false, trickAnim: 0, slipCharge: 0, slipCooldown: 0, tricksLanded: 0, draftBoosts: 0, compassTime: 0, compassTarget: null, compassShortcut: null,
+        drifting: false, driftDirection: 0, driftCharge: 0, jumpTime: 0, jumpDuration: 0, jumpPower: 0, trickReady: false, trickBoost: false, trickAnim: 0, slipCharge: 0, slipCooldown: 0, tricksLanded: 0, draftBoosts: 0, compassTime: 0, compassTarget: null, compassShortcut: null,
         lastSafe: gridPosition.clone(), lastSafeProgress: starts[i], aiRoute: this.aiRouteForLap(i, 1), aiLane: START_LANES[i], aiLine: START_LANES[i],
         aiAbilityTimer: 7 + i * 1.2, aiUltimateTimer: 40 + i * 3, ultimateHit: new Set<number>(), steerVisual: 0,
       };
@@ -720,6 +721,7 @@ class GenieRace {
       racer.wishUpgrade = false;
       racer.hitCooldown = racer.offTrackTime = racer.lastPad = 0;
       racer.drifting = false;
+      racer.driftDirection = 0;
       racer.driftCharge = 0;
       racer.jumpTime = 0;
       racer.trickReady = racer.trickBoost = false;
@@ -1527,7 +1529,7 @@ class GenieRace {
       this.updateFlashes(dt);
       this.updateDashDragons(dt);
       this.audio.setListener(this.racers[0].position.x, this.racers[0].position.y, this.racers[0].position.z, this.racers[0].yaw);
-      this.audio.update(this.racers[0].speed, this.racers[0].drifting, this.racers[0].ultimateTime > 0, this.racers[0].boostTime > 0, this.mode === 'race', this.track.zone(this.racers[0].progress), this.racers[0].lap >= 3, this.racers[0].progress);
+      this.audio.update(this.racers[0].speed, this.racers[0].drifting, this.racers[0].ultimateTime > 0, this.racers[0].boostTime > 0, this.mode === 'race', this.track.zone(this.racers[0].progress), this.racers[0].lap >= 3, this.track.fountainPosition);
       this.audio.updateRivals(this.racers, this.mode === 'race');
       if (this.announcementTime > 0) {
         this.announcementTime -= dt;
@@ -1649,9 +1651,10 @@ class GenieRace {
       player.speed = carriedOverspeed ? player.speed - Math.min(excess, (10 + excess * 0.7) * dt) : maxSpeed;
     }
 
-    if (driftPressed && player.speed > 10) {
+    if (driftPressed && player.speed > 10 && (player.drifting || Math.abs(steer) > 0.18)) {
       if (!player.drifting) {
         player.drifting = true;
+        player.driftDirection = Math.sign(steer);
         this.startJump(player, 0.42, 0.42);
       }
       if (Math.abs(steer) > 0.18) player.driftCharge += dt;
@@ -1659,7 +1662,7 @@ class GenieRace {
       this.releaseDrift(player);
     }
     const boostHandling = player.padBoostTime > 0 ? 1.2 : player.ultimateTime > 0 ? 1.12 : 1;
-    const heading = advanceHeading(player, { steer, speed: player.speed, handling: stats.handling * (player.wobbleTime > 0 ? 0.62 : 1), drifting: player.drifting,
+    const heading = advanceHeading(player, { steer, speed: player.speed, handling: stats.handling * (player.wobbleTime > 0 ? 0.62 : 1), drifting: player.drifting, driftDirection: player.driftDirection,
       boostHandling, wobble: player.wobbleTime > 0 ? Math.sin(this.elapsed * 19) * 0.22 : 0, dt });
     player.yawRate = heading.yawRate;
     player.yaw = heading.yaw;
@@ -1691,7 +1694,7 @@ class GenieRace {
   }
 
   private updateAI(racer: Racer, dt: number) {
-    if (racer.stunTime > 0) { racer.speed = 0; racer.drifting = false; racer.driftCharge = 0; return; }
+    if (racer.stunTime > 0) { racer.speed = 0; racer.drifting = false; racer.driftDirection = 0; racer.driftCharge = 0; return; }
     const ahead = wrap(racer.progress + Math.max(0.014, racer.speed * (racer.padBoostTime > 0 ? 1.05 : 0.75) / this.track.length));
     let route: RouteName = 'main';
     if (racer.aiRoute === 'alley' && ahead > 0.045 && ahead < 0.16) route = 'alley';
@@ -1829,6 +1832,7 @@ class GenieRace {
       }
       if (racer.drifting && excess > 0.8) {
         racer.drifting = false;
+        racer.driftDirection = 0;
         racer.driftCharge = 0;
       }
     }
@@ -1884,6 +1888,7 @@ class GenieRace {
 
   private releaseDrift(racer: Racer) {
     racer.drifting = false;
+    racer.driftDirection = 0;
     const charge = racer.driftCharge;
     racer.driftCharge = 0;
     if (charge < 0.58) return;
@@ -2110,6 +2115,9 @@ class GenieRace {
     racer.progress = point.progress;
     racer.speed = raceSpeed(12);
     racer.yawRate = 0;
+    racer.drifting = false;
+    racer.driftDirection = 0;
+    racer.driftCharge = 0;
     racer.padBoostTime = 0;
     racer.offTrackTime = 0;
     racer.shieldTime = Math.max(racer.shieldTime, 1.2);
@@ -2218,6 +2226,9 @@ class GenieRace {
     }
     racer.stunTime = Math.max(racer.stunTime, duration);
     racer.speed = 0;
+    racer.drifting = false;
+    racer.driftDirection = 0;
+    racer.driftCharge = 0;
     if (racer.character === 'hades') racer.hotHeadTime = 2.2;
     racer.hitCooldown = Math.max(racer.hitCooldown, duration + 0.5);
     this.racerSound('stun', racer);

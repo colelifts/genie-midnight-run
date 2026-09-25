@@ -14,8 +14,9 @@ const ASSETS = {
   ice: 'ice-crackle.mp3',
   crateCrack: 'crate-crack.mp3', woodHit: 'wood-hit.mp3', stoneImpact: 'stone-impact.mp3',
   urnShatter: 'urn-shatter.mp3', cartClank: 'cart-clank.mp3',
+  wind: 'wind-ambience.mp3', fountain: 'fountain-ambience.mp3',
 } as const;
-const AUDIO_REVISION = '8';
+const AUDIO_REVISION = '9';
 type AssetName = keyof typeof ASSETS;
 type Loop = { source: AudioBufferSourceNode; gain: GainNode };
 type RivalEngine = { id: number; position: { x: number; y: number; z: number }; speed: number };
@@ -44,6 +45,7 @@ export class GameAudio {
   private windFilter: BiquadFilterNode | null = null;
   private fountainGain: GainNode | null = null;
   private fountainFilter: BiquadFilterNode | null = null;
+  private fountainPan: StereoPannerNode | null = null;
   private readonly downloads = new Map<AssetName, Promise<ArrayBuffer | null>>();
   private readonly buffers = new Map<AssetName, AudioBuffer>();
   private readonly loops = new Map<AssetName, Loop>();
@@ -111,30 +113,6 @@ export class GameAudio {
     this.motorBus = motorBus;
     this.paused = false;
 
-    const noiseBuffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
-    const noise = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < noise.length; i++) noise[i] = Math.random() * 2 - 1;
-    const noiseSource = context.createBufferSource();
-    noiseSource.buffer = noiseBuffer;
-    noiseSource.loop = true;
-    const windFilter = context.createBiquadFilter();
-    windFilter.type = 'lowpass';
-    windFilter.frequency.value = 450;
-    const windGain = context.createGain();
-    windGain.gain.value = 0;
-    noiseSource.connect(windFilter).connect(windGain).connect(motorBus);
-    const fountainFilter = context.createBiquadFilter();
-    fountainFilter.type = 'bandpass';
-    fountainFilter.frequency.value = 650;
-    fountainFilter.Q.value = 0.55;
-    const fountainGain = context.createGain();
-    fountainGain.gain.value = 0;
-    noiseSource.connect(fountainFilter).connect(fountainGain).connect(effectsBus);
-    noiseSource.start();
-    this.windGain = windGain;
-    this.windFilter = windFilter;
-    this.fountainGain = fountainGain;
-    this.fountainFilter = fountainFilter;
     void context.resume();
     void this.loadAssets();
   }
@@ -148,7 +126,7 @@ export class GameAudio {
       try {
         const buffer = await context.decodeAudioData(raw);
         this.buffers.set(name, buffer);
-        if (name === 'menu' || name === 'engine' || name === 'skid' || name === 'boostLoop') this.startLoop(name);
+        if (name === 'menu' || name === 'engine' || name === 'skid' || name === 'boostLoop' || name === 'wind' || name === 'fountain') this.startLoop(name);
         if (name === 'engine') this.startRivalVoices(buffer);
         if (name === 'raceIntro' || name === 'race') this.tryStartRaceMusic();
       } catch (error) { console.warn(`Could not decode ${ASSETS[name]}`, error); }
@@ -157,16 +135,32 @@ export class GameAudio {
     this.tryStartRaceMusic();
   }
 
-  private startLoop(name: 'menu' | 'engine' | 'skid' | 'boostLoop') {
+  private startLoop(name: 'menu' | 'engine' | 'skid' | 'boostLoop' | 'wind' | 'fountain') {
     const context = this.context;
     const buffer = this.buffers.get(name);
-    const bus = name === 'menu' ? this.musicBus : name === 'boostLoop' ? this.effectsBus : this.motorBus;
+    const bus = name === 'menu' ? this.musicBus : name === 'boostLoop' || name === 'fountain' ? this.effectsBus : this.motorBus;
     if (!context || !buffer || !bus || this.loops.has(name)) return;
     const source = context.createBufferSource();
     const gain = context.createGain();
     source.buffer = buffer;
     source.loop = true;
-    source.connect(gain).connect(bus);
+    if (name === 'wind') {
+      const filter = context.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 550;
+      source.connect(filter).connect(gain).connect(bus);
+      this.windFilter = filter;
+      this.windGain = gain;
+    } else if (name === 'fountain') {
+      const filter = context.createBiquadFilter();
+      const pan = context.createStereoPanner();
+      filter.type = 'lowpass';
+      filter.frequency.value = 4200;
+      source.connect(filter).connect(gain).connect(pan).connect(bus);
+      this.fountainFilter = filter;
+      this.fountainPan = pan;
+      this.fountainGain = gain;
+    } else source.connect(gain).connect(bus);
     gain.gain.value = 0;
     if (name === 'engine') source.playbackRate.value = 0.48;
     source.start();
@@ -280,6 +274,8 @@ export class GameAudio {
     this.loops.get('engine')?.gain.gain.setTargetAtTime(value ? 0 : 0.2, now, 0.08);
     this.loops.get('skid')?.gain.gain.setTargetAtTime(0, now, 0.06);
     this.loops.get('boostLoop')?.gain.gain.setTargetAtTime(0, now, 0.06);
+    this.windGain?.gain.setTargetAtTime(0, now, 0.12);
+    this.fountainGain?.gain.setTargetAtTime(0, now, 0.12);
     for (const voice of this.rivalVoices) voice.gain.gain.setTargetAtTime(0, now, 0.06);
     if (value) this.rivalsAudible = 0;
     if (value) this.boostAudible = false;
@@ -362,7 +358,7 @@ export class GameAudio {
     this.eventPan = 0;
   }
 
-  update(speed: number, drifting: boolean, ultimate: boolean, boosting: boolean, active: boolean, zone: string, finalLap = false, progress = 0) {
+  update(speed: number, drifting: boolean, ultimate: boolean, boosting: boolean, active: boolean, zone: string, finalLap = false, fountain?: { x: number; z: number }) {
     const context = this.context;
     if (!context) return;
     const now = context.currentTime;
@@ -395,9 +391,14 @@ export class GameAudio {
     const garden = zone === 'PALACE GARDEN';
     this.windGain?.gain.setTargetAtTime(running ? cave ? 0.036 : garden ? 0.018 : 0.025 + Math.min(speed, 70) * 0.0004 : 0, now, 0.35);
     this.windFilter?.frequency.setTargetAtTime(cave ? 340 : garden ? 730 : 490 + Math.min(speed, 70) * 6.5, now, 0.4);
-    const fountainPresence = garden ? Math.max(0, 1 - Math.abs(progress - 0.44) / 0.065) : 0;
-    this.fountainGain?.gain.setTargetAtTime(running ? fountainPresence * 0.022 : 0, now, 0.2);
-    this.fountainFilter?.frequency.setTargetAtTime(620 + Math.sin(now * 1.8) * 110, now, 0.25);
+    const dx = (fountain?.x ?? this.listenerX) - this.listenerX;
+    const dz = (fountain?.z ?? this.listenerZ) - this.listenerZ;
+    const distance = fountain ? Math.hypot(dx, dz) : Infinity;
+    const fountainPresence = Math.max(0, 1 - distance / 105) ** 2;
+    this.fountainGain?.gain.setTargetAtTime(running ? fountainPresence * 0.6 : 0, now, 0.28);
+    this.fountainFilter?.frequency.setTargetAtTime(1800 + fountainPresence * 4800, now, 0.32);
+    const side = dx * Math.cos(this.listenerYaw) - dz * Math.sin(this.listenerYaw);
+    this.fountainPan?.pan.setTargetAtTime(Math.max(-0.75, Math.min(0.75, side / Math.max(18, distance * 0.8))), now, 0.2);
   }
 
   private sample(name: AssetName, volume: number, rate = 1, delay = 0, duration?: number, pan = 0) {

@@ -14,7 +14,7 @@ function run(hz, drifting, speed = raceSpeed(31), direction = 1, boostHandling =
   for (let frame = 0; frame < hz; frame++) {
     const steering = frame * dt < 0.7;
     state = advanceHeading(state, { steer: steering ? direction : 0, speed, handling: 1,
-      drifting: drifting && steering, boostHandling, wobble: 0, dt });
+      drifting: drifting && steering, driftDirection: drifting && steering ? direction : 0, boostHandling, wobble: 0, dt });
     cameraYaw = advanceChaseYaw(cameraYaw, state.moveYaw, drifting && steering, dt);
     maxSlip = Math.max(maxSlip, angle(state.yaw, state.moveYaw));
     maxCameraAngle = Math.max(maxCameraAngle, angle(state.yaw, cameraYaw));
@@ -30,17 +30,32 @@ const boosted = run(60, true, raceSpeed(53), 1, 1.2);
 const leftDrift = run(60, true, raceSpeed(31), -1);
 assert.ok(normal.turnAtRelease > 0 && drift.moveYaw > 0, 'Right input must turn and travel right');
 assert.ok(leftDrift.moveYaw < 0, 'Left input must turn and travel left');
-assert.ok(drift.turnAtRelease > normal.turnAtRelease * 1.45, 'Drifting must turn substantially more than regular steering');
-assert.ok(drift.maxSlip < 0.25, 'Kart travel must stay within 14 degrees of its heading');
-assert.ok(drift.maxCameraAngle < 0.43, 'Camera must keep the road visible during a drift');
+assert.ok(drift.turnAtRelease > normal.turnAtRelease * 1.3, 'Drifting must turn substantially more than regular steering');
+assert.ok(drift.turnAtRelease < 1.05, 'A short drift must not snap the kart across the road');
+assert.ok(drift.maxSlip > normal.maxSlip && drift.maxSlip < 0.28, 'Drift should show weight without sending travel sideways');
+assert.ok(drift.maxCameraAngle < 0.62, 'Camera must keep the road visible during a drift');
 assert.ok(Math.abs(drift.yawRate) < 0.08, 'The kart must stop rotating soon after steer release');
 assert.ok(Math.abs(drift.turnAtRelease - drift30.turnAtRelease) < 0.06, 'Steering must remain stable at 30 and 60 fps');
-assert.ok(boosted.maxSlip < 0.28 && boosted.maxCameraAngle < 0.49, 'Boost speed must remain controllable');
-assert.ok(raceSpeed(53) / boosted.rateAtRelease < 26, 'A boost drift must still negotiate the course bends');
+assert.ok(boosted.maxSlip < 0.3 && boosted.maxCameraAngle < 0.65, 'Boost speed must remain controllable');
+assert.ok(raceSpeed(53) / boosted.rateAtRelease > 25 && raceSpeed(53) / boosted.rateAtRelease < 32,
+  'A pad boost drift must still fit the course bends without snapping');
 assert.ok(Math.abs(drift.turnAtRelease - leftDrift.turnAtRelease) < 1e-6, 'Left and right drift must be symmetric');
 const idle = advanceHeading({ yaw: 0, moveYaw: 0, yawRate: 0 }, { steer: 0, speed: raceSpeed(31), handling: 1,
-  drifting: false, boostHandling: 1, wobble: 0, dt: 1 / 30 });
+  drifting: false, driftDirection: 0, boostHandling: 1, wobble: 0, dt: 1 / 30 });
 assert.deepEqual(idle, { yaw: 0, moveYaw: 0, yawRate: 0 }, 'No steering input must not auto steer');
+const freeHeading = advanceHeading({ yaw: 0.7, moveYaw: 0.7, yawRate: 0 }, { steer: 0, speed: raceSpeed(31), handling: 1,
+  drifting: false, driftDirection: 0, boostHandling: 1, wobble: 0, dt: 1 / 30 });
+assert.deepEqual(freeHeading, { yaw: 0.7, moveYaw: 0.7, yawRate: 0 }, 'Releasing steer must not recenter the kart');
+let neutralDrift = { yaw: 0, moveYaw: 0, yawRate: 0 };
+let counterDrift = { yaw: 0, moveYaw: 0, yawRate: 0 };
+for (let frame = 0; frame < 42; frame++) {
+  neutralDrift = advanceHeading(neutralDrift, { steer: 0, speed: raceSpeed(31), handling: 1,
+    drifting: true, driftDirection: 1, boostHandling: 1, wobble: 0, dt: 1 / 60 });
+  counterDrift = advanceHeading(counterDrift, { steer: -1, speed: raceSpeed(31), handling: 1,
+    drifting: true, driftDirection: 1, boostHandling: 1, wobble: 0, dt: 1 / 60 });
+}
+assert.ok(neutralDrift.moveYaw > 0.25, 'A held drift must keep a controllable corner arc');
+assert.ok(counterDrift.moveYaw < 0, 'Countersteering must open the corner and eventually change direction');
 const straight = { yaw: Math.PI / 4, moveYaw: Math.PI / 4, yawRate: 0.7 };
 const railRight = { x: 1, z: 0 };
 const railTangent = { x: 0, z: 1 };

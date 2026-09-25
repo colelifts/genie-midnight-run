@@ -17,7 +17,7 @@ function add(parent: THREE.Group, geometry: THREE.BufferGeometry, material: THRE
   return object;
 }
 const ball = (parent: THREE.Group, radius: number, material: THREE.Material, x: number, y: number, z: number, widthSegments = 16) =>
-  add(parent, new THREE.SphereGeometry(radius, widthSegments, 12), material, x, y, z);
+  add(parent, new THREE.SphereGeometry(radius, Math.max(widthSegments, 22), 16), material, x, y, z);
 const box = (parent: THREE.Group, width: number, height: number, depth: number, material: THREE.Material, x: number, y: number, z: number) =>
   add(parent, new THREE.BoxGeometry(width, height, depth), material, x, y, z);
 const cone = (parent: THREE.Group, radius: number, height: number, material: THREE.Material, x: number, y: number, z: number, sides = 12) =>
@@ -520,12 +520,22 @@ export class CharacterKartVisual implements RaceVisual {
     box(this.body, 1.63, 0.2, 1.13, dark, 0, 1.45, -0.63);
     const back = box(this.body, 1.72, 0.63, 0.25, accent, 0, 1.64, -1.32);
     back.rotation.x = -0.16;
+    const seat = ball(this.body, 0.9, dark, 0, 1.82, -1.01);
+    seat.scale.set(0.95, 0.77, 0.19);
+    const steeringWheel = add(this.body, new THREE.TorusGeometry(0.72, 0.075, 10, 32), dark, 0, 2.24, 0.38);
+    steeringWheel.rotation.x = -0.22;
+    branch(this.body, new THREE.Vector3(0, 1.46, 0.72), new THREE.Vector3(0, 2.24, 0.38), 0.075, trim);
+    for (const side of [-1, 1]) branch(this.body, new THREE.Vector3(0, 2.24, 0.38), new THREE.Vector3(side * 0.55, 2.24, 0.38), 0.055, accent);
     for (const side of [-1, 1]) {
       const sideTrim = branch(this.body, new THREE.Vector3(side * 1.07, 1.17, -1.38), new THREE.Vector3(side * 1.07, 1.17, 1.55), 0.11, accent);
       sideTrim.castShadow = true;
       ball(this.body, 0.2, glow(model.accent), side * 0.73, 1.03, 1.76).scale.z = 0.5;
+      const lampRim = add(this.body, new THREE.TorusGeometry(0.22, 0.045, 8, 24), accent, side * 0.73, 1.03, 1.83);
+      lampRim.castShadow = false;
       box(this.body, 0.44, 0.19, 0.37, trim, side * 0.76, 0.87, -1.78);
     }
+    box(this.body, 1.26, 0.1, 0.08, dark, 0, 0.98, 1.88);
+    branch(this.body, new THREE.Vector3(-1.06, 0.77, 1.92), new THREE.Vector3(1.06, 0.77, 1.92), 0.065, accent);
     kartDecorations(id, this.body, primary, accent);
     this.driver = figure(id);
     if (id === 'hades') {
@@ -546,9 +556,11 @@ export class CharacterKartVisual implements RaceVisual {
     for (const x of [-1.44, 1.44]) for (const z of [-1.22, 1.22]) {
       const wheel = new THREE.Group();
       wheel.position.set(x, 0.7, z);
-      const tire = add(wheel, new THREE.CylinderGeometry(0.7, 0.7, 0.53, 20), dark);
+      const tire = add(wheel, new THREE.CylinderGeometry(0.7, 0.7, 0.53, 28), dark);
       tire.rotation.z = Math.PI / 2;
-      const hub = add(wheel, new THREE.CylinderGeometry(0.35, 0.35, 0.6, 16), accent);
+      const sidewall = add(wheel, new THREE.TorusGeometry(0.53, 0.042, 8, 28), trim, Math.sign(x) * 0.29);
+      sidewall.rotation.y = Math.PI / 2;
+      const hub = add(wheel, new THREE.CylinderGeometry(0.35, 0.35, 0.6, 20), accent);
       hub.rotation.z = Math.PI / 2;
       const cap = add(wheel, new THREE.CylinderGeometry(0.15, 0.15, 0.64, 12), trim);
       cap.rotation.z = Math.PI / 2;

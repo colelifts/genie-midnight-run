@@ -1,6 +1,6 @@
 import type { CharacterId } from './characters';
 
-type SoundName = 'count' | 'go' | 'drift' | 'boost' | 'pad' | 'wish' | 'shield' | 'shot' | 'hit' | 'stun' | 'lap' | 'final-lap' | 'ultimate' | 'trick' | 'draft' | 'pickup' | 'cart-warning' | 'birds';
+type SoundName = 'count' | 'go' | 'drift' | 'boost' | 'pad' | 'wish' | 'shield' | 'shot' | 'fire' | 'hit' | 'stun' | 'lap' | 'final-lap' | 'ultimate' | 'trick' | 'draft' | 'pickup' | 'cart-warning' | 'birds';
 
 const ULTIMATE_STINGS: Record<CharacterId, number[]> = {
   genie: [392, 587, 784, 1175], mickey: [523, 659, 784, 1047], stitch: [220, 659, 330, 988],
@@ -161,6 +161,7 @@ export class GameAudio {
       case 'wish': this.chime([600, 800, 1000], now, 0.07, 0.12); break;
       case 'shield': this.chime([390, 587, 783], now, 0.06, 0.2); break;
       case 'shot': this.sweep(960, 330, 0.16, now, 0.12); break;
+      case 'fire': this.sweep(410, 125, 0.26, now, 0.075); this.tone(535, 0.025, 'sawtooth', now + 0.035, 0.11); break;
       case 'hit': this.sweep(200, 65, 0.18, now, 0.15); break;
       case 'stun': this.chime([780, 620, 495], now, 0.07, 0.17); break;
       case 'lap': this.chime([392, 523, 659, 784], now, 0.1, 0.25); break;

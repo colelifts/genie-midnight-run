@@ -112,7 +112,7 @@ interface Projectile {
   mesh: THREE.Group;
   velocity: THREE.Vector3;
   life: number;
-  kind: 'star' | 'plasma' | 'laser' | 'curse' | 'dragon' | 'cannon' | 'wave' | 'firefly' | 'tornado';
+  kind: 'star' | 'plasma' | 'laser' | 'curse' | 'dragonfire' | 'dragon' | 'cannon' | 'wave' | 'firefly' | 'tornado';
   color: number;
   bounces: number;
   target: number;
@@ -1015,9 +1015,11 @@ class GenieRace {
     }
     if (kind === 'laser') coreGeometry = new THREE.CylinderGeometry(0.19, 0.39, 3.4, 12);
     if (kind === 'firefly') coreGeometry = new THREE.SphereGeometry(0.55, 12, 8);
+    if (kind === 'dragonfire') coreGeometry = new THREE.ConeGeometry(0.72, 2.6, 14, 3);
     if (kind === 'wave') coreGeometry = new THREE.TorusGeometry(2.5, 0.38, 9, 30, Math.PI * 1.7);
     const core = new THREE.Mesh(coreGeometry, kind === 'cannon' ? new THREE.MeshBasicMaterial({ color: 0x32445a, toneMapped: false }) : bright);
     if (kind === 'laser') core.rotation.x = Math.PI / 2;
+    if (kind === 'dragonfire') { core.rotation.x = Math.PI / 2; core.position.z = 0.65; }
     if (kind === 'wave') core.rotation.z = 0.15;
     const halo = new THREE.Mesh(new THREE.TorusGeometry(kind === 'dragon' ? 1.55 : 1.05, 0.12, 6, 24), new THREE.MeshBasicMaterial({ color: kind === 'cannon' ? color : 0xffffff, transparent: true, opacity: 0.82, depthWrite: false, toneMapped: false }));
     mesh.add(core, halo);
@@ -1038,6 +1040,13 @@ class GenieRace {
         const angle = n * Math.PI / 2;
         spark.position.set(Math.cos(angle) * 1.23, Math.sin(angle) * 1.23, 0);
         mesh.add(spark);
+      }
+    } else if (kind === 'dragonfire') {
+      for (let n = 0; n < 5; n++) {
+        const tongue = new THREE.Mesh(new THREE.ConeGeometry(0.26 + (n % 2) * 0.08, 1.25 + (n % 3) * 0.22, 8), n % 2 ? pale : bright);
+        tongue.rotation.x = Math.PI / 2;
+        tongue.position.set((n - 2) * 0.36, (n % 2 ? 0.22 : -0.16), -0.45 - n * 0.18);
+        mesh.add(tongue);
       }
     } else if (kind === 'curse') {
       for (let n = 0; n < 3; n++) {
@@ -1101,7 +1110,7 @@ class GenieRace {
     this.scene.add(mesh);
     this.projectiles.push({ owner: racer.id, mesh, velocity: direction.multiplyScalar(speed).addScaledVector(right, side * 10), life, kind, color, bounces: kind === 'star' ? 2 : kind === 'plasma' ? 1 : 0, target });
     this.makePulse(mesh.position, color, 0.35, 1.6);
-    this.audio.play('shot');
+    this.audio.play(kind === 'dragonfire' ? 'fire' : 'shot');
   }
 
   private dropField(racer: Racer, kind: PowerField['kind'], color: number, radius: number, life: number, back = -2.6) {
@@ -1741,7 +1750,11 @@ class GenieRace {
         break;
       case 'moana': this.pushWave(racer, 8, 0x6fece5); racer.powerTick = 0.68; break;
       case 'buzz': this.launchPower(racer, 'laser', 0xa6ff76, 58, 1.25); racer.powerTick = 0.9; break;
-      case 'maleficent': this.dropField(racer, 'dragonfire', 0xa1f576, 4.5, 6, -3); racer.powerTick = 0.68; break;
+      case 'maleficent':
+        this.dropField(racer, 'dragonfire', 0xa1f576, 4.5, 6, -3);
+        this.launchPower(racer, 'dragonfire', 0x9bfa72, 42, 1.05);
+        racer.powerTick = 0.68;
+        break;
       case 'hades': this.dropField(racer, 'soul', 0x77b6ff, 4.1, 5.2, -2.7); racer.powerTick = 0.52; break;
       case 'jack':
         this.launchPower(racer, 'cannon', 0xffd58d, 34, 1.8, -1, -2);
@@ -1973,7 +1986,7 @@ class GenieRace {
         }
       }
       projectile.mesh.position.addScaledVector(projectile.velocity, dt);
-      if (projectile.kind === 'laser' || projectile.kind === 'dragon' || projectile.kind === 'wave' || projectile.kind === 'firefly') projectile.mesh.rotation.y = Math.atan2(projectile.velocity.x, projectile.velocity.z);
+      if (projectile.kind === 'laser' || projectile.kind === 'dragon' || projectile.kind === 'dragonfire' || projectile.kind === 'wave' || projectile.kind === 'firefly') projectile.mesh.rotation.y = Math.atan2(projectile.velocity.x, projectile.velocity.z);
       else projectile.mesh.children[0].rotation.y += dt * 8;
       if (projectile.kind === 'plasma' || projectile.kind === 'curse') projectile.mesh.rotation.z += dt * 4;
       if (projectile.bounces > 0) {
@@ -1993,7 +2006,7 @@ class GenieRace {
         if (racer.id === projectile.owner || racer.stunTime > 0 || racer.hitCooldown > 0) continue;
         const offset = projectile.mesh.position.clone().sub(racer.position);
         const rearGuard = racer.character === 'moana' && racer.oceanBarrierTime > 0 && offset.dot(new THREE.Vector3(Math.sin(racer.yaw), 0, Math.cos(racer.yaw))) < -0.5 && offset.length() < 4.5;
-        if (rearGuard || offset.length() < (projectile.kind === 'dragon' ? 3.8 : projectile.kind === 'wave' || projectile.kind === 'tornado' ? 4.3 : projectile.kind === 'firefly' ? 2.3 : 2.8)) {
+        if (rearGuard || offset.length() < (projectile.kind === 'dragon' ? 3.8 : projectile.kind === 'dragonfire' ? 3.5 : projectile.kind === 'wave' || projectile.kind === 'tornado' ? 4.3 : projectile.kind === 'firefly' ? 2.3 : 2.8)) {
           if (rearGuard) {
             this.makePulse(projectile.mesh.position, 0x6ff4ec, 0.42, 2.4);
             this.burst(projectile.mesh.position, 0x56ddd7, 0xd4fff4, 17);
@@ -2005,7 +2018,15 @@ class GenieRace {
             racer.shieldTime = 0;
             this.stun(this.racers[projectile.owner], 0.65);
             if (racer.id === 0) this.showBanner('MIRROR REFLECT!', 0.9);
-          } else if (projectile.kind === 'curse') { racer.curseTime = Math.max(racer.curseTime, 4); racer.speed *= 0.74; }
+          } else if (projectile.kind === 'curse' || projectile.kind === 'dragonfire') {
+            if (racer.shieldTime > 0) this.stun(racer, 0.3);
+            else {
+              racer.curseTime = Math.max(racer.curseTime, projectile.kind === 'dragonfire' ? 3 : 4);
+              racer.speed *= projectile.kind === 'dragonfire' ? 0.58 : 0.74;
+              if (projectile.kind === 'dragonfire') racer.wobbleTime = Math.max(racer.wobbleTime, 0.8);
+              racer.hitCooldown = Math.max(racer.hitCooldown, 0.6);
+            }
+          }
           else if (projectile.kind === 'tornado') {
             const side = racer.position.clone().sub(projectile.mesh.position).setY(0).normalize();
             racer.position.addScaledVector(side, 5.5);

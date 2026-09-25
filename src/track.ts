@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-export type RouteName = 'main' | 'alley' | 'roof';
+export type RouteName = 'main' | 'alley' | 'roof' | 'garden';
 export type ZoneName = 'MIDNIGHT MARKET' | 'ROOFTOP RUN' | 'PALACE GARDEN' | 'DESERT CAVE';
 
 export interface RoadPoint {
@@ -90,7 +90,18 @@ export const ALLEY_ROAD_WIDTH = 26;
 export const ROOF_ROAD_WIDTH = 26;
 export const ALLEY_OFFSET = -61;
 export const ROOF_OFFSET = -60;
+export const GARDEN_OFFSET = 20;
+export const GARDEN_ROAD_WIDTH = 22;
+export const MARKET_CROSSING_PROGRESS = 0.842;
+export const MARKET_CROSSING_TRAVEL = MAIN_ROAD_WIDTH / 2 + 5;
 export const BOOST_PAD_LENGTH = 10;
+export function marketCartState(time: number) {
+  const phase = ((time % 18) + 18) % 18;
+  if (phase < 5) return { lateral: 1, direction: -1, crossing: false, warning: phase >= 3 };
+  if (phase < 9) return { lateral: 1 - (phase - 5) / 2, direction: -1, crossing: true, warning: true };
+  if (phase < 14) return { lateral: -1, direction: 1, crossing: false, warning: phase >= 12 };
+  return { lateral: -1 + (phase - 14) / 2, direction: 1, crossing: true, warning: true };
+}
 export const BOOST_PAD_LAYOUT: Array<{ route: RouteName; progress: number; boostSeconds: number }> = [
   { route: 'main', progress: 0.08, boostSeconds: 3.3 },
   { route: 'alley', progress: 0.08, boostSeconds: 5.3 },
@@ -98,6 +109,7 @@ export const BOOST_PAD_LAYOUT: Array<{ route: RouteName; progress: number; boost
   { route: 'roof', progress: 0.22, boostSeconds: 5.3 },
   { route: 'roof', progress: 0.266, boostSeconds: 5.3 },
   { route: 'roof', progress: 0.311, boostSeconds: 5.3 },
+  { route: 'garden', progress: 0.487, boostSeconds: 3.1 },
   { route: 'main', progress: 0.535, boostSeconds: 3.3 },
   { route: 'main', progress: 0.975, boostSeconds: 3.3 },
 ];
@@ -106,7 +118,7 @@ export const OBSTACLE_LAYOUT: Array<{ kind: Obstacle['kind']; route: RouteName; 
   { kind: 'crate', route: 'main', progress: 0.115, lateral: -7 },
   { kind: 'crate', route: 'main', progress: 0.115, lateral: 7 },
   { kind: 'crate', route: 'main', progress: 0.245, lateral: -8 },
-  { kind: 'urn', route: 'main', progress: 0.385, lateral: -8 },
+  { kind: 'urn', route: 'main', progress: 0.415, lateral: -8 },
   { kind: 'urn', route: 'main', progress: 0.445, lateral: -10 },
   { kind: 'urn', route: 'main', progress: 0.445, lateral: 7 },
   { kind: 'urn', route: 'main', progress: 0.565, lateral: 0 },
@@ -124,6 +136,8 @@ export const OBSTACLE_LAYOUT: Array<{ kind: Obstacle['kind']; route: RouteName; 
   { kind: 'crate', route: 'alley', progress: 0.106, lateral: -4 },
   { kind: 'crate', route: 'roof', progress: 0.24, lateral: 3 },
   { kind: 'crate', route: 'roof', progress: 0.285, lateral: -4 },
+  { kind: 'urn', route: 'garden', progress: 0.425, lateral: -6 },
+  { kind: 'urn', route: 'garden', progress: 0.463, lateral: 6 },
 ];
 
 export function clearOfOtherRoutes(samples: RoadPoint[], position: THREE.Vector3, radius: number, excludedRoute: RouteName) {
@@ -143,6 +157,7 @@ const stoneLight = new THREE.MeshStandardMaterial({ color: 0xd7a476, roughness: 
 const stoneDark = new THREE.MeshStandardMaterial({ color: 0x865e59, roughness: 0.97, flatShading: true });
 const roofMat = new THREE.MeshStandardMaterial({ color: 0x9d6577, roughness: 0.84, flatShading: true });
 const roadMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.96, side: THREE.DoubleSide });
+const gardenRoadMat = new THREE.MeshStandardMaterial({ color: 0xe6d5ba, roughness: 0.96, side: THREE.DoubleSide });
 const red = new THREE.MeshStandardMaterial({ color: 0xd65b62, roughness: 0.93, side: THREE.DoubleSide });
 const blue = new THREE.MeshStandardMaterial({ color: 0x4669a3, roughness: 0.93, side: THREE.DoubleSide });
 const leaf = new THREE.MeshStandardMaterial({ color: 0x477653, roughness: 0.92, flatShading: true, side: THREE.DoubleSide });
@@ -224,7 +239,8 @@ export function makeBranchSamples(mainCurve: THREE.CatmullRomCurve3, route: Rout
     const right = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
     const chord = startPoint.clone().lerp(endPoint, f);
     const cut = Math.pow(Math.sin(Math.PI * f), 1.2) * 0.42;
-    const shortcutSlalom = route === 'alley' ? 4.5 * Math.sin(4 * Math.PI * f) * Math.sin(Math.PI * f) ** 2 : 0;
+    const shortcutSlalom = route === 'alley' ? 4.5 * Math.sin(4 * Math.PI * f) * Math.sin(Math.PI * f) ** 2
+      : route === 'garden' ? 3.5 * Math.sin(4 * Math.PI * f) * Math.sin(Math.PI * f) ** 2 : 0;
     const position = mainPoint.clone().lerp(chord, cut).addScaledVector(right, maxOffset * Math.sin(Math.PI * f) ** 2 + shortcutSlalom);
     position.y = 0.07 + maxHeight * Math.pow(Math.sin(Math.PI * f), 2);
     result.push({ position, tangent, right, progress, width, route });
@@ -265,6 +281,37 @@ function makePavingTexture() {
   return texture;
 }
 
+function makeSandTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+  const rng = seededRandom(93417);
+  ctx.fillStyle = '#b98160';
+  ctx.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 4400; i++) {
+    const x = rng() * 256;
+    const y = rng() * 256;
+    ctx.fillStyle = i % 3 === 0 ? 'rgba(255,220,170,0.1)' : 'rgba(71,48,64,0.065)';
+    ctx.fillRect(x, y, 1 + rng() * 2.7, 0.6 + rng() * 1.2);
+  }
+  for (let i = 0; i < 28; i++) {
+    const x = rng() * 256;
+    const y = rng() * 256;
+    ctx.strokeStyle = 'rgba(255,220,180,0.055)';
+    ctx.lineWidth = 1 + rng() * 2;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.quadraticCurveTo(x + 20, y - 3, x + 47, y + 2);
+    ctx.stroke();
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(82, 82);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  return texture;
+}
+
 export class RaceTrack {
   readonly mainWidth = MAIN_ROAD_WIDTH;
   readonly group = new THREE.Group();
@@ -273,8 +320,10 @@ export class RaceTrack {
   readonly mainSamples: RoadPoint[] = [];
   readonly alleySamples: RoadPoint[] = [];
   readonly roofSamples: RoadPoint[] = [];
+  readonly gardenSamples: RoadPoint[] = [];
   readonly obstacles: Obstacle[] = [];
   readonly boostPads: BoostPad[] = [];
+  birdLaunches = 0;
   readonly length: number;
   private readonly rng = seededRandom(626);
   private readonly carpetMaterials: THREE.MeshBasicMaterial[] = [];
@@ -286,10 +335,15 @@ export class RaceTrack {
   private readonly fireflies: Array<{ sprite: THREE.Sprite; base: THREE.Vector3; phase: number }> = [];
   private readonly birds: Array<{ group: THREE.Group; leftWing: THREE.Group; rightWing: THREE.Group; base: THREE.Vector3; phase: number; launchTime: number; direction: THREE.Vector3 }> = [];
   private readonly skyBirds: Array<{ group: THREE.Group; leftWing: THREE.Group; rightWing: THREE.Group; center: THREE.Vector3; phase: number; radius: number }> = [];
+  private marketCart: Obstacle | null = null;
+  private readonly marketCrossingCenter = new THREE.Vector3();
+  private readonly marketCrossingSignals: Array<{ bulb: THREE.MeshBasicMaterial; halo: THREE.Sprite }> = [];
 
   constructor(scene: THREE.Scene) {
     roadMat.map = makePavingTexture();
     roadMat.needsUpdate = true;
+    gardenRoadMat.map = roadMat.map;
+    gardenRoadMat.needsUpdate = true;
     this.mainCurve = makeMainCurve();
     this.length = this.mainCurve.getLength();
     this.makeSamples();
@@ -297,6 +351,7 @@ export class RaceTrack {
     this.makeRoad(this.mainSamples, true);
     this.makeRoad(this.alleySamples, false);
     this.makeRoad(this.roofSamples, false);
+    this.makeRoad(this.gardenSamples, false);
     this.makeRoadMarkers();
     this.makeRoadLights();
     this.makeMarketBanners();
@@ -321,21 +376,30 @@ export class RaceTrack {
     }
     this.alleySamples.push(...makeBranchSamples(this.mainCurve, 'alley', 0.045, 0.16, ALLEY_OFFSET, 0, ALLEY_ROAD_WIDTH));
     this.roofSamples.push(...makeBranchSamples(this.mainCurve, 'roof', 0.19, 0.33, ROOF_OFFSET, 5.4, ROOF_ROAD_WIDTH));
-    this.samples.push(...this.mainSamples, ...this.alleySamples, ...this.roofSamples);
+    this.gardenSamples.push(...makeBranchSamples(this.mainCurve, 'garden', 0.37, 0.53, GARDEN_OFFSET, 0, GARDEN_ROAD_WIDTH));
+    this.samples.push(...this.mainSamples, ...this.alleySamples, ...this.roofSamples, ...this.gardenSamples);
   }
 
   private makeTerrain() {
+    sand.color.setHex(0xffffff);
+    sand.map = makeSandTexture();
+    sand.needsUpdate = true;
     const ground = box(1400, 1, 1400, sand);
     ground.position.y = -0.7;
     ground.receiveShadow = true;
     this.group.add(ground);
-    const duneGeo = new THREE.IcosahedronGeometry(1, 1);
+    const duneGeo = new THREE.SphereGeometry(1, 20, 10);
+    const duneWarm = new THREE.MeshStandardMaterial({ color: 0xb98368, roughness: 1 });
+    const duneLight = new THREE.MeshStandardMaterial({ color: 0xc99570, roughness: 1 });
+    const duneShadow = new THREE.MeshStandardMaterial({ color: 0x98677a, roughness: 1 });
     for (let i = 0; i < 45; i++) {
       const angle = (i / 45) * Math.PI * 2;
       const distance = 380 + this.rng() * 100;
-      const dune = new THREE.Mesh(duneGeo, i % 3 === 0 ? stoneDark : stone);
+      const dune = new THREE.Mesh(duneGeo, i % 7 === 0 ? duneShadow : i % 2 === 0 ? duneLight : duneWarm);
       dune.scale.set(20 + this.rng() * 28, 9 + this.rng() * 14, 18 + this.rng() * 25);
       dune.position.set(Math.sin(angle) * distance, -6, Math.cos(angle) * distance);
+      dune.rotation.y = this.rng() * Math.PI;
+      dune.receiveShadow = true;
       this.group.add(dune);
     }
     const distantStone = new THREE.MeshStandardMaterial({ color: 0x5f536d, roughness: 1, flatShading: true });
@@ -374,7 +438,7 @@ export class RaceTrack {
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
-    const road = new THREE.Mesh(geometry, roadMat);
+    const road = new THREE.Mesh(geometry, points[0].route === 'garden' ? gardenRoadMat : roadMat);
     road.receiveShadow = true;
     this.group.add(road);
     this.makeCurbs(points, closed);
@@ -388,13 +452,14 @@ export class RaceTrack {
   private makeEdgeBarriers(points: RoadPoint[], closed: boolean) {
     const placements: THREE.Matrix4[] = [];
     const dummy = new THREE.Object3D();
-    const branches = [this.alleySamples, this.roofSamples];
+    const branches = [this.alleySamples, this.roofSamples, this.gardenSamples];
     for (const side of [-1, 1]) {
       for (let i = 0; i < points.length - (closed ? 0 : 1); i += 3) {
         if (!closed && (i < 18 || i > points.length - 21)) continue;
         const a = points[i];
         const b = points[(i + 3) % points.length];
         if (!closed && i + 3 >= points.length) continue;
+        if (closed && Math.abs(a.progress - MARKET_CROSSING_PROGRESS) < 0.006) continue;
         const edgeA = a.position.clone().addScaledVector(a.right, side * (a.width / 2 + 0.26));
         const edgeB = b.position.clone().addScaledVector(b.right, side * (b.width / 2 + 0.26));
         const middle = edgeA.clone().add(edgeB).multiplyScalar(0.5);
@@ -432,7 +497,7 @@ export class RaceTrack {
         outer.y += 0.035;
         vertices.push(inner.x, inner.y, inner.z, outer.x, outer.y, outer.z);
         coveredAtJunction.push(closed
-          ? branchCoversMainEdge([this.alleySamples, this.roofSamples], inner) || branchCoversMainEdge([this.alleySamples, this.roofSamples], outer)
+          ? branchCoversMainEdge([this.alleySamples, this.roofSamples, this.gardenSamples], inner) || branchCoversMainEdge([this.alleySamples, this.roofSamples, this.gardenSamples], outer)
           : overMainPavement(this.mainSamples, inner, 1) || overMainPavement(this.mainSamples, outer, 1));
         const color = Math.floor(i / 6) % 2 === 0 ? new THREE.Color(0xe8dcce) : new THREE.Color(0xc85d65);
         colors.push(color.r, color.g, color.b, color.r, color.g, color.b);
@@ -630,6 +695,7 @@ export class RaceTrack {
       { progress: 0.04, side: -1, text: 'BOOST ALLEY', color: '#eac76b' },
       { progress: 0.186, side: -1, text: 'ROOF RAMP', color: '#8fe1f4' },
       { progress: 0.345, side: 1, text: 'PALACE GARDEN', color: '#eac76b' },
+      { progress: 0.36, side: -1, text: 'GARDEN CUT', color: '#a9e5a5' },
       { progress: 0.665, side: 1, text: 'CAVE ROUTE', color: '#8fe1f4' },
     ];
     for (const sign of signs) {
@@ -743,6 +809,7 @@ export class RaceTrack {
     for (let i = 0; i < 205; i++) {
       const progress = i / 205;
       const sample = this.mainSamples[Math.floor(progress * this.mainSamples.length)];
+      if (Math.abs(progress - MARKET_CROSSING_PROGRESS) < 0.014) continue;
       const side = i % 2 === 0 ? 1 : -1;
       const offset = sample.width / 2 + 16 + this.rng() * 12;
       const position = sample.position.clone().addScaledVector(sample.right, side * offset);
@@ -929,6 +996,14 @@ export class RaceTrack {
     const cornice = box(width + 0.35, 0.3, depth + 0.35, stoneDark);
     cornice.position.y = height - 1.15;
     group.add(cornice);
+    const frieze = box(width + 0.42, 0.18, depth + 0.42, seed % 3 === 0 ? gold : roofMat);
+    frieze.position.y = height - 1.58;
+    group.add(frieze);
+    for (const x of [-width / 2 + 1, width / 2 - 1]) {
+      const finial = new THREE.Mesh(new THREE.SphereGeometry(0.46, 10, 7), gold);
+      finial.position.set(x, height + 0.68, depth / 2 - 0.8);
+      group.add(finial);
+    }
     for (const side of [-1, 1]) {
       const pilaster = box(0.48, height * 0.82, 0.42, stoneLight);
       pilaster.position.set(side * (width / 2 - 0.36), height * 0.41, depth / 2 + 0.12);
@@ -952,7 +1027,10 @@ export class RaceTrack {
       window.position.set(x, height * 0.64, depth / 2 + 0.15);
       const sill = box(1.86, 0.22, 0.55, stoneLight);
       sill.position.set(x, height * 0.64 - 1.17, depth / 2 + 0.28);
-      group.add(frame, window, sill);
+      const arch = new THREE.Mesh(new THREE.SphereGeometry(0.84, 12, 6, 0, Math.PI, 0, Math.PI / 2), stoneDark);
+      arch.position.set(x, height * 0.64 + 1.02, depth / 2 + 0.065);
+      arch.scale.set(1, 0.36, 0.14);
+      group.add(frame, window, sill, arch);
       if (seed % 2 === 0) {
         const halo = lanternHalo(2.7);
         halo.position.set(x, height * 0.64, depth / 2 + 0.25);
@@ -1172,6 +1250,8 @@ export class RaceTrack {
       const progress = 0.34 + i * 0.0067;
       const point = this.at(progress);
       for (const side of [-1, 1]) {
+        const sectionPosition = point.position.clone().addScaledVector(point.right, side * (point.width / 2 + 1.2));
+        if (branchCoversMainEdge([this.gardenSamples], sectionPosition)) continue;
         const section = new THREE.Group();
         const plinth = box(7.2, 1.2, 1.4, stoneLight);
         plinth.position.y = 0.62;
@@ -1193,11 +1273,12 @@ export class RaceTrack {
           halo.position.y = 3.44;
           section.add(halo);
         }
-        section.position.copy(point.position).addScaledVector(point.right, side * (point.width / 2 + 1.2));
+        section.position.copy(sectionPosition);
         section.position.y = 0;
         section.rotation.y = Math.atan2(point.tangent.x, point.tangent.z);
         this.group.add(section);
-        if (i % 3 !== 0) {
+        const planterPosition = point.position.clone().addScaledVector(point.right, side * (point.width / 2 + 4.7));
+        if (i % 3 !== 0 && !branchCoversMainEdge([this.gardenSamples], planterPosition)) {
           const planter = new THREE.Group();
           const pot = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 0.76, 1, 8), roofMat);
           pot.position.y = 0.52;
@@ -1214,7 +1295,7 @@ export class RaceTrack {
             blossom.position.set(Math.sin(angle) * 0.84, 1.65 + (f % 2) * 0.4, Math.cos(angle) * 0.84);
             planter.add(blossom);
           }
-          planter.position.copy(point.position).addScaledVector(point.right, side * (point.width / 2 + 4.7));
+          planter.position.copy(planterPosition);
           planter.position.y = 0;
           this.group.add(planter);
         }
@@ -1571,11 +1652,75 @@ export class RaceTrack {
     group.position.y = point.position.y;
     group.rotation.y = Math.atan2(point.tangent.x, point.tangent.z);
     this.group.add(group);
-    this.obstacles.push({ kind, mesh: group, position: group.position, radius, broken: false, respawn: 0, moving: kind === 'boulder', basePosition: group.position.clone(), right: point.right.clone(), phase });
+    const obstacle = { kind, mesh: group, position: group.position, radius, broken: false, respawn: 0, moving: kind === 'boulder', basePosition: group.position.clone(), right: point.right.clone(), phase };
+    this.obstacles.push(obstacle);
+    return obstacle;
   }
 
   private makeObstacles() {
     for (const item of OBSTACLE_LAYOUT) this.addObstacle(item.kind, this.routeAt(item.route, item.progress), item.lateral, item.phase ?? 0);
+    this.makeMarketCrossing();
+  }
+
+  private makeMarketCrossing() {
+    const point = this.at(MARKET_CROSSING_PROGRESS);
+    this.marketCrossingCenter.copy(point.position);
+    this.marketCart = this.addObstacle('cart', point, MARKET_CROSSING_TRAVEL);
+    for (const side of [-1, 1]) {
+      const signal = new THREE.Group();
+      const post = box(0.48, 3.7, 0.48, stoneDark);
+      post.position.y = 1.85;
+      signal.add(post);
+      const housing = new THREE.Mesh(new THREE.CylinderGeometry(0.74, 0.74, 0.26, 10), gold);
+      housing.position.y = 3.82;
+      signal.add(housing);
+      const bulbMaterial = new THREE.MeshBasicMaterial({ color: 0x9d6743, toneMapped: false });
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.48, 12, 8), bulbMaterial);
+      bulb.position.y = 4.22;
+      signal.add(bulb);
+      const halo = lanternHalo(6.2, 0xffa15f);
+      halo.position.y = 4.22;
+      halo.material.opacity = 0.12;
+      signal.add(halo);
+      signal.position.copy(point.position).addScaledVector(point.right, side * (point.width / 2 + 2.8));
+      signal.position.y = 0;
+      this.group.add(signal);
+      this.marketCrossingSignals.push({ bulb: bulbMaterial, halo });
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 160;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#112343';
+    ctx.fillRect(0, 0, 512, 160);
+    ctx.strokeStyle = '#eec77b';
+    ctx.lineWidth = 13;
+    ctx.strokeRect(9, 9, 494, 142);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffe5a8';
+    ctx.font = 'bold 48px Arial';
+    ctx.fillText('CART CROSSING', 256, 86);
+    ctx.font = 'bold 21px Arial';
+    ctx.fillText('WATCH FOR MOVEMENT', 256, 126);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const signPoint = this.at(MARKET_CROSSING_PROGRESS - 0.015);
+    const sign = new THREE.Group();
+    const frame = box(9.8, 3.2, 0.28, gold);
+    frame.position.y = 4.8;
+    sign.add(frame);
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(9.5, 2.95), new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide, toneMapped: false }));
+    face.position.set(0, 4.8, 0.19);
+    sign.add(face);
+    for (const x of [-3.3, 3.3]) {
+      const post = box(0.35, 3.25, 0.35, stoneDark);
+      post.position.set(x, 1.62, 0);
+      sign.add(post);
+    }
+    sign.position.copy(signPoint.position).addScaledVector(signPoint.right, signPoint.width / 2 + 5.5);
+    sign.position.y = 0;
+    sign.rotation.y = Math.atan2(signPoint.tangent.x, signPoint.tangent.z) + Math.PI;
+    this.group.add(sign);
   }
 
   private makePads() {
@@ -1661,7 +1806,7 @@ export class RaceTrack {
 
   routeAt(route: RouteName, progress: number): RoadPoint {
     if (route === 'main') return this.at(progress);
-    const list = route === 'alley' ? this.alleySamples : this.roofSamples;
+    const list = route === 'alley' ? this.alleySamples : route === 'roof' ? this.roofSamples : this.gardenSamples;
     const first = list[0].progress;
     const last = list[list.length - 1].progress;
     const fraction = Math.max(0, Math.min(1, (progress - first) / (last - first)));
@@ -1703,6 +1848,7 @@ export class RaceTrack {
   }
 
   update(time: number, dt: number, racers: THREE.Vector3[] = []) {
+    this.birdLaunches = 0;
     for (const obstacle of this.obstacles) {
       if (obstacle.broken) {
         obstacle.respawn -= dt;
@@ -1714,6 +1860,17 @@ export class RaceTrack {
       if (obstacle.moving && !obstacle.broken) {
         const shift = Math.sin(time * 0.9 + obstacle.phase) * 2.2;
         obstacle.mesh.position.copy(obstacle.basePosition).addScaledVector(obstacle.right, shift);
+      }
+    }
+    if (this.marketCart) {
+      const crossing = marketCartState(time);
+      this.marketCart.mesh.position.copy(this.marketCrossingCenter).addScaledVector(this.marketCart.right, crossing.lateral * MARKET_CROSSING_TRAVEL);
+      const forward = this.marketCart.right.clone().multiplyScalar(crossing.direction);
+      this.marketCart.mesh.rotation.y = Math.atan2(forward.x, forward.z);
+      const bright = crossing.warning && Math.sin(time * 12) > 0;
+      for (const signal of this.marketCrossingSignals) {
+        signal.bulb.color.setHex(bright ? 0xffd884 : 0x9d6743);
+        signal.halo.material.opacity = bright ? 0.85 : 0.12;
       }
     }
     const pulse = 0.88 + 0.12 * Math.sin(time * 3);
@@ -1728,6 +1885,7 @@ export class RaceTrack {
       const nearest = racers.find((racer) => racer.distanceTo(bird.base) < 21);
       if (bird.launchTime < 0 && nearest) {
         bird.launchTime = time;
+        this.birdLaunches++;
         bird.direction.copy(bird.base).sub(nearest).setY(0).normalize();
         if (bird.direction.lengthSq() < 0.1) bird.direction.set(1, 0, 0);
       }

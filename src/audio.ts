@@ -1,10 +1,13 @@
-type SoundName = 'count' | 'go' | 'drift' | 'boost' | 'wish' | 'shield' | 'shot' | 'hit' | 'stun' | 'lap' | 'ultimate' | 'pickup';
+type SoundName = 'count' | 'go' | 'drift' | 'boost' | 'wish' | 'shield' | 'shot' | 'hit' | 'stun' | 'lap' | 'ultimate' | 'pickup' | 'cart-warning' | 'birds';
 
 export class GameAudio {
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
   private engineOscillator: OscillatorNode | null = null;
   private engineGain: GainNode | null = null;
+  private windGain: GainNode | null = null;
+  private windFilter: BiquadFilterNode | null = null;
+  private skidGain: GainNode | null = null;
   private nextBeat = 0;
   private beat = 0;
   muted = false;
@@ -30,10 +33,37 @@ export class GameAudio {
     engineOscillator.frequency.value = 80;
     engineOscillator.connect(engineGain);
     engineOscillator.start();
+    const noiseBuffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
+    const noise = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < noise.length; i++) noise[i] = Math.random() * 2 - 1;
+    const noiseSource = context.createBufferSource();
+    noiseSource.buffer = noiseBuffer;
+    noiseSource.loop = true;
+    const windFilter = context.createBiquadFilter();
+    windFilter.type = 'lowpass';
+    windFilter.frequency.value = 450;
+    const windGain = context.createGain();
+    windGain.gain.value = 0;
+    noiseSource.connect(windFilter);
+    windFilter.connect(windGain);
+    windGain.connect(master);
+    const skidFilter = context.createBiquadFilter();
+    skidFilter.type = 'bandpass';
+    skidFilter.frequency.value = 1450;
+    skidFilter.Q.value = 0.7;
+    const skidGain = context.createGain();
+    skidGain.gain.value = 0;
+    noiseSource.connect(skidFilter);
+    skidFilter.connect(skidGain);
+    skidGain.connect(master);
+    noiseSource.start();
     this.context = context;
     this.master = master;
     this.engineOscillator = engineOscillator;
     this.engineGain = engineGain;
+    this.windGain = windGain;
+    this.windFilter = windFilter;
+    this.skidGain = skidGain;
     this.nextBeat = context.currentTime + 0.1;
   }
 
@@ -42,11 +72,16 @@ export class GameAudio {
     if (this.master && this.context) this.master.gain.setTargetAtTime(value ? 0 : 0.33, this.context.currentTime, 0.05);
   }
 
-  update(speed: number, drifting: boolean, ultimate: boolean, active: boolean) {
+  update(speed: number, drifting: boolean, ultimate: boolean, active: boolean, zone: string) {
     if (!this.context || !this.engineOscillator || !this.engineGain) return;
     const now = this.context.currentTime;
     this.engineOscillator.frequency.setTargetAtTime(75 + speed * (ultimate ? 5.7 : 4.1) + (drifting ? 18 : 0), now, 0.08);
     this.engineGain.gain.setTargetAtTime(active ? 0.045 + Math.min(speed, 42) * 0.0011 : 0, now, 0.08);
+    const cave = zone === 'DESERT CAVE';
+    const garden = zone === 'PALACE GARDEN';
+    this.windGain?.gain.setTargetAtTime(active ? cave ? 0.055 : garden ? 0.019 : 0.031 : 0, now, 0.35);
+    this.windFilter?.frequency.setTargetAtTime(cave ? 300 : garden ? 710 : 480 + Math.min(speed, 45) * 9, now, 0.4);
+    this.skidGain?.gain.setTargetAtTime(active && drifting ? 0.055 + Math.min(speed, 40) * 0.0014 : 0, now, 0.075);
     if (!active || this.muted) return;
     // Small original four-bar arpeggio; scheduled ahead so frames do not affect timing.
     const notes = [196, 246.94, 293.66, 392, 293.66, 246.94, 220, 293.66,
@@ -76,6 +111,8 @@ export class GameAudio {
       case 'lap': this.chime([392, 523, 659, 784], now, 0.1, 0.25); break;
       case 'ultimate': this.chime([196, 392, 587, 784], now, 0.11, 0.4); break;
       case 'pickup': this.chime([630, 890], now, 0.08, 0.1); break;
+      case 'cart-warning': this.chime([392, 293.66], now, 0.17, 0.24); break;
+      case 'birds': this.chime([1046.5, 1318.5, 1174.7], now, 0.085, 0.11); break;
     }
   }
 

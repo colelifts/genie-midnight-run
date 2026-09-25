@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import './style.css';
 import { GameAudio } from './audio';
 import { KartVisual, makeProjectile } from './kart';
-import { RaceTrack, touchesBoostPad, type RoadHit, type RoadPoint, type RouteName } from './track';
+import { MARKET_CROSSING_PROGRESS, marketCartState, RaceTrack, touchesBoostPad, type RoadHit, type RoadPoint, type RouteName } from './track';
 
 const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = el<HTMLCanvasElement>('game');
@@ -206,6 +206,8 @@ class GenieRace {
   private gamepadBrake = 0;
   private driftSparksTimer = 0;
   private lastMagicTrailTick = -1;
+  private lastCartWarningCycle = -1;
+  private lastBirdSound = -10;
   private cameraLook = new THREE.Vector3();
   private cameraDistance = 13.1;
   private cameraReady = false;
@@ -350,7 +352,7 @@ class GenieRace {
         id: i, visual, position: start.position.clone(), yaw, moveYaw: yaw, speed: 0, progress: starts[i], lap: 1,
         boostTime: 0, padBoostTime: 0, shieldTime: 0, ultimateTime: 0, stunTime: 0, hitCooldown: 0, offTrackTime: 0, lastPad: 0,
         drifting: false, driftCharge: 0, jumpTime: 0, jumpDuration: 0, jumpPower: 0,
-        lastSafe: start.position.clone(), lastSafeProgress: starts[i], aiRoute: i === 0 && this.demoMode && (demoRoute === 'alley' || demoRoute === 'roof') ? demoRoute : i === 1 ? 'alley' : i === 2 ? 'roof' : 'main',
+        lastSafe: start.position.clone(), lastSafeProgress: starts[i], aiRoute: i === 0 && this.demoMode && (demoRoute === 'alley' || demoRoute === 'roof' || demoRoute === 'garden') ? demoRoute : i === 1 ? 'alley' : i === 2 ? 'roof' : 'main',
         aiAbilityTimer: 10 + i * 5, aiUltimateTimer: 48 + i * 13, ultimateHit: new Set<number>(), steerVisual: 0,
       };
       this.racers.push(racer);
@@ -477,6 +479,8 @@ class GenieRace {
     this.flashes.length = 0;
     this.pickups.forEach((pickup) => { pickup.collected = false; pickup.mesh.visible = true; pickup.respawn = 0; });
     this.wishHolding = false;
+    this.lastCartWarningCycle = -1;
+    this.lastBirdSound = -10;
     wishPicker.classList.add('hidden');
     this.keys.clear();
   }
@@ -628,12 +632,25 @@ class GenieRace {
     }
     if (this.mode !== 'paused') {
       this.track.update(this.elapsed, dt, this.mode === 'race' ? this.racers.map((racer) => racer.position) : []);
+      if (this.mode === 'race' && this.track.birdLaunches > 0 && this.elapsed - this.lastBirdSound > 2 && this.track.zone(this.racers[0].progress) === 'ROOFTOP RUN') {
+        this.audio.play('birds');
+        this.lastBirdSound = this.elapsed;
+      }
+      if (this.mode === 'race' && marketCartState(this.elapsed).warning) {
+        const cycle = Math.floor(this.elapsed / 9);
+        const progressGap = Math.abs(this.racers[0].progress - MARKET_CROSSING_PROGRESS);
+        if (cycle !== this.lastCartWarningCycle && Math.min(progressGap, 1 - progressGap) < 0.07) {
+          this.audio.play('cart-warning');
+          this.showBanner('CART CROSSING AHEAD!', 1.35);
+          this.lastCartWarningCycle = cycle;
+        }
+      }
       this.updatePickups(dt);
       this.updateCamera(dt);
       this.sparks.update(dt);
       this.updatePulses(dt);
       this.updateFlashes(dt);
-      this.audio.update(this.racers[0].speed, this.racers[0].drifting, this.racers[0].ultimateTime > 0, this.mode === 'race');
+      this.audio.update(this.racers[0].speed, this.racers[0].drifting, this.racers[0].ultimateTime > 0, this.mode === 'race', this.track.zone(this.racers[0].progress));
       if (this.bannerTime > 0) {
         this.bannerTime -= dt;
         if (this.bannerTime <= 0) banner.classList.add('hidden');
@@ -762,6 +779,7 @@ class GenieRace {
     let route: RouteName = 'main';
     if (racer.aiRoute === 'alley' && ahead > 0.045 && ahead < 0.16) route = 'alley';
     if (racer.aiRoute === 'roof' && ahead > 0.19 && ahead < 0.33) route = 'roof';
+    if ((racer.aiRoute === 'garden' || racer.id === 1) && ahead > 0.37 && ahead < 0.53) route = 'garden';
     const target = this.track.routeAt(route, ahead);
     const direction = target.position.clone().sub(racer.position);
     let targetYaw = Math.atan2(direction.x, direction.z);
@@ -1226,6 +1244,7 @@ class GenieRace {
     drawRoute(this.track.mainSamples, '#f1e5d8', 5, false);
     drawRoute(this.track.alleySamples, '#e6c76f', 2, true);
     drawRoute(this.track.roofSamples, '#77d9eb', 2, true);
+    drawRoute(this.track.gardenSamples, '#b5e8a2', 2, true);
     for (const racer of this.racers) {
       const screen = mapPoint(racer.position);
       ctx.beginPath();

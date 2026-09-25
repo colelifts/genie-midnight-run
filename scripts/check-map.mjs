@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { ALLEY_OFFSET, ALLEY_ROAD_WIDTH, BOOST_PAD_LAYOUT, BOOST_PAD_LENGTH, branchCoversMainEdge, CAVE_ARCH_SHAPE, CAVE_ARCH_SPANS, CAVE_TUNNEL_SHAPE, clearOfOtherRoutes, MAIN_ROAD_WIDTH, makeBranchSamples, makeMainCurve, MARKET_BANNER_SPANS, MARKET_GATE_SPANS, OBSTACLE_LAYOUT, overMainPavement, ROOF_OFFSET, ROOF_ROAD_WIDTH, touchesBoostPad, TURN_SIGN_SPANS, turnSignDirection } from '../src/track.ts';
+import { ALLEY_OFFSET, ALLEY_ROAD_WIDTH, BOOST_PAD_LAYOUT, BOOST_PAD_LENGTH, branchCoversMainEdge, CAVE_ARCH_SHAPE, CAVE_ARCH_SPANS, CAVE_TUNNEL_SHAPE, clearOfOtherRoutes, GARDEN_OFFSET, GARDEN_ROAD_WIDTH, MAIN_ROAD_WIDTH, makeBranchSamples, makeMainCurve, MARKET_BANNER_SPANS, MARKET_CROSSING_PROGRESS, MARKET_CROSSING_TRAVEL, MARKET_GATE_SPANS, marketCartState, OBSTACLE_LAYOUT, overMainPavement, ROOF_OFFSET, ROOF_ROAD_WIDTH, touchesBoostPad, TURN_SIGN_SPANS, turnSignDirection } from '../src/track.ts';
 
 const curve = makeMainCurve();
 const count = 640;
@@ -67,6 +67,7 @@ const branches = [];
 for (const [route, start, end, offset, height, width] of [
   ['alley', 0.045, 0.16, ALLEY_OFFSET, 0, ALLEY_ROAD_WIDTH],
   ['roof', 0.19, 0.33, ROOF_OFFSET, 5.4, ROOF_ROAD_WIDTH],
+  ['garden', 0.37, 0.53, GARDEN_OFFSET, 0, GARDEN_ROAD_WIDTH],
 ]) {
   const samples = makeBranchSamples(curve, route, start, end, offset, height, width);
   branches.push(samples);
@@ -79,6 +80,21 @@ for (const [route, start, end, offset, height, width] of [
     minimumRadius = Math.min(minimumRadius, turnRadius(samples[i - 1].position, samples[i].position, samples[i + 1].position));
   }
   assert.ok(minimumRadius > width / 2 + 6, `${route} road folds on a ${minimumRadius.toFixed(1)}m turn`);
+  const mainDistance = curve.getLength() * (end - start);
+  const branchDistance = samples.slice(1).reduce((distance, point, i) => distance + point.position.distanceTo(samples[i].position), 0);
+  const firstPad = BOOST_PAD_LAYOUT.filter((pad) => pad.route === route).sort((a, b) => a.progress - b.progress)[0];
+  assert.ok(firstPad, `${route} needs a carpet boost`);
+  const padIndex = Math.floor((firstPad.progress - start) / (end - start) * (samples.length - 1));
+  const distanceToPad = samples.slice(1, padIndex + 1).reduce((distance, point, i) => distance + point.position.distanceTo(samples[i].position), 0);
+  const boostedSeconds = distanceToPad / 31 + (branchDistance - distanceToPad) / 49;
+  if (route === 'garden') {
+    assert.ok(branchDistance < mainDistance * 0.91, 'Garden cut must save distance to justify its narrow hazards');
+    assert.ok(GARDEN_ROAD_WIDTH <= 24 && OBSTACLE_LAYOUT.filter((item) => item.route === 'garden').length >= 2, 'Garden cut needs a meaningful challenge');
+  } else {
+    assert.ok(firstPad.boostSeconds >= 5, `${route} needs an early carpet boost`);
+    assert.ok(branchDistance > mainDistance * 1.08, `${route} has no distance cost when the pad is missed`);
+    assert.ok(boostedSeconds < mainDistance / 31 * 0.95, `${route} does not reward hitting its carpet boost`);
+  }
   for (const side of [-1, 1]) {
     const edge = (point) => point.position.clone().addScaledVector(point.right, side * (point.width / 2 + 0.5));
     assert.ok(overMainPavement(mainSamples, edge(samples[0]), 1), `${route} entrance curb does not join the main road`);
@@ -112,12 +128,19 @@ for (let i = 0; i < count; i += 3) {
     }
   }
 }
-assert.ok(openBarrierSections >= 12 && openBarrierSections <= 60, `Unexpected number of shortcut openings: ${openBarrierSections}`);
+assert.ok(openBarrierSections >= 18 && openBarrierSections <= 80, `Unexpected number of shortcut openings: ${openBarrierSections}`);
 
 const routeSamples = [...mainSamples, ...branches.flat()];
+assert.equal(marketCartState(0).lateral, 1, 'Market cart should start parked clear of the road');
+assert.ok(marketCartState(3.1).warning && !marketCartState(3.1).crossing, 'Cart needs warning before it enters the road');
+assert.ok(marketCartState(7).crossing && Math.abs(marketCartState(7).lateral) < 0.01, 'Cart should cross the racing line');
+assert.equal(marketCartState(9).lateral, -1, 'Cart should park on the opposite side');
+assert.ok(marketCartState(12.1).warning && !marketCartState(12.1).crossing, 'Return crossing needs warning');
+assert.equal(marketCartState(18).lateral, 1, 'Crossing cycle should connect without a teleport');
+assert.ok(MARKET_CROSSING_TRAVEL > MAIN_ROAD_WIDTH / 2 + 2, 'Parked cart must clear the racing lane');
 const pointFor = ({ route, progress }) => {
   if (route === 'main') return mainSamples[Math.floor(progress * count)];
-  const branch = route === 'alley' ? branches[0] : branches[1];
+  const branch = route === 'alley' ? branches[0] : route === 'roof' ? branches[1] : branches[2];
   const start = branch[0].progress;
   const end = branch.at(-1).progress;
   return branch[Math.floor(Math.max(0, Math.min(1, (progress - start) / (end - start))) * (branch.length - 1))];
@@ -131,6 +154,21 @@ const obstacles = OBSTACLE_LAYOUT.map((item) => {
   assert.ok(clearOfOtherRoutes(routeSamples, position, radius + 1.7, item.route), `${item.kind} at ${item.progress} obstructs another route`);
   return { ...item, position, radius };
 });
+const crossingPoint = pointFor({ route: 'main', progress: MARKET_CROSSING_PROGRESS });
+for (let step = 0; step <= 20; step++) {
+  const lateral = -MARKET_CROSSING_TRAVEL + step / 20 * MARKET_CROSSING_TRAVEL * 2;
+  const cartPosition = crossingPoint.position.clone().addScaledVector(crossingPoint.right, lateral);
+  assert.ok(clearOfOtherRoutes(routeSamples, cartPosition, 2.15, 'main'), 'Crossing cart reaches another route');
+  for (const obstacle of obstacles) {
+    if (Math.abs(cartPosition.y - obstacle.position.y) > 3) continue;
+    assert.ok(cartPosition.distanceTo(obstacle.position) > 7, `Crossing cart clips ${obstacle.kind} at ${obstacle.progress}`);
+  }
+  for (const pad of BOOST_PAD_LAYOUT) {
+    if (pad.route !== 'main') continue;
+    const padPoint = pointFor(pad);
+    assert.ok(cartPosition.distanceTo(padPoint.position) > BOOST_PAD_LENGTH / 2 + 4, `Crossing cart clips boost at ${pad.progress}`);
+  }
+}
 for (let i = 0; i < obstacles.length; i++) {
   for (let j = i + 1; j < obstacles.length; j++) {
     const a = obstacles[i];
@@ -140,7 +178,7 @@ for (let i = 0; i < obstacles.length; i++) {
   }
 }
 for (const pad of BOOST_PAD_LAYOUT) {
-  assert.ok(pad.boostSeconds >= (pad.route === 'main' ? 3 : 5), `Boost at ${pad.progress} is too short`);
+  assert.ok(pad.boostSeconds >= (pad.route === 'main' || pad.route === 'garden' ? 3 : 5), `Boost at ${pad.progress} is too short`);
   const point = pointFor(pad);
   for (const obstacle of obstacles) {
     if (Math.abs(point.position.y - obstacle.position.y) > 3) continue;

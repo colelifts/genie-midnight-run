@@ -80,7 +80,7 @@ export function branchCoversMainEdge(branches: RoadPoint[][], position: THREE.Ve
 
 export const MARKET_BANNER_SPANS = [0.025, 0.08, 0.17, 0.235, 0.29, 0.89, 0.93, 0.97];
 export const MARKET_GATE_SPANS = [0.175, 0.91];
-export const TURN_SIGN_SPANS = [0.235, 0.28, 0.315, 0.345, 0.435, 0.585, 0.625, 0.695, 0.785, 0.865, 0.905, 0.935];
+export const TURN_SIGN_SPANS = [0.235, 0.28, 0.315, 0.345, 0.435, 0.475, 0.535, 0.585, 0.625, 0.695, 0.785, 0.865, 0.905, 0.935];
 export const CAVE_ARCH_SPANS = [0.684, 0.721, 0.758];
 export const CAVE_ARCH_SHAPE = { pillarOutset: 8, pillarHalfWidth: 7.4, crystalOutset: 5.5, crystalRadius: 1.7, ceilingY: 16.5, ceilingHalfHeight: 4.8 };
 export const CAVE_TUNNEL_SHAPE = { wallOutset: 20, wallRadius: 14, roofCenterY: 19, roofEdgeY: 9 };

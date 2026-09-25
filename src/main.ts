@@ -681,7 +681,7 @@ class GenieRace {
       this.audio.play('go');
       this.mode = 'race';
       this.racers[0].boostTime = this.keys.has('KeyW') || this.keys.has('ArrowUp') ? 0.9 : 0;
-      this.showBanner('RACE FOREVER', 1.6);
+      this.showBanner('DRIFT · RELEASE FOR BOOST', 2.3);
     }
     if (this.countdownElapsed > 3.75) countdown.classList.add('hidden');
   }

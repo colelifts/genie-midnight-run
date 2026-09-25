@@ -25,11 +25,11 @@ const angleDiff = (target: number, current: number) => Math.atan2(Math.sin(targe
 /** Speed-aware arcade steering with a controllable, weighty drift. */
 export function advanceHeading(state: HeadingState, input: HeadingInput): HeadingState {
   const { steer, speed, handling, drifting, driftDirection, boostHandling, wobble, dt } = input;
-  // A full drift at racing speed follows the course's tightest ~21m corners.
-  // Boost steering scales with speed so a pad does not force a wide exit.
+  // Keep the corner radius usable at both race and boost speeds. Keyboard
+  // steering is all-or-nothing, so the drift should build rather than snap.
   const speedFraction = Math.min(Math.abs(speed) / raceSpeed(53), 1);
   const boostTurnScale = Math.max(1, Math.min(1.35, Math.abs(speed) / raceSpeed(31)));
-  const turnRate = (1.34 - speedFraction * 0.19) * (drifting ? 1.72 : 1)
+  const turnRate = (1.34 - speedFraction * 0.19) * (drifting ? 1.55 : 1)
     * boostTurnScale * boostHandling * handling;
   // The held drift button never supplies steering. Opposite input trims the
   // drift instead of instantly throwing the kart into a reverse turn.
@@ -37,16 +37,18 @@ export function advanceHeading(state: HeadingState, input: HeadingInput): Headin
   const driftSteer = countersteering ? steer * 0.62 : steer;
   // Positive yaw turns the kart toward +X (right), matching D/right input.
   const desiredYawRate = (driftSteer + wobble) * turnRate * Math.min(1, Math.abs(speed) / raceSpeed(6));
-  const turnResponse = Math.abs(driftSteer) < 0.05 ? 11 : countersteering ? 7 : drifting ? 5 : 7;
+  const turnResponse = Math.abs(driftSteer) < 0.05 ? 20 : 7;
   const yawRate = state.yawRate + (desiredYawRate - state.yawRate) * (1 - Math.exp(-dt * turnResponse));
   let yaw = state.yaw + yawRate * dt;
   const travelResponse = drifting ? 9.5 + (boostTurnScale - 1) * 5 : 12;
-  // When the wheel is released, the kart settles onto its current travel
-  // line; its visual drift angle unwinds instead of dragging the trajectory
-  // farther toward the edge of the road.
+  // Coast through the last bit of steering momentum, then bring the kart
+  // body back in line with its travel. This avoids a frozen travel vector on
+  // release without pulling the kart wide just to match its visual slide.
   const coasting = !drifting && Math.abs(steer) < 0.05 && Math.abs(wobble) < 0.05;
-  const moveYaw = coasting ? state.moveYaw : state.moveYaw + angleDiff(yaw, state.moveYaw) * (1 - Math.exp(-dt * travelResponse));
-  if (coasting) yaw += angleDiff(moveYaw, yaw) * (1 - Math.exp(-dt * 12));
+  const moveYaw = coasting
+    ? state.moveYaw + yawRate * dt * 0.5
+    : state.moveYaw + angleDiff(yaw, state.moveYaw) * (1 - Math.exp(-dt * travelResponse));
+  if (coasting) yaw += angleDiff(moveYaw, yaw) * (1 - Math.exp(-dt * 14));
   return { yaw, moveYaw, yawRate };
 }
 

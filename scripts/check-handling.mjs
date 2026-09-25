@@ -77,8 +77,8 @@ assert.ok(shortDrift.moveYaw > 0.5 && shortDrift.moveYaw < 0.65,
 const exitLine = shortDrift.moveYaw;
 for (let frame = 0; frame < 18; frame++) shortDrift = advanceHeading(shortDrift, { steer: 0, speed: raceSpeed(40), handling: 1,
   drifting: false, driftDirection: 0, boostHandling: 1, wobble: 0, dt: 1 / 60 });
-assert.ok(Math.abs(shortDrift.moveYaw - exitLine) < 1e-9 && angle(shortDrift.yaw, exitLine) < 0.04,
-  'Drift release must hold the chosen travel line while the kart settles straight');
+assert.ok(shortDrift.moveYaw > exitLine + 0.02 && shortDrift.moveYaw < exitLine + 0.12 && angle(shortDrift.yaw, shortDrift.moveYaw) < 0.04,
+  'Drift release must carry a little rotation, then settle without a wide exit');
 const straight = { yaw: Math.PI / 4, moveYaw: Math.PI / 4, yawRate: 0.7 };
 const railRight = { x: 1, z: 0 };
 const railTangent = { x: 0, z: 1 };

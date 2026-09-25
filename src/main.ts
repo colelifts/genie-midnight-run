@@ -1372,7 +1372,7 @@ class GenieRace {
         if (field.kind === 'ice') {
           racer.wobbleTime = Math.max(racer.wobbleTime, racer.character === 'elsa' ? 0.3 : 1.6);
           racer.speed *= 0.82;
-          if (racer.id === 0 || field.owner === 0) this.racerSound('ice', racer);
+          this.racerSound('ice', racer);
         } else if (field.kind === 'soul') {
           racer.wobbleTime = Math.max(racer.wobbleTime, 1.25);
           racer.hauntedTime = Math.max(racer.hauntedTime, 1.8);
@@ -1390,6 +1390,10 @@ class GenieRace {
           racer.speed *= 0.35;
           this.stun(racer, 0.55);
         } else this.stun(racer, 0.7);
+        if (field.kind !== 'ice') {
+          const fieldSound = ({ soul: 'field-soul', star: 'field-star', dragonfire: 'field-fire', clock: 'field-clock', anchor: 'field-anchor' } as const)[field.kind];
+          this.racerSound(fieldSound, racer);
+        }
         racer.hitCooldown = Math.max(racer.hitCooldown, 0.75);
         this.makeFlash(racer.position.clone().add(new THREE.Vector3(0, 1, 0)), field.kind === 'ice' ? 0xa5f4ff : field.kind === 'star' ? 0xffd978 : 0x87a4ff, 3.5, 0.32);
         const owner = this.racers[field.owner];
@@ -2270,7 +2274,8 @@ class GenieRace {
           if (racer.id === 0) this.showBanner(obstacle.kind === 'boulder' ? 'BOULDER HIT!' : obstacle.kind === 'urn' ? 'PALACE URN HIT!' : obstacle.kind === 'marketIsland' ? 'MARKET ISLAND HIT!' : 'CART HIT!', 0.8);
         }
         racer.hitCooldown = Math.max(racer.hitCooldown, obstacle.kind === 'boulder' ? 1.7 : 1.45);
-        this.racerSound('hit', racer);
+        const impactSound = ({ crate: 'crate-hit', marketIsland: 'market-hit', boulder: 'boulder-hit', urn: 'urn-hit', cart: 'cart-hit' } as const)[obstacle.kind];
+        this.racerSound(impactSound, racer);
         // Resolve any other overlap on this frame; hitCooldown prevents a second impact.
       }
     }

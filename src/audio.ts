@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import type { CharacterId } from './characters';
 
-type SoundName = 'count' | 'go' | 'drift' | 'boost' | 'pad' | 'wish' | 'shield' | 'shot' | 'laser' | 'water' | 'cannon' | 'fire' | 'ice' | 'hit' | 'stun' | 'lap' | 'final-lap' | 'ultimate' | 'trick' | 'draft' | 'pickup' | 'cart-warning' | 'birds';
+type SoundName = 'count' | 'go' | 'drift' | 'boost' | 'pad' | 'wish' | 'shield' | 'shot' | 'laser' | 'water' | 'cannon' | 'fire' | 'ice' | 'hit' | 'stun' | 'lap' | 'final-lap' | 'ultimate' | 'trick' | 'draft' | 'pickup' | 'cart-warning' | 'birds' | 'crate-hit' | 'market-hit' | 'boulder-hit' | 'urn-hit' | 'cart-hit' | 'field-soul' | 'field-clock' | 'field-anchor' | 'field-star' | 'field-fire';
 
 // Sources, licenses, and processing notes are documented in AUDIO_CREDITS.md.
 const ASSETS = {
@@ -12,8 +12,10 @@ const ASSETS = {
   light: 'impact-light.mp3', mid: 'impact-mid.mp3', heavy: 'impact-heavy.mp3', birds: 'birds.mp3',
   water: 'water-splash.mp3', laser: 'laser-shot.mp3', fire: 'fire-blast.mp3', cannon: 'cannon-blast.mp3',
   ice: 'ice-crackle.mp3',
+  crateCrack: 'crate-crack.mp3', woodHit: 'wood-hit.mp3', stoneImpact: 'stone-impact.mp3',
+  urnShatter: 'urn-shatter.mp3', cartClank: 'cart-clank.mp3',
 } as const;
-const AUDIO_REVISION = '7';
+const AUDIO_REVISION = '8';
 type AssetName = keyof typeof ASSETS;
 type Loop = { source: AudioBufferSourceNode; gain: GainNode };
 type RivalEngine = { id: number; position: { x: number; y: number; z: number }; speed: number };
@@ -436,6 +438,16 @@ export class GameAudio {
       case 'fire': this.sample('fire', 0.4, 1, 0, 1.3); this.sample('whoosh', 0.16, 0.8); break;
       case 'ice': this.sample('ice', 0.28, 1.06, 0, 0.8); break;
       case 'hit': this.sample(Math.random() < 0.4 ? 'heavy' : 'mid', 0.6, 0.93 + Math.random() * 0.15); if (this.eventScale > 0.45) this.duckUntil = this.context.currentTime + 0.36; break;
+      case 'crate-hit': this.sample('crateCrack', 0.43, 0.95 + Math.random() * 0.12); this.sample('mid', 0.17, 1.04); break;
+      case 'market-hit': this.sample('woodHit', 0.42, 0.92 + Math.random() * 0.14); this.sample('mid', 0.23, 0.91); break;
+      case 'boulder-hit': this.sample('stoneImpact', 0.34, 0.92 + Math.random() * 0.1); break;
+      case 'urn-hit': this.sample('urnShatter', 0.42, 0.78 + Math.random() * 0.08); this.sample('mid', 0.14, 1); break;
+      case 'cart-hit': this.sample('cartClank', 0.42, 0.95 + Math.random() * 0.1); this.sample('woodHit', 0.22, 0.88, 0.025); break;
+      case 'field-soul': this.sample('surge', 0.29, 0.72, 0, 0.9); this.sample('time', 0.12, 0.83, 0.045, 0.65); break;
+      case 'field-clock': this.sample('time', 0.36, 0.68, 0, 0.8); this.sample('spark', 0.12, 0.8, 0.06, 0.5); break;
+      case 'field-anchor': this.sample('cartClank', 0.3, 0.74); break;
+      case 'field-star': this.sample('spark', 0.24, 1.3, 0, 0.55); break;
+      case 'field-fire': this.sample('fire', 0.32, 0.89, 0, 0.75); break;
       case 'stun': this.sample('heavy', 0.41, 0.75); this.sample('spark', 0.16, 1.48, 0.1); break;
       case 'lap': this.sample('grand', 0.38, 1.15); break;
       case 'final-lap': this.sample('grand', 0.52, 1.35); this.sample('whoosh', 0.32, 1.1); break;
@@ -446,6 +458,7 @@ export class GameAudio {
       case 'cart-warning': this.sample('surge', 0.2, 0.65, 0, 0.7); break;
       case 'birds': this.sample('birds', 0.24, 1, 0, undefined, 0.3); break;
     }
+    if ((name.endsWith('-hit') || name.startsWith('field-')) && this.eventScale > 0.45) this.duckUntil = Math.max(this.duckUntil, this.context.currentTime + 0.28);
   }
 
   playDriftBoost(stage: 1 | 2 | 3) {

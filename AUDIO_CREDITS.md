@@ -17,5 +17,8 @@ The shipped audio is edited and compressed for the browser game. All music and e
 | `fire-blast.mp3` | [Fire Staff Sound Effects](https://opengameart.org/content/fire-staff-sound-effects) | LEGIT Audio | CC0 | Used Fire Staff 20; trimmed silence, loudness balanced, faded, and encoded to MP3. |
 | `cannon-blast.mp3` | [Battle at sea](https://opengameart.org/content/battle-at-sea) | Thimras | CC0 | Used cannon_fire_1; trimmed, filtered, loudness balanced, faded, and encoded to MP3. |
 | `ice-crackle.mp3` | [Ice spells](https://opengameart.org/content/ice-spells) | bart | CC0 | Used coldsnap; trimmed silence, filtered, loudness balanced, faded, and encoded to MP3. |
+| `crate-crack.mp3`, `wood-hit.mp3` | [35 wooden cracks/hits/destructions](https://opengameart.org/content/35-wooden-crackshitsdestructions) | Independent.nu (submitted by qubodup) | CC0 | Used crack07 and impactwood14; trimmed their tails, loudness balanced, faded, and encoded to MP3 for crate and market structure impacts. |
+| `stone-impact.mp3` | [Moving Boulder](https://opengameart.org/content/moving-boulder) | themightyglider | CC0 | Used boulder_drop; loudness balanced, faded, and encoded to MP3 for boulder contact. |
+| `urn-shatter.mp3`, `cart-clank.mp3` | [75 CC0 breaking / falling / hit sfx](https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx) | rubberduck | CC0 | Used glass_breaking_02 and metal_hit_02; trimmed, loudness balanced, faded, and encoded to MP3. The glass layer is pitched down for palace urns. |
 
 The game layers, pitch shifts, fades, and mixes these recordings at runtime. Wind and fountain ambience are generated with filtered broadband noise.

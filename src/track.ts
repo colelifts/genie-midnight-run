@@ -82,19 +82,27 @@ export function branchCoversMainEdge(branches: RoadPoint[][], position: THREE.Ve
 
 export const MARKET_BANNER_SPANS = [0.025, 0.08, 0.17, 0.235, 0.29, 0.89, 0.93, 0.97];
 export const MARKET_GATE_SPANS = [0.175, 0.91];
-export const TURN_SIGN_SPANS = [0.235, 0.28, 0.315, 0.345, 0.435, 0.475, 0.535, 0.595, 0.662, 0.722, 0.785, 0.865, 0.905, 0.935];
+export const TURN_SIGN_SPANS = [0.235, 0.28, 0.315, 0.345, 0.435, 0.475, 0.535, 0.595, 0.65, 0.722, 0.785, 0.865, 0.91, 0.935];
 export const CAVE_ARCH_SPANS = [0.684, 0.721, 0.758];
 export const CAVE_ARCH_SHAPE = { pillarOutset: 8, pillarHalfWidth: 7.4, crystalOutset: 5.5, crystalRadius: 1.7, ceilingY: 16.5, ceilingHalfHeight: 4.8 };
 export const CAVE_TUNNEL_SHAPE = { wallOutset: 20, wallRadius: 14, roofCenterY: 19, roofEdgeY: 9 };
 export const COURSE_SCALE = 2;
 export const MAIN_ROAD_WIDTH = 36;
+export function mainRoadWidth(progress: number) {
+  const smooth = (value: number) => {
+    const clamped = Math.max(0, Math.min(1, value));
+    return clamped * clamped * (3 - 2 * clamped);
+  };
+  const corner = (start: number, end: number) => smooth((progress - start) / 0.012) * smooth((end - progress) / 0.012);
+  return MAIN_ROAD_WIDTH - 3 * Math.max(corner(0.527, 0.638), corner(0.695, 0.815), corner(0.855, 0.963));
+}
 export const ALLEY_ROAD_WIDTH = 26;
 export const ROOF_ROAD_WIDTH = 26;
 export const ALLEY_OFFSET = -56;
 export const ROOF_OFFSET = -60;
 export const GARDEN_OFFSET = 20;
 export const GARDEN_ROAD_WIDTH = 22;
-export const GARDEN_ROUTE_END = 0.508;
+export const GARDEN_ROUTE_END = 0.504;
 export const MARKET_CROSSING_PROGRESS = 0.842;
 export const MARKET_CROSSING_TRAVEL = MAIN_ROAD_WIDTH / 2 + 5;
 export const BOOST_PAD_LENGTH = 10;
@@ -278,12 +286,12 @@ export function makeMainCurve() {
     new THREE.Vector3(-30, 0, 5),
     new THREE.Vector3(-58, 0, -2.5),
     new THREE.Vector3(-86, 0, 30),
-    new THREE.Vector3(-115, 0, 45),
-    new THREE.Vector3(-152.8, 0, 62.2),
-    new THREE.Vector3(-187, 0, 27.8),
-    new THREE.Vector3(-174.4, 0, -15),
-    new THREE.Vector3(-183, 0, -50),
-    new THREE.Vector3(-151, 0, -77),
+    new THREE.Vector3(-112, 0, 40),
+    new THREE.Vector3(-148, 0, 66),
+    new THREE.Vector3(-189, 0, 31),
+    new THREE.Vector3(-168, 0, -12),
+    new THREE.Vector3(-178.5, 0, -48.5),
+    new THREE.Vector3(-150, 0, -77),
     new THREE.Vector3(-130, 0, -98),
   ].map((point) => point.multiplyScalar(COURSE_SCALE)), true, 'catmullrom', 0.5);
 }
@@ -525,7 +533,7 @@ export class RaceTrack {
       position.y = 0.06;
       const tangent = this.mainCurve.getTangentAt(progress).normalize();
       const right = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
-      this.mainSamples.push({ position, tangent, right, progress, width: this.mainWidth, route: 'main' });
+      this.mainSamples.push({ position, tangent, right, progress, width: mainRoadWidth(progress), route: 'main' });
     }
     this.alleySamples.push(...makeBranchSamples(this.mainCurve, 'alley', 0.045, 0.16, ALLEY_OFFSET, 0, ALLEY_ROAD_WIDTH));
     this.roofSamples.push(...makeBranchSamples(this.mainCurve, 'roof', 0.19, 0.33, ROOF_OFFSET, 5.4, ROOF_ROAD_WIDTH));

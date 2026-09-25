@@ -155,23 +155,44 @@ function figure(id: CharacterId) {
     skirt.scale.z = 0.7;
     for (const side of [-1, 1]) box(root, 0.3, 0.12, 0.08, ocean, side * 0.26, 0.89, 0.48).rotation.z = side * 0.28;
   } else if (id === 'buzz') {
-    ball(root, 0.73, white, 0, 1.23, -0.02).scale.set(1.05, 0.88, 0.76);
-    const helmet = ball(root, 0.78, new THREE.MeshPhongMaterial({ color: 0xe4faff, transparent: true, opacity: 0.26, depthWrite: false, shininess: 96 }), 0, 2.42, 0);
+    const spaceGreen = paint(0x70bc4b, 0.15, 0.36);
+    const spacePurple = paint(0x6d4897, 0.12, 0.41);
+    const suitWhite = paint(0xf2f1e8, 0.16, 0.37);
+    ball(root, 0.73, suitWhite, 0, 1.23, -0.02).scale.set(1.05, 0.88, 0.76);
+    const helmet = ball(root, 0.83, new THREE.MeshPhongMaterial({ color: 0xe3faff, transparent: true, opacity: 0.11, depthWrite: false, shininess: 110, specular: 0xffffff }), 0, 2.45, 0.01);
     helmet.castShadow = false;
-    const cowl = ball(root, 0.59, paint(0x7753a7, 0.08, 0.43), 0, 2.62, -0.2);
-    cowl.scale.set(0.98, 0.67, 0.76);
-    ball(root, 0.62, skin, 0, 2.38, 0).scale.set(0.9, 1, 0.85);
+    helmet.receiveShadow = false;
+    const cowl = ball(root, 0.71, spacePurple, 0, 2.67, -0.19);
+    cowl.scale.set(1.04, 0.81, 0.78);
+    const jaw = ball(root, 0.33, skin, 0, 2.16, 0.18);
+    jaw.scale.set(1.34, 0.6, 1.08);
+    const visorRim = add(root, new THREE.TorusGeometry(0.72, 0.047, 7, 32), glow(0xd9f8ff, 0.66), 0, 2.44, 0.4);
+    visorRim.scale.y = 1.07;
+    visorRim.castShadow = false;
+    const collar = add(root, new THREE.TorusGeometry(0.39, 0.09, 8, 24), spacePurple, 0, 1.89, 0.04);
+    collar.rotation.x = Math.PI / 2;
     for (const side of [-1, 1]) {
+      const sideCowl = ball(root, 0.23, spacePurple, side * 0.55, 2.44, 0.13);
+      sideCowl.scale.set(0.74, 1.33, 0.78);
       const faceEye = ball(root, 0.115, white, side * 0.21, 2.45, 0.52);
       faceEye.scale.set(0.82, 1.1, 0.36);
       ball(root, 0.055, eye, side * 0.21, 2.43, 0.565);
       branch(root, new THREE.Vector3(side * 0.12, 2.63, 0.48), new THREE.Vector3(side * 0.32, 2.62, 0.45), 0.042, hair);
+      const shoulderPad = ball(root, 0.33, suitWhite, side * 0.74, 1.58, -0.01);
+      shoulderPad.scale.set(1.02, 0.65, 1.08);
+      box(root, 0.24, 0.11, 0.52, spacePurple, side * 0.86, 1.75, 0.02).rotation.z = side * -0.16;
     }
     ball(root, 0.085, skin, 0, 2.25, 0.56).scale.z = 0.7;
     const buzzSmile = new THREE.CatmullRomCurve3([new THREE.Vector3(-0.13, 2.13, 0.5), new THREE.Vector3(0, 2.1, 0.56), new THREE.Vector3(0.13, 2.13, 0.5)]);
     add(root, new THREE.TubeGeometry(buzzSmile, 8, 0.024, 5, false), eye);
-    box(root, 1.1, 0.27, 0.55, paint(0x7dc34a), 0, 1.67, 0.31);
-    for (const side of [-1, 1]) box(root, 0.38, 0.5, 0.55, paint(0x8a58b8), side * 0.72, 1.51, -0.08);
+    box(root, 1.15, 0.38, 0.2, suitWhite, 0, 1.34, 0.59);
+    box(root, 1.13, 0.27, 0.55, spaceGreen, 0, 1.67, 0.31);
+    for (const side of [-1, 1]) {
+      box(root, 0.38, 0.5, 0.55, spacePurple, side * 0.72, 1.51, -0.08);
+      box(root, 0.21, 0.06, 0.08, spaceGreen, side * 0.35, 1.34, 0.72);
+    }
+    const commandBadge = ball(root, 0.13, paint(0xffd96c, 0.34, 0.31), 0, 1.35, 0.73);
+    commandBadge.scale.set(1.08, 0.72, 0.4);
     ball(root, 0.12, glow(0xe53b51), 0.23, 1.63, 0.61);
     ball(root, 0.12, glow(0x5eda6e), -0.1, 1.63, 0.61);
   } else if (id === 'maleficent') {

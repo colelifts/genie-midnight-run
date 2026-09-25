@@ -8,9 +8,9 @@ export class RacerShowcase {
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(38, 1, 0.1, 80);
   private readonly turntable = new THREE.Group();
-  private readonly keyLight = new THREE.DirectionalLight(0xffe8bd, 3.3);
-  private readonly rimLight = new THREE.PointLight(0x8bdfff, 3.2, 16);
-  private readonly accentLight = new THREE.PointLight(0xffc767, 2.5, 13);
+  private readonly keyLight = new THREE.DirectionalLight(0xffe8bd, 3);
+  private readonly rimLight = new THREE.PointLight(0x8bdfff, 2.6, 16);
+  private readonly accentLight = new THREE.PointLight(0xffc767, 2, 13);
   private readonly accentRing: THREE.Mesh;
   private visual: RaceVisual | null = null;
   private activeCharacter: CharacterId | null = null;
@@ -24,10 +24,10 @@ export class RacerShowcase {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.36;
+    this.renderer.toneMappingExposure = 1.19;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.scene.add(new THREE.HemisphereLight(0xc9dcff, 0x856f9b, 2));
+    this.scene.add(new THREE.HemisphereLight(0xc9dcff, 0x856f9b, 1.5));
     this.keyLight.position.set(-5, 10, 8);
     this.keyLight.castShadow = true;
     this.keyLight.shadow.mapSize.set(512, 512);

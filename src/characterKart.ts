@@ -412,25 +412,55 @@ function ultimateApparition(id: CharacterId) {
     discarded.forEach((material) => material.dispose());
     group.add(character);
   } else if (id === 'mulan' || id === 'maleficent') {
-    const dragonPath = new THREE.CatmullRomCurve3([
+    const maleficent = id === 'maleficent';
+    const dragonPath = new THREE.CatmullRomCurve3(maleficent ? [
       new THREE.Vector3(0, 0, -0.7), new THREE.Vector3(-0.55, 0.8, -0.5),
       new THREE.Vector3(0.38, 1.7, -0.3), new THREE.Vector3(0.15, 2.65, 0.15),
+    ] : [
+      new THREE.Vector3(-0.45, -0.35, -1.2), new THREE.Vector3(0.65, 0.35, -1),
+      new THREE.Vector3(-0.62, 1.08, -0.55), new THREE.Vector3(0.58, 1.85, -0.2),
+      new THREE.Vector3(0.15, 2.65, 0.15),
     ]);
-    add(group, new THREE.TubeGeometry(dragonPath, 22, 0.42, 9, false), spirit);
+    add(group, new THREE.TubeGeometry(dragonPath, 34, maleficent ? 0.42 : 0.34, 12, false), spirit);
     const head = ball(group, 0.73, spirit, 0.15, 2.65, 0.24);
-    head.scale.set(1.08, 0.73, 0.94);
-    const snout = cone(group, 0.45, 1.22, spirit, 0.15, 2.55, 1.05, 9);
+    head.scale.set(maleficent ? 1.08 : 0.87, maleficent ? 0.73 : 0.65, maleficent ? 0.94 : 1.06);
+    const snout = cone(group, maleficent ? 0.45 : 0.3, maleficent ? 1.22 : 1.46, spirit, 0.15, 2.55, maleficent ? 1.05 : 1.24, 12);
     snout.rotation.x = Math.PI / 2;
     for (const side of [-1, 1]) {
-      const horn = cone(group, 0.16, 0.88, highlight, 0.15 + side * 0.47, 3.28, -0.06, 8);
-      horn.rotation.z = side * -0.28;
-      ball(group, 0.13, highlight, 0.15 + side * 0.47, 2.8, 0.7);
-      const wingShape = new THREE.Shape();
-      wingShape.moveTo(0, 0); wingShape.lineTo(side * 2.45, 1.3); wingShape.lineTo(side * 1.8, -0.32); wingShape.lineTo(side * 0.35, -0.4); wingShape.closePath();
-      const wing = add(group, new THREE.ShapeGeometry(wingShape), spirit, 0.15, 1.55, -0.43);
-      wing.rotation.y = side * 0.24;
+      const horn = cone(group, maleficent ? 0.17 : 0.11, maleficent ? 0.9 : 1.17, highlight, 0.15 + side * 0.47, 3.28, -0.06, 10);
+      horn.rotation.z = side * (maleficent ? -0.28 : -0.52);
+      ball(group, 0.14, highlight, 0.15 + side * 0.47, 2.78, 0.73);
+      if (maleficent) {
+        const wingShape = new THREE.Shape();
+        wingShape.moveTo(0, 0);
+        wingShape.lineTo(side * 0.95, 1.08);
+        wingShape.quadraticCurveTo(side * 1.85, 1.87, side * 2.9, 1.76);
+        wingShape.quadraticCurveTo(side * 2.39, 1.12, side * 2.56, 0.45);
+        wingShape.quadraticCurveTo(side * 2.05, 0.77, side * 1.79, -0.08);
+        wingShape.quadraticCurveTo(side * 1.34, 0.27, side * 1.05, -0.46);
+        wingShape.lineTo(side * 0.2, -0.32);
+        wingShape.closePath();
+        const wing = add(group, new THREE.ShapeGeometry(wingShape), spirit, 0.15, 1.55, -0.43);
+        wing.rotation.y = side * 0.19;
+        for (const [x, y] of [[2.9, 1.76], [2.56, 0.45], [1.79, -0.08]]) {
+          const rib = branch(group, new THREE.Vector3(0.15, 1.55, -0.36), new THREE.Vector3(0.15 + side * x, 1.55 + y, -0.36), 0.045, highlight);
+          rib.castShadow = false;
+        }
+      } else {
+        const whisker = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(0.15 + side * 0.25, 2.45, 1.18),
+          new THREE.Vector3(0.15 + side * 0.75, 2.31, 1.39),
+          new THREE.Vector3(0.15 + side * 1.22, 2.5, 1.32),
+        ]);
+        add(group, new THREE.TubeGeometry(whisker, 12, 0.045, 6, false), highlight);
+        for (let n = 0; n < 3; n++) {
+          const point = dragonPath.getPoint(0.2 + n * 0.23);
+          const fin = cone(group, 0.18, 0.63, highlight, point.x + side * 0.19, point.y + 0.24, point.z, 7);
+          fin.rotation.z = side * 0.48;
+        }
+      }
     }
-    if (id === 'maleficent') {
+    if (maleficent) {
       for (let n = 0; n < 3; n++) cone(group, 0.23, 0.7, spirit, (n - 1) * 0.46, 0.65, -0.8 - n * 0.16);
     }
   } else if (id === 'elsa') {
@@ -471,7 +501,13 @@ function ultimateApparition(id: CharacterId) {
     const prow = cone(group, 0.46, 1.2, spirit, 0, 0.25, 0.65);
     prow.rotation.x = Math.PI / 2;
   }
-  group.position.set(0, 2.5, -0.3);
+  if (id === 'mulan') {
+    group.position.set(1.9, 1.9, 1.35);
+    group.scale.setScalar(0.83);
+  } else if (id === 'maleficent') {
+    group.position.set(-1.7, 2.05, 1.3);
+    group.scale.setScalar(0.86);
+  } else group.position.set(0, 2.5, -0.3);
   group.traverse((object) => { if (object instanceof THREE.Mesh) object.castShadow = false; });
   return group;
 }

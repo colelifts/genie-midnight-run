@@ -6,7 +6,7 @@ import { CHARACTERS, CHARACTER_BY_ID, type CharacterId } from './characters';
 import { KartVisual, makeProjectile } from './kart';
 import { RacerShowcase } from './showcase';
 import { ITEMS, rollItem, type ItemId } from './items';
-import { BOOST_PAD_LAYOUT, MARKET_CROSSING_PROGRESS, MARKET_CROSSING_TRAVEL, marketCartState, PICKUP_LAYOUT, RaceTrack, touchesBoostPad, type RoadHit, type RoadPoint, type RouteName } from './track';
+import { BOOST_PAD_LAYOUT, GARDEN_ROUTE_END, MARKET_CROSSING_PROGRESS, MARKET_CROSSING_TRAVEL, marketCartState, PICKUP_LAYOUT, RaceTrack, touchesBoostPad, type RoadHit, type RoadPoint, type RouteName } from './track';
 
 const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = el<HTMLCanvasElement>('game');
@@ -1347,7 +1347,7 @@ class GenieRace {
     let route: RouteName = 'main';
     if (racer.aiRoute === 'alley' && ahead > 0.045 && ahead < 0.16) route = 'alley';
     if (racer.aiRoute === 'roof' && ahead > 0.19 && ahead < 0.33) route = 'roof';
-    if (racer.aiRoute === 'garden' && ahead > 0.37 && ahead < 0.53) route = 'garden';
+    if (racer.aiRoute === 'garden' && ahead > 0.37 && ahead < GARDEN_ROUTE_END) route = 'garden';
     const target = this.track.routeAt(route, ahead);
     const currentTangent = this.track.routeAt(route, racer.progress).tangent;
     const bend = target.tangent.dot(new THREE.Vector3(-currentTangent.z, 0, currentTangent.x));
@@ -1529,13 +1529,21 @@ class GenieRace {
     const charge = racer.driftCharge;
     racer.driftCharge = 0;
     if (charge < 0.58) return;
-    const stage = charge >= 1.9 ? 3 : charge >= 1.18 ? 2 : 1;
+    const stage: 1 | 2 | 3 = charge >= 1.9 ? 3 : charge >= 1.18 ? 2 : 1;
     racer.boostTime = Math.max(racer.boostTime, [0, 0.65, 1.2, 1.8][stage] * (racer.character === 'mulan' ? 1.28 : 1));
     racer.ultimateMeter = Math.min(100, racer.ultimateMeter + (8 + stage * 5) * (racer.character === 'mickey' ? 1.45 : 1));
+    const stats = CHARACTER_BY_ID[racer.character];
+    const speedCap = (racer.padBoostTime > 0 ? 53 : racer.ultimateTime > 0 ? 43 : racer.id === 0 ? 40 : 37) * stats.speed;
+    racer.speed = Math.max(racer.speed, Math.min(speedCap, racer.speed + [0, 3.3, 5.2, 7.3][stage] * stats.speed));
+    const color = [0, 0x61d8ff, 0xffc866, 0xd799ff][stage];
+    this.makePulse(racer.position, color, 0.4, 2.3 + stage * 0.7);
     if (racer.id === 0) {
       this.showBanner(['', 'BLUE DRIFT BOOST', 'GOLD DRIFT BOOST', 'COSMIC DRIFT BOOST'][stage], 0.95);
-      this.audio.play('drift');
-      this.audio.play('boost');
+      this.makeFlash(racer.position.clone().add(new THREE.Vector3(0, 1.3, 0)), color, 3.2 + stage * 0.9, 0.25);
+      this.burst(racer.position.clone().add(new THREE.Vector3(0, 0.65, 0)), color, 0xffffff, 5 + stage * 4);
+      this.camera.fov = Math.min(82, this.camera.fov + stage * 1.35);
+      this.camera.updateProjectionMatrix();
+      this.audio.playDriftBoost(stage);
     }
   }
 

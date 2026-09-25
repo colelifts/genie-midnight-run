@@ -174,6 +174,14 @@ export class GameAudio {
     }
   }
 
+  playDriftBoost(stage: 1 | 2 | 3) {
+    if (!this.context || this.muted) return;
+    const now = this.context.currentTime;
+    this.sweep(300 + stage * 60, 740 + stage * 150, 0.19 + stage * 0.055, now, 0.095 + stage * 0.014);
+    this.chime(stage === 3 ? [659, 988, 1319] : stage === 2 ? [587, 880] : [523, 784], now + 0.035, 0.055, 0.15 + stage * 0.025);
+    if (stage === 3) this.kick(now + 0.035);
+  }
+
   playUltimate(character: CharacterId) {
     if (!this.context || this.muted) return;
     const now = this.context.currentTime;

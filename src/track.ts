@@ -52,6 +52,11 @@ export function roadArrowRotation(tangent: THREE.Vector3) {
   return new THREE.Euler(Math.PI / 2, Math.atan2(tangent.x, tangent.z), 0, 'YXZ');
 }
 
+export function roadTurnSignRotation(tangent: THREE.Vector3, upcoming: THREE.Vector3) {
+  const driverRight = new THREE.Vector3(-tangent.z, 0, tangent.x);
+  return upcoming.dot(driverRight) >= 0 ? -Math.PI / 2 : Math.PI / 2;
+}
+
 export function overMainPavement(main: RoadPoint[], position: THREE.Vector3, padding = 0) {
   for (const point of main) {
     if (Math.abs(point.position.y - position.y) > 1.3) continue;
@@ -77,6 +82,7 @@ export function branchCoversMainEdge(branches: RoadPoint[][], position: THREE.Ve
 }
 
 export const MARKET_BANNER_SPANS = [0.025, 0.08, 0.17, 0.235, 0.29, 0.89, 0.93, 0.97];
+export const MARKET_GATE_SPANS = [0.175, 0.91];
 export const CAVE_ARCH_SPANS = [0.684, 0.721, 0.758];
 export const CAVE_ARCH_SHAPE = { pillarOutset: 8, pillarHalfWidth: 7.4, crystalOutset: 5.5, crystalRadius: 1.7, ceilingY: 16.5, ceilingHalfHeight: 4.8 };
 export const COURSE_SCALE = 2.5;
@@ -655,12 +661,19 @@ export class RaceTrack {
         else this.makeRock(position, 3 + this.rng() * 3);
       }
     }
+    for (let i = 28; i <= 70; i += 7) {
+      const sample = this.alleySamples[i];
+      for (const side of [-1, 1]) {
+        const position = sample.position.clone().addScaledVector(sample.right, side * (sample.width / 2 + 8.5));
+        const facing = sample.right.clone().multiplyScalar(-side);
+        this.makeStall(position, 300 + i * 2 + (side + 1) / 2, Math.atan2(facing.x, facing.z));
+      }
+    }
     this.makeFountain();
     this.makeGarden();
     this.makeCave();
     this.makePalace();
-    this.makeMarketGate(0.12);
-    this.makeMarketGate(0.91);
+    for (const progress of MARKET_GATE_SPANS) this.makeMarketGate(progress);
     for (let i = 0; i < 25; i++) {
       const p = this.roofSamples[20 + Math.floor(this.rng() * 50)];
       const pos = p.position.clone();
@@ -1119,14 +1132,14 @@ export class RaceTrack {
     for (const progress of [0.668, 0.705, 0.742]) {
       const sample = this.at(progress);
       const upcoming = this.at(progress + 0.018);
-      const leftTurn = sample.tangent.x * upcoming.tangent.z - sample.tangent.z * upcoming.tangent.x >= 0;
+      const turnArrowRotation = roadTurnSignRotation(sample.tangent, upcoming.tangent);
       const group = new THREE.Group();
       const sign = box(4.9, 2.6, 0.22, stoneDark);
       sign.position.y = 3.7;
       group.add(sign);
       for (let i = 0; i < 2; i++) {
         const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.62, 1.1, 3), glow);
-        arrow.rotation.z = leftTurn ? Math.PI / 2 : -Math.PI / 2;
+        arrow.rotation.z = turnArrowRotation;
         arrow.position.set(-0.8 + i * 1.4, 3.7, 0.17);
         group.add(arrow);
       }

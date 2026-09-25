@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { ALLEY_OFFSET, ALLEY_ROAD_WIDTH, branchCoversMainEdge, CAVE_ARCH_SHAPE, CAVE_ARCH_SPANS, clearOfOtherRoutes, MAIN_ROAD_WIDTH, makeBranchSamples, makeMainCurve, MARKET_BANNER_SPANS, overMainPavement, roadArrowRotation, ROOF_OFFSET, ROOF_ROAD_WIDTH, touchesBoostPad } from '../src/track.ts';
+import { ALLEY_OFFSET, ALLEY_ROAD_WIDTH, branchCoversMainEdge, CAVE_ARCH_SHAPE, CAVE_ARCH_SPANS, clearOfOtherRoutes, MAIN_ROAD_WIDTH, makeBranchSamples, makeMainCurve, MARKET_BANNER_SPANS, MARKET_GATE_SPANS, overMainPavement, roadArrowRotation, roadTurnSignRotation, ROOF_OFFSET, ROOF_ROAD_WIDTH, touchesBoostPad } from '../src/track.ts';
 
 const curve = makeMainCurve();
 const count = 640;
@@ -108,6 +108,22 @@ const clearBanners = MARKET_BANNER_SPANS.filter((progress) => {
 });
 assert.deepEqual(clearBanners, [0.025, 0.17, 0.89, 0.93, 0.97], 'A market banner post blocks a shortcut');
 
+for (const progress of MARKET_GATE_SPANS) {
+  const point = curve.getPointAt(progress);
+  const tangent = curve.getTangentAt(progress).normalize();
+  const right = new THREE.Vector3(-tangent.z, 0, tangent.x);
+  for (const side of [-1, 1]) {
+    const tower = point.clone().addScaledVector(right, side * (MAIN_ROAD_WIDTH / 2 + 3));
+    for (const branch of branches) {
+      for (const sample of branch) {
+        if (Math.abs(tower.y - sample.position.y) > 18) continue;
+        const distance = Math.hypot(tower.x - sample.position.x, tower.z - sample.position.z);
+        assert.ok(distance > sample.width / 2 + 4, `Market gate tower blocks ${sample.route} near ${sample.progress.toFixed(3)}`);
+      }
+    }
+  }
+}
+
 const pad = {
   position: new THREE.Vector3(),
   tangent: new THREE.Vector3(0, 0, 1),
@@ -127,5 +143,16 @@ assert.ok(CAVE_ARCH_SHAPE.pillarOutset - CAVE_ARCH_SHAPE.pillarHalfWidth > 0.4, 
 assert.ok(CAVE_ARCH_SHAPE.crystalOutset - CAVE_ARCH_SHAPE.crystalRadius > 2, 'Cave crystal clips the road edge');
 assert.ok(CAVE_ARCH_SHAPE.ceilingY - CAVE_ARCH_SHAPE.ceilingHalfHeight > 9, 'Cave ceiling is too low');
 assert.ok(CAVE_ARCH_SPANS.every((progress) => progress > 0.665 && progress < 0.78), 'Cave arch is outside the cave');
+for (const progress of [0.668, 0.705, 0.742]) {
+  const tangent = curve.getTangentAt(progress).normalize();
+  const upcoming = curve.getTangentAt(progress + 0.018).normalize();
+  const right = new THREE.Vector3(-tangent.z, 0, tangent.x);
+  const angle = roadTurnSignRotation(tangent, upcoming);
+  const signFacing = Math.atan2(tangent.x, tangent.z) + Math.PI;
+  const arrowForward = new THREE.Vector3(0, 1, 0)
+    .applyAxisAngle(new THREE.Vector3(0, 0, 1), angle)
+    .applyAxisAngle(new THREE.Vector3(0, 1, 0), signFacing);
+  assert.ok(arrowForward.dot(right) * upcoming.dot(right) > 0, `Cave sign arrow points against the turn at ${progress}`);
+}
 
 console.log(`Main course: ${curve.getLength().toFixed(0)}m long; ${smallestMainRadius.toFixed(1)}m minimum turn radius; ${closestSeparateRoad.toFixed(1)}m closest separate road centers; ${openBarrierSections} open barrier sections; ${clearBanners.length} safe market banners`);

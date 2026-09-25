@@ -237,6 +237,7 @@ function makeBird(): THREE.Group {
 export class KartVisual {
   readonly group = new THREE.Group();
   readonly body = new THREE.Group();
+  readonly contactShadow: THREE.Mesh;
   readonly wheels: THREE.Group[] = [];
   readonly shield: THREE.Group;
   readonly ghost: THREE.Group;
@@ -255,6 +256,10 @@ export class KartVisual {
       : accent === 'violet' ? new THREE.MeshStandardMaterial({ color: 0x9a3f56, metalness: 0.36, roughness: 0.46 }) : gold;
     const chassis = mesh(new THREE.BoxGeometry(2.45, 0.34, 3.25), tire, 0, 0.72, -0.06);
     this.body.add(chassis);
+    this.contactShadow = new THREE.Mesh(new THREE.PlaneGeometry(5.1, 5.6), new THREE.MeshBasicMaterial({ map: radialTexture, color: 0x161421, transparent: true, opacity: 0.38, depthWrite: false, side: THREE.DoubleSide }));
+    this.contactShadow.rotation.x = -Math.PI / 2;
+    this.contactShadow.position.y = 0.085;
+    this.group.add(this.contactShadow);
     const lampProfile = [
       [0.04, 0.74], [0.75, 0.75], [1.18, 0.87], [1.42, 1.12],
       [1.45, 1.34], [1.3, 1.52], [1.03, 1.64], [0.83, 1.74], [0.82, 1.83],
@@ -486,6 +491,12 @@ export class KartVisual {
   setShield(active: boolean) { this.shield.visible = active; }
   setUltimate(active: boolean) { this.ghost.visible = active; }
   setStunned(active: boolean) { this.stunHalo.visible = active; }
+  setGroundOffset(offset: number) {
+    const jump = Math.max(0, -offset);
+    this.contactShadow.position.y = offset + 0.085;
+    this.contactShadow.scale.setScalar(1 + Math.min(1, jump / 6) * 0.35);
+    (this.contactShadow.material as THREE.MeshBasicMaterial).opacity = 0.38 * Math.max(0.25, 1 - jump / 8);
+  }
 
   update(dt: number, speed: number, steer: number, drifting: boolean, boosting: boolean, stunned: boolean) {
     this.elapsed += dt;

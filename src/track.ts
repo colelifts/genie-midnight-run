@@ -91,19 +91,19 @@ function makePavingTexture() {
   canvas.width = canvas.height = 512;
   const ctx = canvas.getContext('2d')!;
   const rng = seededRandom(13579);
-  ctx.fillStyle = '#595064';
+  ctx.fillStyle = '#62545f';
   ctx.fillRect(0, 0, 512, 512);
-  const palette = ['#806f78', '#826f76', '#776a75', '#8a7479', '#7d6d79'];
+  const palette = ['#78666e', '#74626b', '#70606b', '#7d6b72', '#75636e'];
   for (let row = 0; row < 10; row++) {
     for (let col = -1; col < 7; col++) {
       const x = col * 90 + (row % 2) * 45;
       const y = row * 52;
       ctx.fillStyle = palette[Math.floor(rng() * palette.length)];
-      ctx.fillRect(x + 3, y + 3, 85, 47);
+      ctx.fillRect(x + 2, y + 2, 87, 49);
       ctx.fillStyle = 'rgba(255,211,180,0.045)';
-      ctx.fillRect(x + 5, y + 5, 81, 4);
-      ctx.fillStyle = 'rgba(30,23,42,0.08)';
-      ctx.fillRect(x + 5, y + 45, 81, 3);
+      ctx.fillRect(x + 4, y + 4, 83, 3);
+      ctx.fillStyle = 'rgba(30,23,42,0.055)';
+      ctx.fillRect(x + 4, y + 47, 83, 2);
     }
   }
   const texture = new THREE.CanvasTexture(canvas);
@@ -126,6 +126,7 @@ export class RaceTrack {
   readonly length: number;
   private readonly rng = seededRandom(626);
   private readonly carpetMaterials: THREE.MeshBasicMaterial[] = [];
+  private readonly marketPeople: Array<{ figure: THREE.Group; phase: number; baseX: number }> = [];
 
   constructor(scene: THREE.Scene) {
     roadMat.map = makePavingTexture();
@@ -544,7 +545,7 @@ export class RaceTrack {
         const facing = sample.right.clone().multiplyScalar(-side);
         const yaw = Math.atan2(facing.x, facing.z);
         this.makeBuilding(position, 8 + this.rng() * 7, 8 + this.rng() * 10, 8 + this.rng() * 9, i, yaw);
-        if (i % 3 === 0) this.makeStall(sample.position.clone().addScaledVector(sample.right, side * (sample.width / 2 + 7.5)), i, yaw);
+        if (i % 4 < 2) this.makeStall(sample.position.clone().addScaledVector(sample.right, side * (sample.width / 2 + 7.5)), i, yaw);
       } else if (progress < 0.56) {
         if (i % 3 === 0) this.makeGardenWall(position);
         else this.makePalm(position, 7 + this.rng() * 3);
@@ -645,7 +646,7 @@ export class RaceTrack {
     lintel.position.set(0, height * 0.78, depth / 2 + 0.12);
     group.add(lintel);
     if (seed % 3 !== 1) {
-      const fabric = seed % 2 === 0 ? red : blue;
+      const fabric = Math.floor(seed / 2) % 2 === 0 ? red : blue;
       const awningWidth = width * 0.83;
       const awningHeight = Math.min(height * 0.48, 6);
       const roof = new THREE.BufferGeometry();
@@ -688,28 +689,35 @@ export class RaceTrack {
     base.position.y = 0.85;
     group.add(base);
     for (const x of [-2.4, 2.4]) {
-      const pole = box(0.2, 2.8, 0.2, wood);
-      pole.position.set(x, 2.8, -1.3);
+      const pole = box(0.2, 3.4, 0.2, wood);
+      pole.position.set(x, 3.4, -1.3);
       group.add(pole);
-      const frontPole = box(0.2, 2.65, 0.2, wood);
-      frontPole.position.set(x, 2.5, 2.15);
+      const frontPole = box(0.2, 2.8, 0.2, wood);
+      frontPole.position.set(x, 1.8, 2.15);
       group.add(frontPole);
     }
-    const canopy = new THREE.Mesh(new THREE.PlaneGeometry(6.6, 5.1), seed % 2 === 0 ? red : blue);
-    canopy.rotation.x = -Math.PI / 2 + 0.13;
-    canopy.position.set(0, 4.23, 0.1);
+    const fabric = Math.floor(seed / 4) % 2 === 0 ? red : blue;
+    const canopy = new THREE.Mesh(new THREE.PlaneGeometry(7, 5.6), fabric);
+    canopy.rotation.x = -Math.PI / 2 + 0.35;
+    canopy.position.set(0, 4.23, 0);
     group.add(canopy);
-    const frontFlap = box(6.6, 0.42, 0.12, seed % 2 === 0 ? red : blue);
-    frontFlap.position.set(0, 3.8, 2.6);
+    const frontFlap = box(7, 0.42, 0.12, fabric);
+    frontFlap.position.set(0, 3.08, 2.66);
     group.add(frontFlap);
+    for (const x of [-2.8, -1.4, 0, 1.4, 2.8]) {
+      const fringe = new THREE.Mesh(new THREE.ConeGeometry(0.39, 0.6, 3), fabric);
+      fringe.rotation.z = Math.PI;
+      fringe.position.set(x, 2.7, 2.67);
+      group.add(fringe);
+    }
     const lantern = box(0.5, 0.8, 0.5, glow);
-    lantern.position.set(0, 3.1, -1.45);
+    lantern.position.set(0, 3.85, -1.45);
     group.add(lantern);
     const halo = lanternHalo(4.5);
     halo.position.copy(lantern.position);
     group.add(halo);
     const frontLantern = box(0.4, 0.62, 0.4, glow);
-    frontLantern.position.set(seed % 2 === 0 ? -2 : 2, 3.1, 2.7);
+    frontLantern.position.set(seed % 2 === 0 ? -2 : 2, 2.5, 2.8);
     group.add(frontLantern);
     const frontHalo = lanternHalo(3.8);
     frontHalo.position.copy(frontLantern.position);
@@ -728,6 +736,27 @@ export class RaceTrack {
         fruit.position.set(x + (i - 1) * 0.24, 2.42, 1.45);
         group.add(fruit);
       }
+    }
+    if (seed % 3 !== 1) {
+      const figure = new THREE.Group();
+      const robe = new THREE.Mesh(new THREE.CylinderGeometry(0.37, 0.54, 1.68, 9), seed % 4 === 0 ? blue : red);
+      robe.position.y = 0.92;
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.37, 10, 8), stoneLight);
+      head.position.y = 2.04;
+      const turban = new THREE.Mesh(new THREE.SphereGeometry(0.44, 10, 6), seed % 2 === 0 ? stoneLight : roofMat);
+      turban.scale.y = 0.48;
+      turban.position.y = 2.37;
+      figure.add(robe, head, turban);
+      for (const side of [-1, 1]) {
+        const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.18, 1.04, 7), seed % 4 === 0 ? blue : red);
+        arm.position.set(side * 0.52, 1.35, 0.03);
+        arm.rotation.z = side * 0.28;
+        figure.add(arm);
+      }
+      const baseX = seed % 2 === 0 ? -0.72 : 0.72;
+      figure.position.set(baseX, 0.95, -0.25);
+      group.add(figure);
+      this.marketPeople.push({ figure, phase: seed * 1.7, baseX });
     }
     group.position.copy(position);
     group.position.y = 0;
@@ -1202,5 +1231,9 @@ export class RaceTrack {
     }
     const pulse = 0.88 + 0.12 * Math.sin(time * 3);
     for (const material of this.carpetMaterials) material.color.setRGB(1, 0.65 * pulse, 0.25 * pulse);
+    for (const person of this.marketPeople) {
+      person.figure.position.x = person.baseX + Math.sin(time * 0.65 + person.phase) * 0.22;
+      person.figure.rotation.y = Math.sin(time * 0.55 + person.phase) * 0.17;
+    }
   }
 }

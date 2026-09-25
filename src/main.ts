@@ -206,7 +206,7 @@ class GenieRace {
   private driftSparksTimer = 0;
   private lastMagicTrailTick = -1;
   private cameraLook = new THREE.Vector3();
-  private cameraDistance = 15;
+  private cameraDistance = 13.1;
   private cameraReady = false;
   private smoothedFps = 60;
   private lastFrame = performance.now();
@@ -309,7 +309,7 @@ class GenieRace {
     ctx.arc(77, 53, 30, 0, Math.PI * 2);
     ctx.fill();
     const moon = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true, depthWrite: false, fog: false }));
-    moon.position.set(-185, 122, 240);
+    moon.position.set(220, 140, -110);
     moon.scale.set(37, 37, 1);
     this.scene.add(moon);
   }
@@ -660,6 +660,7 @@ class GenieRace {
     for (const racer of this.racers) {
       racer.visual.group.position.copy(racer.position);
       racer.visual.group.rotation.y = racer.yaw;
+      racer.visual.setGroundOffset(this.track.nearest(racer.position, racer.progress).point.position.y - racer.position.y);
       racer.visual.setShield(racer.shieldTime > 0 && racer.ultimateTime <= 0);
       racer.visual.setUltimate(racer.ultimateTime > 0);
       racer.visual.setStunned(racer.stunTime > 0);
@@ -1120,7 +1121,7 @@ class GenieRace {
       }
     } else {
       const insideCave = player.progress > 0.665 && player.progress < 0.78;
-      const targetDistance = insideCave ? 14.5 : player.ultimateTime > 0 ? 15.8 : player.boostTime > 0 ? 15.5 : 15;
+      const targetDistance = insideCave ? 12.7 : player.ultimateTime > 0 ? 14.1 : player.boostTime > 0 ? 13.5 : 13.1;
       this.cameraDistance += (targetDistance - this.cameraDistance) * Math.min(1, dt * 4);
       const distance = this.cameraDistance;
       const desired = player.position.clone().addScaledVector(forward, -distance).add(new THREE.Vector3(0, 4.55 + player.speed * 0.012, 0));

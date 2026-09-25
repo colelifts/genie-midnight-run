@@ -2075,8 +2075,10 @@ class GenieRace {
         const dx = b.position.x - a.position.x;
         const dz = b.position.z - a.position.z;
         const distance = Math.hypot(dx, dz);
-        if (distance >= 4.15 || distance < 0.01) continue;
-        const normal = new THREE.Vector3(dx / distance, 0, dz / distance);
+        if (distance >= 4.15) continue;
+        const normal = distance > 0.01
+          ? new THREE.Vector3(dx / distance, 0, dz / distance)
+          : new THREE.Vector3(Math.cos(a.yaw), 0, -Math.sin(a.yaw));
         const separation = (4.15 - distance) * 0.5;
         a.position.addScaledVector(normal, -separation);
         b.position.addScaledVector(normal, separation);
@@ -2167,7 +2169,6 @@ class GenieRace {
 
   private checkObstacleCollisions() {
     for (const racer of this.racers) {
-      if (racer.hitCooldown > 0) continue;
       for (const obstacle of this.track.obstacles) {
         if (obstacle.broken || Math.abs(racer.position.y - obstacle.position.y) > 3) continue;
         const distance = Math.hypot(racer.position.x - obstacle.position.x, racer.position.z - obstacle.position.z);
@@ -2198,6 +2199,8 @@ class GenieRace {
           racer.position.addScaledVector(tangent, sign * travel);
           this.keepOnCourse(racer);
         }
+        // Keep collision geometry solid during hit grace without applying another hit.
+        if (racer.hitCooldown > 0) break;
         if (obstacle.kind === 'crate') {
           obstacle.broken = true;
           obstacle.respawn = 12;

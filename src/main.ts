@@ -2234,7 +2234,7 @@ class GenieRace {
           this.keepOnCourse(racer);
         }
         // Keep collision geometry solid during hit grace without applying another hit.
-        if (racer.hitCooldown > 0) break;
+        if (racer.hitCooldown > 0) continue;
         if (obstacle.kind === 'crate') {
           obstacle.broken = true;
           obstacle.respawn = 12;
@@ -2259,7 +2259,7 @@ class GenieRace {
         }
         racer.hitCooldown = Math.max(racer.hitCooldown, obstacle.kind === 'boulder' ? 1.7 : 1.45);
         this.racerSound('hit', racer);
-        break;
+        // Resolve any other overlap on this frame; hitCooldown prevents a second impact.
       }
     }
   }

@@ -12,7 +12,7 @@ const ASSETS = {
   water: 'water-splash.mp3', laser: 'laser-shot.mp3', fire: 'fire-blast.mp3', cannon: 'cannon-blast.mp3',
   ice: 'ice-crackle.mp3',
 } as const;
-const AUDIO_REVISION = '4';
+const AUDIO_REVISION = '5';
 type AssetName = keyof typeof ASSETS;
 type Loop = { source: AudioBufferSourceNode; gain: GainNode };
 const level = (key: string, fallback: number) => {
@@ -145,7 +145,7 @@ export class GameAudio {
     source.loop = true;
     source.connect(gain).connect(bus);
     gain.gain.value = 0;
-    if (name === 'engine') source.playbackRate.value = 0.76;
+    if (name === 'engine') source.playbackRate.value = 0.48;
     source.start();
     this.loops.set(name, { source, gain });
   }
@@ -217,8 +217,8 @@ export class GameAudio {
     const running = active && !this.paused;
     const engine = this.loops.get('engine');
     if (engine) {
-      engine.source.playbackRate.setTargetAtTime(0.7 + Math.min(speed, 70) * (ultimate ? 0.019 : 0.016), now, 0.1);
-      engine.gain.gain.setTargetAtTime(running ? 0.24 + Math.min(speed, 65) * 0.0048 : 0, now, 0.1);
+      engine.source.playbackRate.setTargetAtTime(0.48 + Math.min(speed, 70) * (ultimate ? 0.0128 : 0.011), now, 0.16);
+      engine.gain.gain.setTargetAtTime(running ? 0.28 + Math.min(speed, 65) * 0.0048 : 0, now, 0.1);
     }
     const skid = this.loops.get('skid');
     if (skid) {

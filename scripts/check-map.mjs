@@ -89,6 +89,7 @@ for (const [route, start, end, offset, height, width] of [
     minimumRadius = Math.min(minimumRadius, turnRadius(samples[i - 1].position, samples[i].position, samples[i + 1].position));
   }
   assert.ok(minimumRadius > width / 2 + 6, `${route} road folds on a ${minimumRadius.toFixed(1)}m turn`);
+  if (route === 'roof') assert.ok(minimumRadius < 25, 'Rooftop route needs a sharp drift bend');
   const mainDistance = curve.getLength() * (end - start);
   const branchDistance = samples.slice(1).reduce((distance, point, i) => distance + point.position.distanceTo(samples[i].position), 0);
   const firstPad = BOOST_PAD_LAYOUT.filter((pad) => pad.route === route).sort((a, b) => a.progress - b.progress)[0];

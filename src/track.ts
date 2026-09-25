@@ -310,6 +310,7 @@ export function makeBranchSamples(mainCurve: THREE.CatmullRomCurve3, route: Rout
     const chord = startPoint.clone().lerp(endPoint, f);
     const cut = Math.pow(Math.sin(Math.PI * f), 1.2) * 0.42;
     const shortcutSlalom = route === 'alley' ? 4.5 * Math.sin(4 * Math.PI * f) * Math.sin(Math.PI * f) ** 2
+      : route === 'roof' ? -9 * Math.sin(4 * Math.PI * f) * Math.sin(Math.PI * f) ** 2
       : route === 'garden' ? 3.5 * Math.sin(4 * Math.PI * f) * Math.sin(Math.PI * f) ** 2 : 0;
     const position = mainPoint.clone().lerp(chord, cut).addScaledVector(right, maxOffset * Math.sin(Math.PI * f) ** 2 + shortcutSlalom);
     position.y = 0.07 + maxHeight * Math.pow(Math.sin(Math.PI * f), 2);

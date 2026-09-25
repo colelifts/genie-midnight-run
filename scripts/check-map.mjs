@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { branchCoversMainEdge, clearOfOtherRoutes, makeBranchSamples, makeMainCurve, MARKET_BANNER_SPANS, overMainPavement, roadArrowRotation, touchesBoostPad } from '../src/track.ts';
+import { ALLEY_OFFSET, ALLEY_ROAD_WIDTH, branchCoversMainEdge, CAVE_ARCH_SHAPE, CAVE_ARCH_SPANS, clearOfOtherRoutes, MAIN_ROAD_WIDTH, makeBranchSamples, makeMainCurve, MARKET_BANNER_SPANS, overMainPavement, roadArrowRotation, ROOF_OFFSET, ROOF_ROAD_WIDTH, touchesBoostPad } from '../src/track.ts';
 
 const curve = makeMainCurve();
 const count = 640;
 const positions = Array.from({ length: count }, (_, i) => curve.getPointAt(i / count));
 const tangents = Array.from({ length: count }, (_, i) => curve.getTangentAt(i / count));
-const mainSamples = positions.map((position, i) => ({ position, tangent: tangents[i], right: new THREE.Vector3(-tangents[i].z, 0, tangents[i].x).normalize(), progress: i / count, width: 50, route: 'main' }));
+const mainSamples = positions.map((position, i) => ({ position, tangent: tangents[i], right: new THREE.Vector3(-tangents[i].z, 0, tangents[i].x).normalize(), progress: i / count, width: MAIN_ROAD_WIDTH, route: 'main' }));
 
 function turnRadius(a, b, c) {
   const incoming = b.clone().sub(a);
@@ -44,13 +44,14 @@ for (let i = 0; i < count; i++) {
     }
   }
 }
-assert.ok(smallestMainRadius > 35, `Main road is too wide for its tightest turn: ${smallestMainRadius.toFixed(1)}m radius`);
-assert.ok(closestSeparateRoad > 52, `Separate 50m road sections overlap: ${closestSeparateRoad.toFixed(1)}m between centers`);
+assert.ok(MAIN_ROAD_WIDTH >= 80, 'The main road is not wide enough for the new map');
+assert.ok(smallestMainRadius > MAIN_ROAD_WIDTH / 2 + 20, `Main road is too wide for its tightest turn: ${smallestMainRadius.toFixed(1)}m radius`);
+assert.ok(closestSeparateRoad > MAIN_ROAD_WIDTH + 4, `Separate ${MAIN_ROAD_WIDTH}m road sections overlap: ${closestSeparateRoad.toFixed(1)}m between centers`);
 
 const branches = [];
 for (const [route, start, end, offset, height, width] of [
-  ['alley', 0.045, 0.16, -48, 0, 24],
-  ['roof', 0.19, 0.33, -62, 5.4, 26],
+  ['alley', 0.045, 0.16, ALLEY_OFFSET, 0, ALLEY_ROAD_WIDTH],
+  ['roof', 0.19, 0.33, ROOF_OFFSET, 5.4, ROOF_ROAD_WIDTH],
 ]) {
   const samples = makeBranchSamples(curve, route, start, end, offset, height, width);
   branches.push(samples);
@@ -103,7 +104,7 @@ const clearBanners = MARKET_BANNER_SPANS.filter((progress) => {
   const point = curve.getPointAt(progress);
   const tangent = curve.getTangentAt(progress);
   const right = new THREE.Vector3(-tangent.z, 0, tangent.x);
-  return [-1, 1].every((side) => clearOfOtherRoutes(routeSamples, point.clone().addScaledVector(right, side * 28), 1, 'main'));
+  return [-1, 1].every((side) => clearOfOtherRoutes(routeSamples, point.clone().addScaledVector(right, side * (MAIN_ROAD_WIDTH / 2 + 3)), 1, 'main'));
 });
 assert.deepEqual(clearBanners, [0.025, 0.17, 0.89, 0.93, 0.97], 'A market banner post blocks a shortcut');
 
@@ -111,15 +112,20 @@ const pad = {
   position: new THREE.Vector3(),
   tangent: new THREE.Vector3(0, 0, 1),
   right: new THREE.Vector3(1, 0, 0),
-  halfWidth: 19.5,
+  halfWidth: MAIN_ROAD_WIDTH * 0.39,
   halfLength: 2.65,
   route: 'main',
   mesh: new THREE.Group(),
 };
 assert.ok(touchesBoostPad(pad, new THREE.Vector3(0, 0, 0), 'main'));
 assert.ok(!touchesBoostPad(pad, new THREE.Vector3(0, 0, 8), 'main'), 'Boost activates before the visible carpet');
-assert.ok(!touchesBoostPad(pad, new THREE.Vector3(23, 0, 0), 'main'), 'Boost activates outside the visible carpet');
+assert.ok(!touchesBoostPad(pad, new THREE.Vector3(MAIN_ROAD_WIDTH * 0.45, 0, 0), 'main'), 'Boost activates outside the visible carpet');
 assert.ok(!touchesBoostPad(pad, new THREE.Vector3(0, 5.4, 0), 'main'), 'Boost activates through another road');
 assert.ok(!touchesBoostPad(pad, new THREE.Vector3(0, 0, 0), 'roof'), 'Boost activates on the wrong route');
+
+assert.ok(CAVE_ARCH_SHAPE.pillarOutset - CAVE_ARCH_SHAPE.pillarHalfWidth > 0.4, 'Cave pillar clips the road edge');
+assert.ok(CAVE_ARCH_SHAPE.crystalOutset - CAVE_ARCH_SHAPE.crystalRadius > 2, 'Cave crystal clips the road edge');
+assert.ok(CAVE_ARCH_SHAPE.ceilingY - CAVE_ARCH_SHAPE.ceilingHalfHeight > 9, 'Cave ceiling is too low');
+assert.ok(CAVE_ARCH_SPANS.every((progress) => progress > 0.665 && progress < 0.78), 'Cave arch is outside the cave');
 
 console.log(`Main course: ${curve.getLength().toFixed(0)}m long; ${smallestMainRadius.toFixed(1)}m minimum turn radius; ${closestSeparateRoad.toFixed(1)}m closest separate road centers; ${openBarrierSections} open barrier sections; ${clearBanners.length} safe market banners`);

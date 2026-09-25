@@ -208,6 +208,7 @@ class GenieRace {
   private cameraLook = new THREE.Vector3();
   private cameraDistance = 13.1;
   private cameraReady = false;
+  private mapTransform = { centerX: 0, centerZ: 0, scale: 0.25 };
   private smoothedFps = 60;
   private lastFrame = performance.now();
 
@@ -227,12 +228,12 @@ class GenieRace {
     sunlight.position.set(-75, 130, -85);
     sunlight.castShadow = true;
     sunlight.shadow.mapSize.set(1024, 1024);
-    sunlight.shadow.camera.left = -190;
-    sunlight.shadow.camera.right = 190;
-    sunlight.shadow.camera.top = 190;
-    sunlight.shadow.camera.bottom = -190;
+    sunlight.shadow.camera.left = -390;
+    sunlight.shadow.camera.right = 390;
+    sunlight.shadow.camera.top = 390;
+    sunlight.shadow.camera.bottom = -390;
     sunlight.shadow.camera.near = 1;
-    sunlight.shadow.camera.far = 360;
+    sunlight.shadow.camera.far = 650;
     sunlight.shadow.bias = -0.0004;
     this.scene.add(sunlight);
     const moonFill = new THREE.DirectionalLight(0x809cff, 0.62);
@@ -241,6 +242,18 @@ class GenieRace {
     this.makeSky();
     this.makeStars();
     this.track = new RaceTrack(this.scene);
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const point of this.track.samples) {
+      minX = Math.min(minX, point.position.x);
+      maxX = Math.max(maxX, point.position.x);
+      minZ = Math.min(minZ, point.position.z);
+      maxZ = Math.max(maxZ, point.position.z);
+    }
+    this.mapTransform = {
+      centerX: (minX + maxX) / 2,
+      centerZ: (minZ + maxZ) / 2,
+      scale: Math.min(176 / (maxX - minX), 146 / (maxZ - minZ)),
+    };
     this.sparks = new Sparks(this.scene);
     this.makeRacers();
     this.makePickups();
@@ -314,8 +327,15 @@ class GenieRace {
     this.scene.add(moon);
   }
 
+  private raceStarts() {
+    const requestedStart = new URLSearchParams(window.location.search).get('demoStart');
+    const demoStart = requestedStart === null ? NaN : Number(requestedStart);
+    return this.demoMode && Number.isFinite(demoStart) && demoStart >= 0 && demoStart < 1
+      ? [demoStart, wrap(demoStart + 0.015), wrap(demoStart + 0.031)] : [0.006, 0.021, 0.037];
+  }
+
   private makeRacers() {
-    const starts = [0.006, 0.021, 0.037];
+    const starts = this.raceStarts();
     const accents: Array<'gold' | 'cyan' | 'violet'> = ['gold', 'cyan', 'violet'];
     const demoRoute = new URLSearchParams(window.location.search).get('demoRoute');
     for (let i = 0; i < 3; i++) {
@@ -423,7 +443,7 @@ class GenieRace {
   }
 
   private resetRace() {
-    const starts = [0.006, 0.021, 0.037];
+    const starts = this.raceStarts();
     this.racers.forEach((racer, i) => {
       const point = this.track.at(starts[i]);
       racer.position.copy(point.position);
@@ -1168,7 +1188,7 @@ class GenieRace {
   private drawMinimap() {
     const ctx = mapContext;
     ctx.clearRect(0, 0, 200, 170);
-    const mapPoint = (point: RoadPoint) => ({ x: 100 + point.position.x * 0.55, y: 88 + point.position.z * 0.53 });
+    const mapPoint = (position: THREE.Vector3) => ({ x: 100 + (position.x - this.mapTransform.centerX) * this.mapTransform.scale, y: 85 + (position.z - this.mapTransform.centerZ) * this.mapTransform.scale });
     const drawRoute = (points: RoadPoint[], color: string, width: number, dashed: boolean) => {
       ctx.strokeStyle = color;
       ctx.lineWidth = width;
@@ -1177,7 +1197,7 @@ class GenieRace {
       ctx.setLineDash(dashed ? [5, 5] : []);
       ctx.beginPath();
       points.forEach((point, index) => {
-        const screen = mapPoint(point);
+        const screen = mapPoint(point.position);
         if (index === 0) ctx.moveTo(screen.x, screen.y);
         else ctx.lineTo(screen.x, screen.y);
       });
@@ -1190,7 +1210,7 @@ class GenieRace {
     drawRoute(this.track.alleySamples, '#e6c76f', 2, true);
     drawRoute(this.track.roofSamples, '#77d9eb', 2, true);
     for (const racer of this.racers) {
-      const screen = { x: 100 + racer.position.x * 0.55, y: 88 + racer.position.z * 0.53 };
+      const screen = mapPoint(racer.position);
       ctx.beginPath();
       ctx.arc(screen.x, screen.y, racer.id === 0 ? 6 : 4.5, 0, Math.PI * 2);
       ctx.fillStyle = racer.id === 0 ? '#56dafa' : racer.id === 1 ? '#ffc56d' : '#c396f9';

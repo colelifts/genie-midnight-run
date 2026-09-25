@@ -77,6 +77,14 @@ export function branchCoversMainEdge(branches: RoadPoint[][], position: THREE.Ve
 }
 
 export const MARKET_BANNER_SPANS = [0.025, 0.08, 0.17, 0.235, 0.29, 0.89, 0.93, 0.97];
+export const CAVE_ARCH_SPANS = [0.684, 0.721, 0.758];
+export const CAVE_ARCH_SHAPE = { pillarOutset: 8, pillarHalfWidth: 7.4, crystalOutset: 5.5, crystalRadius: 1.7, ceilingY: 16.5, ceilingHalfHeight: 4.8 };
+export const COURSE_SCALE = 2.5;
+export const MAIN_ROAD_WIDTH = 84;
+export const ALLEY_ROAD_WIDTH = 40;
+export const ROOF_ROAD_WIDTH = 42;
+export const ALLEY_OFFSET = -80;
+export const ROOF_OFFSET = -103;
 
 export function clearOfOtherRoutes(samples: RoadPoint[], position: THREE.Vector3, radius: number, excludedRoute: RouteName) {
   for (const point of samples) {
@@ -153,7 +161,7 @@ export function makeMainCurve() {
     new THREE.Vector3(-135, 0, 31),
     new THREE.Vector3(-130, 0, -20),
     new THREE.Vector3(-125, 0, -68),
-  ].map((point) => point.multiplyScalar(1.55)), true, 'catmullrom', 0.5);
+  ].map((point) => point.multiplyScalar(COURSE_SCALE)), true, 'catmullrom', 0.5);
 }
 
 export function makeBranchSamples(mainCurve: THREE.CatmullRomCurve3, route: RouteName, start: number, end: number, maxOffset: number, maxHeight: number, width: number): RoadPoint[] {
@@ -210,7 +218,7 @@ function makePavingTexture() {
 }
 
 export class RaceTrack {
-  readonly mainWidth = 50;
+  readonly mainWidth = MAIN_ROAD_WIDTH;
   readonly group = new THREE.Group();
   readonly mainCurve: THREE.CatmullRomCurve3;
   readonly samples: RoadPoint[] = [];
@@ -255,8 +263,8 @@ export class RaceTrack {
       const right = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
       this.mainSamples.push({ position, tangent, right, progress, width: this.mainWidth, route: 'main' });
     }
-    this.alleySamples.push(...makeBranchSamples(this.mainCurve, 'alley', 0.045, 0.16, -48, 0, 24));
-    this.roofSamples.push(...makeBranchSamples(this.mainCurve, 'roof', 0.19, 0.33, -62, 5.4, 26));
+    this.alleySamples.push(...makeBranchSamples(this.mainCurve, 'alley', 0.045, 0.16, ALLEY_OFFSET, 0, ALLEY_ROAD_WIDTH));
+    this.roofSamples.push(...makeBranchSamples(this.mainCurve, 'roof', 0.19, 0.33, ROOF_OFFSET, 5.4, ROOF_ROAD_WIDTH));
     this.samples.push(...this.mainSamples, ...this.alleySamples, ...this.roofSamples);
   }
 
@@ -268,7 +276,7 @@ export class RaceTrack {
     const duneGeo = new THREE.IcosahedronGeometry(1, 0);
     for (let i = 0; i < 45; i++) {
       const angle = (i / 45) * Math.PI * 2;
-      const distance = 330 + this.rng() * 180;
+      const distance = 460 + this.rng() * 120;
       const dune = new THREE.Mesh(duneGeo, i % 3 === 0 ? stoneDark : stone);
       dune.scale.set(20 + this.rng() * 28, 9 + this.rng() * 14, 18 + this.rng() * 25);
       dune.position.set(Math.sin(angle) * distance, -6, Math.cos(angle) * distance);
@@ -277,7 +285,7 @@ export class RaceTrack {
     const distantStone = new THREE.MeshStandardMaterial({ color: 0x5f536d, roughness: 1, flatShading: true });
     for (let i = 0; i < 18; i++) {
       const angle = i / 18 * Math.PI * 2;
-      const distance = 440 + this.rng() * 170;
+      const distance = 570 + this.rng() * 120;
       const mountain = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 0), distantStone);
       mountain.scale.set(34 + this.rng() * 32, 19 + this.rng() * 22, 34 + this.rng() * 31);
       mountain.position.set(Math.sin(angle) * distance, -7, Math.cos(angle) * distance);
@@ -460,23 +468,28 @@ export class RaceTrack {
     const arrowMat = new THREE.MeshBasicMaterial({ color: 0xd7c8ad, transparent: true, opacity: 0.7, side: THREE.DoubleSide });
     for (let i = 18; i < this.mainSamples.length; i += 40) {
       const sample = this.mainSamples[i];
-      const arrow = new THREE.Mesh(arrowGeo, arrowMat);
-      arrow.rotation.copy(roadArrowRotation(sample.tangent));
-      arrow.position.copy(sample.position);
-      arrow.position.y += 0.045;
-      this.group.add(arrow);
+      for (const lane of [-0.25, 0.25]) {
+        const arrow = new THREE.Mesh(arrowGeo, arrowMat);
+        arrow.rotation.copy(roadArrowRotation(sample.tangent));
+        arrow.position.copy(sample.position).addScaledVector(sample.right, sample.width * lane);
+        arrow.position.y += 0.045;
+        this.group.add(arrow);
+      }
     }
     const lineMaterial = new THREE.MeshBasicMaterial({ color: 0xc4b8ad, transparent: true, opacity: 0.48 });
     for (let i = 5; i < this.mainSamples.length; i += 11) {
       const point = this.mainSamples[i];
-      const dash = box(0.19, 0.025, 3.2, lineMaterial);
-      dash.position.copy(point.position);
-      dash.position.y += 0.065;
-      dash.rotation.y = Math.atan2(point.tangent.x, point.tangent.z);
-      this.group.add(dash);
+      for (const lane of [-0.25, 0, 0.25]) {
+        const dash = box(0.19, 0.025, 4.4, lineMaterial);
+        dash.position.copy(point.position).addScaledVector(point.right, point.width * lane);
+        dash.position.y += 0.065;
+        dash.rotation.y = Math.atan2(point.tangent.x, point.tangent.z);
+        this.group.add(dash);
+      }
     }
     const start = this.mainSamples[0];
-    for (let i = -21; i <= 21; i++) {
+    const gridHalfTiles = Math.floor((start.width / 2 - 2) / 1.12);
+    for (let i = -gridHalfTiles; i <= gridHalfTiles; i++) {
       for (let j = -1; j <= 1; j++) {
         const tile = box(1.15, 0.04, 1.15, (i + j) % 2 === 0 ? stoneLight : stoneDark);
         tile.position.copy(start.position).addScaledVector(start.right, i * 1.12).addScaledVector(start.tangent, j * 1.1);
@@ -539,13 +552,15 @@ export class RaceTrack {
         pole.position.set(side * spanWidth / 2, 4, 0);
         group.add(pole);
       }
-      for (let i = 0; i < 19; i++) {
+      const flagCount = Math.floor((spanWidth - 5) / 2.5);
+      for (let i = 0; i < flagCount; i++) {
         const flag = new THREE.Mesh(new THREE.ConeGeometry(0.68, 1.12, 3), i % 2 === 0 ? red : blue);
-        flag.position.set(-22.5 + i * 2.5, 6.98, 0);
+        flag.position.set((i - (flagCount - 1) / 2) * 2.5, 6.98, 0);
         flag.rotation.z = Math.PI;
         group.add(flag);
       }
-      for (const x of [-20, -10, 0, 10, 20]) {
+      for (const fraction of [-0.4, -0.2, 0, 0.2, 0.4]) {
+        const x = fraction * spanWidth;
         const hook = box(0.055, 0.48, 0.055, wood);
         hook.position.set(x, 7.15, 0.2);
         group.add(hook);
@@ -1054,6 +1069,8 @@ export class RaceTrack {
 
   private makeCave() {
     const rockGeometry = new THREE.IcosahedronGeometry(1, 1);
+    const caveStone = new THREE.MeshStandardMaterial({ color: 0x66596c, roughness: 0.97, flatShading: true });
+    const crystal = new THREE.MeshBasicMaterial({ color: 0x67dbed, toneMapped: false });
     for (let i = 0; i < 12; i++) {
       const sample = this.mainSamples[Math.floor((0.665 + i * 0.01) * this.mainSamples.length)];
       for (const side of [-1, 1]) {
@@ -1067,6 +1084,37 @@ export class RaceTrack {
         rock.receiveShadow = true;
         this.group.add(rock);
       }
+    }
+    for (const progress of CAVE_ARCH_SPANS) {
+      const sample = this.at(progress);
+      const arch = new THREE.Group();
+      for (const side of [-1, 1]) {
+        const pillar = new THREE.Mesh(rockGeometry, caveStone);
+        pillar.scale.set(CAVE_ARCH_SHAPE.pillarHalfWidth, 8.5, 7.8);
+        pillar.position.set(side * (sample.width / 2 + CAVE_ARCH_SHAPE.pillarOutset), 6.5, 0);
+        pillar.castShadow = true;
+        arch.add(pillar);
+        const gem = new THREE.Mesh(new THREE.ConeGeometry(CAVE_ARCH_SHAPE.crystalRadius, 5.6, 5), crystal);
+        gem.position.set(side * (sample.width / 2 + CAVE_ARCH_SHAPE.crystalOutset), 3.05, 5.3);
+        gem.rotation.z = side * 0.12;
+        arch.add(gem);
+        const halo = lanternHalo(9, 0x50dcff);
+        halo.position.copy(gem.position).add(new THREE.Vector3(0, 0.8, 0));
+        arch.add(halo);
+      }
+      const crownPiecesPerSide = Math.ceil((sample.width / 2 - 12) / 11.3);
+      for (let piece = -crownPiecesPerSide; piece <= crownPiecesPerSide; piece++) {
+        const crown = new THREE.Mesh(rockGeometry, caveStone);
+        crown.scale.set(9.6, piece === 0 ? CAVE_ARCH_SHAPE.ceilingHalfHeight : 4.4, 7.2);
+        crown.position.set(piece * 11.3, CAVE_ARCH_SHAPE.ceilingY - Math.abs(piece) * 0.45, 0);
+        crown.rotation.z = piece * 0.035;
+        crown.castShadow = true;
+        arch.add(crown);
+      }
+      arch.position.copy(sample.position);
+      arch.position.y = 0;
+      arch.rotation.y = Math.atan2(sample.tangent.x, sample.tangent.z);
+      this.group.add(arch);
     }
     for (const progress of [0.668, 0.705, 0.742]) {
       const sample = this.at(progress);

@@ -723,13 +723,13 @@ class GenieRace {
     } else if (player.drifting) {
       this.releaseDrift(player);
     }
-    const turnRate = (1.5 - Math.min(Math.abs(player.speed) / 50, 0.5)) * (player.drifting ? 1.25 : 1) * (player.padBoostTime > 0 ? 1.22 : 1);
+    const turnRate = (1.5 - Math.min(Math.abs(player.speed) / 50, 0.5)) * (player.drifting ? 1.25 : 1) * (player.padBoostTime > 0 ? 1.7 : 1);
     player.yaw -= steer * turnRate * dt * Math.min(1, Math.abs(player.speed) / 6);
     if (Math.abs(steer) < 0.12 && roadBefore.onRoad && !player.drifting && player.speed > 8) {
       const roadYaw = Math.atan2(roadBefore.point.tangent.x, roadBefore.point.tangent.z);
       player.yaw += clamp(angleDiff(roadYaw, player.yaw), -0.8 * dt, 0.8 * dt);
     }
-    player.moveYaw += angleDiff(player.yaw, player.moveYaw) * Math.min(1, dt * (player.drifting ? 2.8 : 7.5));
+    player.moveYaw += angleDiff(player.yaw, player.moveYaw) * Math.min(1, dt * (player.drifting ? 3.6 : 7.5));
     player.position.x += Math.sin(player.moveYaw) * player.speed * dt;
     player.position.z += Math.cos(player.moveYaw) * player.speed * dt;
     this.followRoadHeight(player, dt);
@@ -1178,7 +1178,7 @@ class GenieRace {
 
   private updateHUD() {
     const player = this.racers[0];
-    hud.dataset.state = JSON.stringify(this.racers.map((racer) => ({ id: racer.id, lap: racer.lap, p: Number(racer.progress.toFixed(3)), x: Number(racer.position.x.toFixed(2)), y: Number(racer.position.y.toFixed(2)), z: Number(racer.position.z.toFixed(2)), yaw: Number(racer.yaw.toFixed(3)), route: this.track.nearest(racer.position, racer.progress).point.route, speed: Math.round(racer.speed), padBoost: Number(racer.padBoostTime.toFixed(2)), stun: Number(racer.stunTime.toFixed(2)), hitGrace: Number(racer.hitCooldown.toFixed(2)), ultimate: Number(racer.ultimateTime.toFixed(2)) })));
+    hud.dataset.state = JSON.stringify(this.racers.map((racer) => ({ id: racer.id, lap: racer.lap, p: Number(racer.progress.toFixed(3)), x: Number(racer.position.x.toFixed(2)), y: Number(racer.position.y.toFixed(2)), z: Number(racer.position.z.toFixed(2)), yaw: Number(racer.yaw.toFixed(3)), route: this.track.nearest(racer.position, racer.progress).point.route, speed: Math.round(racer.speed), drift: Number(racer.driftCharge.toFixed(2)), padBoost: Number(racer.padBoostTime.toFixed(2)), stun: Number(racer.stunTime.toFixed(2)), hitGrace: Number(racer.hitCooldown.toFixed(2)), ultimate: Number(racer.ultimateTime.toFixed(2)) })));
     const standings = [...this.racers].sort((a, b) => (b.lap - 1 + b.progress) - (a.lap - 1 + a.progress));
     const rank = standings.findIndex((racer) => racer.id === 0) + 1;
     const suffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : 'rd';
@@ -1187,8 +1187,16 @@ class GenieRace {
     zoneText.textContent = this.track.zone(player.progress);
     speedText.textContent = String(Math.round(Math.max(0, player.speed) * 3.6));
     const road = this.track.nearest(player.position, player.progress);
-    surfaceText.textContent = road.onRoad ? road.point.route === 'main' ? 'ROAD' : `${road.point.route.toUpperCase()} ROUTE` : 'OFF ROAD';
-    boostFill.style.width = `${clamp(player.boostTime / 3, 0, 1) * 100}%`;
+    if (player.drifting) {
+      const charge = player.driftCharge;
+      surfaceText.textContent = charge >= 1.9 ? 'COSMIC DRIFT BOOST READY' : charge >= 1.18 ? 'GOLD DRIFT BOOST READY' : charge >= 0.58 ? 'BLUE DRIFT BOOST READY' : 'DRIFT · KEEP STEERING';
+      boostFill.style.width = `${clamp(charge / 1.9, 0, 1) * 100}%`;
+      boostFill.style.background = charge >= 1.9 ? '#d799ff' : charge >= 1.18 ? '#ffd075' : '#65dbf9';
+    } else {
+      surfaceText.textContent = road.onRoad ? road.point.route === 'main' ? 'ROAD' : `${road.point.route.toUpperCase()} ROUTE` : 'OFF ROAD';
+      boostFill.style.width = `${clamp(player.boostTime / 3, 0, 1) * 100}%`;
+      boostFill.style.background = '';
+    }
     wishTile.querySelector('small')!.textContent = this.wishHolding ? 'CHOOSE · RELEASE E' : player.ultimateTime > 0 ? 'ULTIMATE ACTIVE · NO COOLDOWN' : player.shieldTime > 0 ? 'SHIELD ACTIVE · NO COOLDOWN' : 'HOLD E · RELEASE TO CHOOSE';
     ultimateTile.querySelector('small')!.textContent = player.ultimateTime > 0 ? `${player.ultimateTime.toFixed(1)}s ACTIVE` : 'READY · NO COOLDOWN';
     ultimateTile.classList.toggle('active', player.ultimateTime > 0);

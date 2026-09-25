@@ -47,10 +47,21 @@ for (let i = 0; i < count; i++) {
     }
   }
 }
-assert.ok(MAIN_ROAD_WIDTH >= 42 && MAIN_ROAD_WIDTH <= 50, 'The main road should hold several racers without becoming an empty plaza');
+assert.ok(MAIN_ROAD_WIDTH >= 34 && MAIN_ROAD_WIDTH <= 40, 'The main road should hold several racers without becoming an empty plaza');
 assert.ok(curve.getLength() >= 1500 && curve.getLength() <= 1900, 'The lap is outside the intended course length');
 assert.ok(smallestMainRadius > MAIN_ROAD_WIDTH / 2 + 4, `Main road folds at ${tightestTurnProgress.toFixed(3)}: ${smallestMainRadius.toFixed(1)}m radius`);
 assert.ok(closestSeparateRoad > MAIN_ROAD_WIDTH + 4, `Separate ${MAIN_ROAD_WIDTH}m road sections overlap: ${closestSeparateRoad.toFixed(1)}m between centers`);
+const turnDirections = [];
+for (let i = 0; i < 200; i++) {
+  const forward = curve.getTangentAt(i / 200).normalize();
+  const upcoming = curve.getTangentAt((i / 200 + 0.02) % 1).normalize();
+  const turn = upcoming.dot(new THREE.Vector3(-forward.z, 0, forward.x));
+  if (Math.abs(turn) < 0.18) continue;
+  const direction = Math.sign(turn);
+  if (turnDirections.at(-1) !== direction) turnDirections.push(direction);
+}
+if (turnDirections[0] === turnDirections.at(-1)) turnDirections.pop();
+assert.ok(turnDirections.length >= 11, `Course needs more alternating drift turns; found ${turnDirections.length}`);
 
 const branches = [];
 for (const [route, start, end, offset, height, width] of [
@@ -195,4 +206,4 @@ for (const progress of TURN_SIGN_SPANS) {
   assert.ok([-1, 1].some((side) => clearOfOtherRoutes(routeSamples, point.clone().addScaledVector(right, side * (MAIN_ROAD_WIDTH / 2 + 5.6)), 5.1, 'main')), `Turn sign at ${progress} cannot be placed clear of the shortcuts`);
 }
 
-console.log(`Main course: ${curve.getLength().toFixed(0)}m long; ${smallestMainRadius.toFixed(1)}m minimum turn radius; ${closestSeparateRoad.toFixed(1)}m closest separate road centers; ${openBarrierSections} open barrier sections; ${clearBanners.length} safe market banners`);
+console.log(`Main course: ${curve.getLength().toFixed(0)}m long; ${turnDirections.length} alternating turn sections; ${smallestMainRadius.toFixed(1)}m minimum turn radius; ${closestSeparateRoad.toFixed(1)}m closest separate road centers; ${openBarrierSections} open barrier sections; ${clearBanners.length} safe market banners`);

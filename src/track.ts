@@ -80,16 +80,16 @@ export function branchCoversMainEdge(branches: RoadPoint[][], position: THREE.Ve
 
 export const MARKET_BANNER_SPANS = [0.025, 0.08, 0.17, 0.235, 0.29, 0.89, 0.93, 0.97];
 export const MARKET_GATE_SPANS = [0.175, 0.91];
-export const TURN_SIGN_SPANS = [0.235, 0.305, 0.345, 0.435, 0.585, 0.695, 0.785, 0.895, 0.935];
+export const TURN_SIGN_SPANS = [0.235, 0.305, 0.345, 0.435, 0.585, 0.625, 0.695, 0.785, 0.865, 0.905, 0.935];
 export const CAVE_ARCH_SPANS = [0.684, 0.721, 0.758];
 export const CAVE_ARCH_SHAPE = { pillarOutset: 8, pillarHalfWidth: 7.4, crystalOutset: 5.5, crystalRadius: 1.7, ceilingY: 16.5, ceilingHalfHeight: 4.8 };
 export const CAVE_TUNNEL_SHAPE = { wallOutset: 20, wallRadius: 14, roofCenterY: 19, roofEdgeY: 9 };
 export const COURSE_SCALE = 2;
-export const MAIN_ROAD_WIDTH = 46;
+export const MAIN_ROAD_WIDTH = 36;
 export const ALLEY_ROAD_WIDTH = 26;
 export const ROOF_ROAD_WIDTH = 26;
 export const ALLEY_OFFSET = -61;
-export const ROOF_OFFSET = -72;
+export const ROOF_OFFSET = -60;
 export const BOOST_PAD_LENGTH = 10;
 export const BOOST_PAD_LAYOUT: Array<{ route: RouteName; progress: number; boostSeconds: number }> = [
   { route: 'main', progress: 0.08, boostSeconds: 3.3 },
@@ -111,13 +111,13 @@ export const OBSTACLE_LAYOUT: Array<{ kind: Obstacle['kind']; route: RouteName; 
   { kind: 'urn', route: 'main', progress: 0.445, lateral: 7 },
   { kind: 'urn', route: 'main', progress: 0.565, lateral: 0 },
   { kind: 'urn', route: 'main', progress: 0.615, lateral: 9 },
-  { kind: 'boulder', route: 'main', progress: 0.685, lateral: -9 },
-  { kind: 'boulder', route: 'main', progress: 0.708, lateral: 9, phase: Math.PI },
-  { kind: 'boulder', route: 'main', progress: 0.73, lateral: -8 },
-  { kind: 'boulder', route: 'main', progress: 0.73, lateral: 9, phase: Math.PI },
+  { kind: 'boulder', route: 'main', progress: 0.685, lateral: -7 },
+  { kind: 'boulder', route: 'main', progress: 0.708, lateral: 7, phase: Math.PI },
+  { kind: 'boulder', route: 'main', progress: 0.73, lateral: -7 },
+  { kind: 'boulder', route: 'main', progress: 0.73, lateral: 7, phase: Math.PI },
   { kind: 'boulder', route: 'main', progress: 0.755, lateral: 0 },
-  { kind: 'boulder', route: 'main', progress: 0.785, lateral: 10, phase: Math.PI },
-  { kind: 'boulder', route: 'main', progress: 0.815, lateral: -10 },
+  { kind: 'boulder', route: 'main', progress: 0.785, lateral: 7, phase: Math.PI },
+  { kind: 'boulder', route: 'main', progress: 0.815, lateral: -7 },
   { kind: 'cart', route: 'main', progress: 0.92, lateral: 8 },
   { kind: 'crate', route: 'main', progress: 0.955, lateral: -8 },
   { kind: 'crate', route: 'alley', progress: 0.085, lateral: 0 },
@@ -187,26 +187,26 @@ function seededRandom(seed: number) {
 export function makeMainCurve() {
   return new THREE.CatmullRomCurve3([
     new THREE.Vector3(-95, 0, -96),
-    new THREE.Vector3(-44, 0, -107),
-    new THREE.Vector3(7, 0, -102),
+    new THREE.Vector3(-44, 0, -112),
+    new THREE.Vector3(7, 0, -94),
     new THREE.Vector3(55, 0, -91),
     new THREE.Vector3(96, 0, -65),
     new THREE.Vector3(117, 0, -30),
     new THREE.Vector3(112, 0, 5),
     new THREE.Vector3(122, 0, 35),
     new THREE.Vector3(110, 0, 70),
-    new THREE.Vector3(75, 0, 96),
-    new THREE.Vector3(35, 0, 90),
-    new THREE.Vector3(5, 0, 50),
-    new THREE.Vector3(-20, 0, 12),
-    new THREE.Vector3(-55, 0, 5),
-    new THREE.Vector3(-85, 0, 30),
+    new THREE.Vector3(73, 0, 100),
+    new THREE.Vector3(32, 0, 98),
+    new THREE.Vector3(3, 0, 56),
+    new THREE.Vector3(-19, 0, 8),
+    new THREE.Vector3(-53, 0, -6),
+    new THREE.Vector3(-86, 0, 30),
     new THREE.Vector3(-115, 0, 45),
     new THREE.Vector3(-145, 0, 35),
     new THREE.Vector3(-160, 0, 5),
-    new THREE.Vector3(-155, 0, -25),
-    new THREE.Vector3(-155, 0, -45),
-    new THREE.Vector3(-155, 0, -70),
+    new THREE.Vector3(-180, 0, -20),
+    new THREE.Vector3(-179, 0, -57),
+    new THREE.Vector3(-151, 0, -77),
     new THREE.Vector3(-130, 0, -98),
   ].map((point) => point.multiplyScalar(COURSE_SCALE)), true, 'catmullrom', 0.5);
 }
@@ -224,7 +224,8 @@ export function makeBranchSamples(mainCurve: THREE.CatmullRomCurve3, route: Rout
     const right = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
     const chord = startPoint.clone().lerp(endPoint, f);
     const cut = Math.pow(Math.sin(Math.PI * f), 1.2) * 0.42;
-    const position = mainPoint.clone().lerp(chord, cut).addScaledVector(right, maxOffset * Math.sin(Math.PI * f) ** 2);
+    const shortcutSlalom = route === 'alley' ? 4.5 * Math.sin(4 * Math.PI * f) * Math.sin(Math.PI * f) ** 2 : 0;
+    const position = mainPoint.clone().lerp(chord, cut).addScaledVector(right, maxOffset * Math.sin(Math.PI * f) ** 2 + shortcutSlalom);
     position.y = 0.07 + maxHeight * Math.pow(Math.sin(Math.PI * f), 2);
     result.push({ position, tangent, right, progress, width, route });
   }
@@ -328,7 +329,7 @@ export class RaceTrack {
     ground.position.y = -0.7;
     ground.receiveShadow = true;
     this.group.add(ground);
-    const duneGeo = new THREE.IcosahedronGeometry(1, 0);
+    const duneGeo = new THREE.IcosahedronGeometry(1, 1);
     for (let i = 0; i < 45; i++) {
       const angle = (i / 45) * Math.PI * 2;
       const distance = 380 + this.rng() * 100;
@@ -528,7 +529,7 @@ export class RaceTrack {
   private makeRoadLights() {
     for (let i = 0; i < 46; i++) {
       const progress = i / 46;
-      if (progress > 0.58 && progress < 0.85) continue;
+      if (progress > 0.58 && progress < 0.82) continue;
       const point = this.at(progress);
       const side = i % 2 === 0 ? -1 : 1;
       const lampPosition = point.position.clone().addScaledVector(point.right, side * (point.width / 2 + 3.8));
@@ -745,7 +746,7 @@ export class RaceTrack {
       const side = i % 2 === 0 ? 1 : -1;
       const offset = sample.width / 2 + 16 + this.rng() * 12;
       const position = sample.position.clone().addScaledVector(sample.right, side * offset);
-      if (progress < 0.33 || progress > 0.88) {
+      if (progress < 0.33 || progress > 0.82) {
         const facing = sample.right.clone().multiplyScalar(-side);
         const yaw = Math.atan2(facing.x, facing.z);
         this.makeBuilding(position, 8 + this.rng() * 7, 8 + this.rng() * 10, 8 + this.rng() * 9, i, yaw);
@@ -872,7 +873,7 @@ export class RaceTrack {
   }
 
   private makeMarketWalkers() {
-    const progressPoints = [0.018, 0.058, 0.103, 0.148, 0.183, 0.895, 0.925, 0.953, 0.98];
+    const progressPoints = [0.018, 0.058, 0.103, 0.148, 0.183, 0.845, 0.875, 0.895, 0.925, 0.953, 0.98];
     const robeGeometry = new THREE.CylinderGeometry(0.4, 0.56, 1.65, 9);
     const headGeometry = new THREE.SphereGeometry(0.34, 10, 8);
     const turbanGeometry = new THREE.SphereGeometry(0.42, 10, 6);
@@ -1144,6 +1145,29 @@ export class RaceTrack {
     const green = new THREE.MeshStandardMaterial({ color: 0x397255, roughness: 0.9 });
     const hedge = new THREE.MeshStandardMaterial({ color: 0x265942, roughness: 0.95 });
     const flower = new THREE.MeshBasicMaterial({ color: 0xf2ae8a });
+    for (const side of [-1, 1]) {
+      const positions: number[] = [];
+      const colors: number[] = [];
+      const indices: number[] = [];
+      for (let i = 0; i <= 88; i++) {
+        const point = this.at(0.355 + i / 88 * 0.21);
+        for (const [offset, color] of [[1.45, 0x65815b], [15.5, 0x315f4c]] as const) {
+          const edge = point.position.clone().addScaledVector(point.right, side * (point.width / 2 + offset));
+          positions.push(edge.x, 0.018, edge.z);
+          const tint = new THREE.Color(color).multiplyScalar(0.93 + (i % 5) * 0.025);
+          colors.push(tint.r, tint.g, tint.b);
+        }
+        if (i > 0) indices.push((i - 1) * 2, (i - 1) * 2 + 1, i * 2, (i - 1) * 2 + 1, i * 2 + 1, i * 2);
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+      const plantedBorder = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide }));
+      plantedBorder.receiveShadow = true;
+      this.group.add(plantedBorder);
+    }
     for (let i = 0; i < 33; i++) {
       const progress = 0.34 + i * 0.0067;
       const point = this.at(progress);
@@ -1672,7 +1696,7 @@ export class RaceTrack {
 
   zone(progress: number): ZoneName {
     const p = ((progress % 1) + 1) % 1;
-    if (p < 0.19 || p > 0.87) return 'MIDNIGHT MARKET';
+    if (p < 0.19 || p > 0.82) return 'MIDNIGHT MARKET';
     if (p < 0.35) return 'ROOFTOP RUN';
     if (p < 0.57) return 'PALACE GARDEN';
     return 'DESERT CAVE';

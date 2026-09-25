@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { ALLEY_OFFSET, ALLEY_ROAD_WIDTH, BOOST_PAD_LAYOUT, BOOST_PAD_LENGTH, branchCoversMainEdge, CAVE_ARCH_SHAPE, CAVE_ARCH_SPANS, CAVE_TUNNEL_SHAPE, clearOfOtherRoutes, GARDEN_OFFSET, GARDEN_ROAD_WIDTH, MAIN_ROAD_WIDTH, makeBranchSamples, makeMainCurve, MARKET_BANNER_SPANS, MARKET_CROSSING_PROGRESS, MARKET_CROSSING_TRAVEL, MARKET_GATE_SPANS, marketCartState, OBSTACLE_LAYOUT, overMainPavement, ROOF_OFFSET, ROOF_ROAD_WIDTH, touchesBoostPad, TURN_SIGN_SPANS, turnSignDirection } from '../src/track.ts';
+import { ALLEY_OFFSET, ALLEY_ROAD_WIDTH, BOOST_PAD_LAYOUT, BOOST_PAD_LENGTH, branchCoversMainEdge, CAVE_ARCH_SHAPE, CAVE_ARCH_SPANS, CAVE_TUNNEL_SHAPE, clearOfOtherRoutes, GARDEN_OFFSET, GARDEN_ROAD_WIDTH, MAIN_ROAD_WIDTH, makeBranchSamples, makeMainCurve, MARKET_BANNER_SPANS, MARKET_CROSSING_PROGRESS, MARKET_CROSSING_TRAVEL, MARKET_GATE_SPANS, marketCartState, OBSTACLE_LAYOUT, overMainPavement, PICKUP_LAYOUT, ROOF_OFFSET, ROOF_ROAD_WIDTH, touchesBoostPad, TURN_SIGN_SPANS, turnSignDirection } from '../src/track.ts';
 
 const curve = makeMainCurve();
 const count = 640;
@@ -48,7 +48,7 @@ for (let i = 0; i < count; i++) {
   }
 }
 assert.ok(MAIN_ROAD_WIDTH >= 34 && MAIN_ROAD_WIDTH <= 40, 'The main road should hold several racers without becoming an empty plaza');
-assert.ok(curve.getLength() >= 1500 && curve.getLength() <= 1900, 'The lap is outside the intended course length');
+assert.ok(curve.getLength() >= 1500 && curve.getLength() <= 1950, 'The lap is outside the intended course length');
 assert.ok(smallestMainRadius > MAIN_ROAD_WIDTH / 2 + 4, `Main road folds at ${tightestTurnProgress.toFixed(3)}: ${smallestMainRadius.toFixed(1)}m radius`);
 assert.ok(closestSeparateRoad > MAIN_ROAD_WIDTH + 4, `Separate ${MAIN_ROAD_WIDTH}m road sections overlap: ${closestSeparateRoad.toFixed(1)}m between centers`);
 const turnDirections = [];
@@ -61,7 +61,7 @@ for (let i = 0; i < 200; i++) {
   if (turnDirections.at(-1) !== direction) turnDirections.push(direction);
 }
 if (turnDirections[0] === turnDirections.at(-1)) turnDirections.pop();
-assert.ok(turnDirections.length >= 11, `Course needs more alternating drift turns; found ${turnDirections.length}`);
+assert.ok(turnDirections.length >= 16, `Course needs at least 16 alternating drift turns; found ${turnDirections.length}`);
 
 const branches = [];
 for (const [route, start, end, offset, height, width] of [
@@ -175,6 +175,17 @@ for (let i = 0; i < obstacles.length; i++) {
     const b = obstacles[j];
     if (Math.abs(a.position.y - b.position.y) > 3) continue;
     assert.ok(a.position.distanceTo(b.position) > a.radius + b.radius + 2.5, `Hazards overlap at ${a.progress} and ${b.progress}`);
+  }
+}
+for (const route of ['alley', 'roof', 'garden']) assert.ok(PICKUP_LAYOUT.some((pickup) => pickup.route === route), `${route} has no shortcut reward`);
+for (const pickup of PICKUP_LAYOUT) {
+  const point = pointFor(pickup);
+  const position = point.position.clone().addScaledVector(point.right, pickup.lateral);
+  assert.ok(Math.abs(pickup.lateral) + 3.1 < point.width / 2 + 0.5, `Pickup at ${pickup.progress} is unreachable from the road`);
+  assert.ok(clearOfOtherRoutes(routeSamples, position, 3.1, pickup.route), `Pickup at ${pickup.progress} floats into another route`);
+  for (const obstacle of obstacles) {
+    if (Math.abs(position.y - obstacle.position.y) > 3) continue;
+    assert.ok(position.distanceTo(obstacle.position) > obstacle.radius + 3.9, `Pickup at ${pickup.progress} overlaps ${obstacle.kind} at ${obstacle.progress}`);
   }
 }
 for (const pad of BOOST_PAD_LAYOUT) {

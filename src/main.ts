@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import './style.css';
 import { GameAudio } from './audio';
 import { KartVisual, makeProjectile } from './kart';
-import { MARKET_CROSSING_PROGRESS, marketCartState, RaceTrack, touchesBoostPad, type RoadHit, type RoadPoint, type RouteName } from './track';
+import { MARKET_CROSSING_PROGRESS, marketCartState, PICKUP_LAYOUT, RaceTrack, touchesBoostPad, type RoadHit, type RoadPoint, type RouteName } from './track';
 
 const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = el<HTMLCanvasElement>('game');
@@ -370,15 +370,14 @@ class GenieRace {
   private makePickups() {
     const starMat = new THREE.MeshBasicMaterial({ color: 0xffd064 });
     const ringMat = new THREE.MeshBasicMaterial({ color: 0x88e3f4 });
-    const slots = [0.09, 0.13, 0.31, 0.39, 0.42, 0.5, 0.55, 0.62, 0.75, 0.79, 0.87, 0.94];
-    slots.forEach((progress, i) => {
-      const road = this.track.at(progress);
+    PICKUP_LAYOUT.forEach(({ route, progress, lateral }, i) => {
+      const road = this.track.routeAt(route, progress);
       const group = new THREE.Group();
       const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.65, 0), starMat);
       group.add(core);
       const ring = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.07, 4, 12), ringMat);
       group.add(ring);
-      group.position.copy(road.position).addScaledVector(road.right, (i % 3 - 1) * 2.4);
+      group.position.copy(road.position).addScaledVector(road.right, lateral);
       group.position.y += 1.6;
       this.scene.add(group);
       this.pickups.push({ mesh: group, position: group.position, baseY: group.position.y, respawn: 0, collected: false, phase: i * 1.7 });
@@ -749,7 +748,8 @@ class GenieRace {
     } else if (player.drifting) {
       this.releaseDrift(player);
     }
-    const turnRate = (1.5 - Math.min(Math.abs(player.speed) / 50, 0.5)) * (player.drifting ? 1.25 : 1) * (player.padBoostTime > 0 ? 1.7 : 1);
+    const boostHandling = player.padBoostTime > 0 ? 1.7 : player.ultimateTime > 0 ? 1.35 : 1;
+    const turnRate = (1.5 - Math.min(Math.abs(player.speed) / 50, 0.5)) * (player.drifting ? 1.25 : 1) * boostHandling;
     player.yaw -= steer * turnRate * dt * Math.min(1, Math.abs(player.speed) / 6);
     if (Math.abs(steer) < 0.12 && roadBefore.onRoad && !player.drifting && player.speed > 8) {
       const roadYaw = Math.atan2(roadBefore.point.tangent.x, roadBefore.point.tangent.z);
@@ -1124,13 +1124,16 @@ class GenieRace {
         pickup.mesh.position.y = pickup.baseY + Math.sin(this.elapsed * 3 + pickup.phase) * 0.12;
         if (this.mode === 'race') {
           for (const racer of this.racers) {
-            if (racer.position.distanceTo(pickup.mesh.position) < 2.3) {
+            if (racer.position.distanceTo(pickup.mesh.position) < 3.1) {
               pickup.collected = true;
               pickup.respawn = 10;
               pickup.mesh.visible = false;
               const upgraded = Math.random() < 0.12;
               racer.boostTime = Math.max(racer.boostTime, upgraded ? 2.4 : 0.65);
               if (upgraded) racer.shieldTime = Math.max(racer.shieldTime, 2);
+              const sparkle = racer.position.clone().add(new THREE.Vector3(0, 1.4, 0));
+              this.makePulse(racer.position, upgraded ? 0xffd778 : 0x82eaff, 0.5, upgraded ? 4.4 : 2.8);
+              this.burst(sparkle, upgraded ? 0xffd778 : 0x89eeff, 0xfff0bd, upgraded ? 20 : 10);
               if (racer.id === 0) {
                 this.showBanner(upgraded ? 'PHENOMENAL POWER · UPGRADED!' : 'WISH SPARK!', 0.9);
                 this.audio.play('pickup');

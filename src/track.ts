@@ -80,7 +80,7 @@ export function branchCoversMainEdge(branches: RoadPoint[][], position: THREE.Ve
 
 export const MARKET_BANNER_SPANS = [0.025, 0.08, 0.17, 0.235, 0.29, 0.89, 0.93, 0.97];
 export const MARKET_GATE_SPANS = [0.175, 0.91];
-export const TURN_SIGN_SPANS = [0.235, 0.305, 0.345, 0.435, 0.585, 0.625, 0.695, 0.785, 0.865, 0.905, 0.935];
+export const TURN_SIGN_SPANS = [0.235, 0.28, 0.315, 0.345, 0.435, 0.585, 0.625, 0.695, 0.785, 0.865, 0.905, 0.935];
 export const CAVE_ARCH_SPANS = [0.684, 0.721, 0.758];
 export const CAVE_ARCH_SHAPE = { pillarOutset: 8, pillarHalfWidth: 7.4, crystalOutset: 5.5, crystalRadius: 1.7, ceilingY: 16.5, ceilingHalfHeight: 4.8 };
 export const CAVE_TUNNEL_SHAPE = { wallOutset: 20, wallRadius: 14, roofCenterY: 19, roofEdgeY: 9 };
@@ -112,9 +112,25 @@ export const BOOST_PAD_LAYOUT: Array<{ route: RouteName; progress: number; boost
   { route: 'main', progress: 0.43, boostSeconds: 2.4, lateral: 10, width: 9 },
   { route: 'garden', progress: 0.487, boostSeconds: 3.1 },
   { route: 'main', progress: 0.535, boostSeconds: 3.3 },
-  { route: 'main', progress: 0.62, boostSeconds: 2.4, lateral: -10, width: 9 },
+  { route: 'main', progress: 0.645, boostSeconds: 2.4, lateral: -10, width: 9 },
   { route: 'main', progress: 0.88, boostSeconds: 2.4, lateral: 10, width: 9 },
   { route: 'main', progress: 0.975, boostSeconds: 3.3 },
+];
+export const PICKUP_LAYOUT: Array<{ route: RouteName; progress: number; lateral: number }> = [
+  { route: 'main', progress: 0.035, lateral: -9 },
+  { route: 'alley', progress: 0.105, lateral: 5.5 },
+  { route: 'main', progress: 0.13, lateral: 10 },
+  { route: 'roof', progress: 0.248, lateral: -5 },
+  { route: 'roof', progress: 0.3, lateral: -5 },
+  { route: 'main', progress: 0.39, lateral: -9 },
+  { route: 'garden', progress: 0.445, lateral: 0 },
+  { route: 'main', progress: 0.5, lateral: -9 },
+  { route: 'main', progress: 0.55, lateral: 8 },
+  { route: 'main', progress: 0.62, lateral: 9 },
+  { route: 'main', progress: 0.735, lateral: 0 },
+  { route: 'main', progress: 0.79, lateral: -9 },
+  { route: 'main', progress: 0.87, lateral: -10 },
+  { route: 'main', progress: 0.94, lateral: 0 },
 ];
 export const OBSTACLE_LAYOUT: Array<{ kind: Obstacle['kind']; route: RouteName; progress: number; lateral: number; phase?: number }> = [
   { kind: 'cart', route: 'main', progress: 0.025, lateral: 8 },
@@ -242,16 +258,19 @@ export function makeMainCurve() {
     new THREE.Vector3(-44, 0, -112),
     new THREE.Vector3(7, 0, -94),
     new THREE.Vector3(55, 0, -91),
-    new THREE.Vector3(96, 0, -65),
-    new THREE.Vector3(117, 0, -30),
+    new THREE.Vector3(88, 0, -59),
+    new THREE.Vector3(109, 0, -38),
     new THREE.Vector3(112, 0, 5),
     new THREE.Vector3(122, 0, 35),
     new THREE.Vector3(110, 0, 70),
     new THREE.Vector3(73, 0, 100),
     new THREE.Vector3(32, 0, 98),
-    new THREE.Vector3(3, 0, 56),
-    new THREE.Vector3(-19, 0, 8),
-    new THREE.Vector3(-53, 0, -6),
+    new THREE.Vector3(14, 0, 88),
+    new THREE.Vector3(5, 0, 72),
+    new THREE.Vector3(7, 0, 53),
+    new THREE.Vector3(1, 0, 36),
+    new THREE.Vector3(-8, 0, 12),
+    new THREE.Vector3(-56, 0, -1),
     new THREE.Vector3(-86, 0, 30),
     new THREE.Vector3(-115, 0, 45),
     new THREE.Vector3(-145, 0, 35),

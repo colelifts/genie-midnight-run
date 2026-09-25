@@ -1,5 +1,12 @@
 type SoundName = 'count' | 'go' | 'drift' | 'boost' | 'pad' | 'wish' | 'shield' | 'shot' | 'hit' | 'stun' | 'lap' | 'ultimate' | 'pickup' | 'cart-warning' | 'birds';
 
+const MUSIC = {
+  market: [196, 246.94, 293.66, 392, 293.66, 246.94, 220, 293.66, 174.61, 220, 261.63, 349.23, 261.63, 220, 196, 261.63],
+  roof: [196, 293.66, 392, 493.88, 392, 293.66, 261.63, 392, 220, 329.63, 440, 493.88, 440, 329.63, 293.66, 392],
+  garden: [220, 261.63, 329.63, 440, 329.63, 261.63, 293.66, 392, 246.94, 293.66, 369.99, 493.88, 369.99, 293.66, 261.63, 440],
+  cave: [174.61, 220, 261.63, 349.23, 261.63, 220, 196, 261.63, 164.81, 196, 246.94, 329.63, 246.94, 196, 174.61, 220],
+} as const;
+
 export class GameAudio {
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -94,9 +101,8 @@ export class GameAudio {
     this.skidGain?.gain.setTargetAtTime(active && drifting ? 0.055 + Math.min(speed, 40) * 0.0014 : 0, now, 0.075);
     if (!active || this.muted) return;
     if (this.nextBeat < now - 0.25) this.nextBeat = now + 0.03;
-    // Small original four-bar arpeggio; scheduled ahead so frames do not affect timing.
-    const notes = [196, 246.94, 293.66, 392, 293.66, 246.94, 220, 293.66,
-      174.61, 220, 261.63, 349.23, 261.63, 220, 196, 261.63];
+    // Short original motifs share a beat so moving between districts sounds seamless.
+    const notes = cave ? MUSIC.cave : garden ? MUSIC.garden : zone === 'ROOFTOP RUN' ? MUSIC.roof : MUSIC.market;
     while (this.nextBeat < now + 0.1) {
       const note = notes[this.beat % notes.length];
       this.tone(note, 0.075, 'triangle', this.nextBeat, 0.13);
@@ -106,6 +112,8 @@ export class GameAudio {
       }
       if (this.beat % 4 === 2) this.tone(155, 0.028, 'triangle', this.nextBeat, 0.09);
       if (garden && this.beat % 4 === 3) this.tone(note * 2, 0.025, 'sine', this.nextBeat, 0.2);
+      if (cave && this.beat % 8 === 7) this.tone(note / 2, 0.033, 'sine', this.nextBeat, 0.7);
+      if (zone === 'MIDNIGHT MARKET' && this.beat % 16 === 15) this.tone(1174.66, 0.018, 'sine', this.nextBeat, 0.31);
       if (this.hatGain) {
         this.hatGain.gain.setValueAtTime(0, this.nextBeat);
         this.hatGain.gain.linearRampToValueAtTime(cave ? 0.018 : 0.033, this.nextBeat + 0.003);

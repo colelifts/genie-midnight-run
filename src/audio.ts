@@ -1,4 +1,12 @@
-type SoundName = 'count' | 'go' | 'drift' | 'boost' | 'pad' | 'wish' | 'shield' | 'shot' | 'hit' | 'stun' | 'lap' | 'ultimate' | 'pickup' | 'cart-warning' | 'birds';
+import type { CharacterId } from './characters';
+
+type SoundName = 'count' | 'go' | 'drift' | 'boost' | 'pad' | 'wish' | 'shield' | 'shot' | 'hit' | 'stun' | 'lap' | 'final-lap' | 'ultimate' | 'trick' | 'draft' | 'pickup' | 'cart-warning' | 'birds';
+
+const ULTIMATE_STINGS: Record<CharacterId, number[]> = {
+  genie: [392, 587, 784, 1175], mickey: [523, 659, 784, 1047], stitch: [220, 659, 330, 988],
+  elsa: [659, 880, 988, 1319], moana: [294, 440, 587, 880], buzz: [392, 587, 784, 1568],
+  maleficent: [185, 277, 370, 740], hades: [165, 247, 330, 659], jack: [220, 330, 440, 659], mulan: [294, 440, 587, 1175],
+};
 
 const MUSIC = {
   market: [196, 246.94, 293.66, 392, 293.66, 246.94, 220, 293.66, 174.61, 220, 261.63, 349.23, 261.63, 220, 196, 261.63],
@@ -89,7 +97,7 @@ export class GameAudio {
     if (this.master && this.context) this.master.gain.setTargetAtTime(value ? 0 : 0.33, this.context.currentTime, 0.05);
   }
 
-  update(speed: number, drifting: boolean, ultimate: boolean, active: boolean, zone: string) {
+  update(speed: number, drifting: boolean, ultimate: boolean, active: boolean, zone: string, finalLap = false) {
     if (!this.context || !this.engineOscillator || !this.engineGain) return;
     const now = this.context.currentTime;
     this.engineOscillator.frequency.setTargetAtTime(75 + speed * (ultimate ? 5.7 : 4.1) + (drifting ? 18 : 0), now, 0.08);
@@ -120,7 +128,7 @@ export class GameAudio {
         this.hatGain.gain.exponentialRampToValueAtTime(0.0001, this.nextBeat + 0.055);
       }
       this.beat++;
-      this.nextBeat += 0.25;
+      this.nextBeat += finalLap ? 0.215 : 0.25;
     }
   }
 
@@ -139,11 +147,23 @@ export class GameAudio {
       case 'hit': this.sweep(200, 65, 0.18, now, 0.15); break;
       case 'stun': this.chime([780, 620, 495], now, 0.07, 0.17); break;
       case 'lap': this.chime([392, 523, 659, 784], now, 0.1, 0.25); break;
+      case 'final-lap': this.chime([392, 523, 784, 1047, 1319], now, 0.075, 0.24); this.kick(now + 0.02); break;
       case 'ultimate': this.chime([196, 392, 587, 784], now, 0.11, 0.4); break;
+      case 'trick': this.chime([659, 880, 1175], now, 0.055, 0.16); break;
+      case 'draft': this.sweep(380, 980, 0.3, now, 0.11); this.chime([587, 784], now + 0.08, 0.08, 0.12); break;
       case 'pickup': this.chime([630, 890], now, 0.08, 0.1); break;
       case 'cart-warning': this.chime([392, 293.66], now, 0.17, 0.24); break;
       case 'birds': this.chime([1046.5, 1318.5, 1174.7], now, 0.085, 0.11); break;
     }
+  }
+
+  playUltimate(character: CharacterId) {
+    if (!this.context || this.muted) return;
+    const now = this.context.currentTime;
+    const notes = ULTIMATE_STINGS[character];
+    const type: OscillatorType = character === 'stitch' || character === 'buzz' ? 'square' : character === 'maleficent' || character === 'hades' ? 'sawtooth' : 'triangle';
+    notes.forEach((frequency, index) => this.tone(frequency, index === notes.length - 1 ? 0.13 : 0.09, type, now + index * 0.075, index === notes.length - 1 ? 0.38 : 0.18));
+    this.kick(now + 0.02);
   }
 
   private chime(notes: number[], time: number, gap: number, length: number) {

@@ -10,6 +10,7 @@
     <div id="app">
       <canvas id="game" aria-label="3D kart racing game"></canvas>
       <div id="vignette"></div>
+      <div id="ultimate-veil" class="hidden"></div>
 
       <div id="hud" class="hidden">
         <div class="race-status">
@@ -19,6 +20,7 @@
           <div id="lap-time" class="lap-time">00:00.00 · BEST --:--.--</div>
         </div>
         <div id="banner" class="banner hidden"></div>
+        <div id="ultimate-announcement" class="ultimate-announcement hidden" aria-live="polite"></div>
         <div class="map-shell">
           <div class="map-label">AGRABAH CIRCUIT</div>
           <canvas id="minimap" width="200" height="170" aria-label="Race minimap"></canvas>
@@ -47,7 +49,7 @@
         </div>
         <div id="touch-controls" class="touch-controls hidden">
           <div class="touch-left"><button data-touch="left">◀</button><button data-touch="right">▶</button></div>
-          <div class="touch-right"><button data-touch="drift">DRIFT</button><button data-touch="wish">SIG</button><button data-touch="item">ITEM</button><button data-touch="ultimate">ULT</button><button data-touch="accel">GO</button></div>
+          <div class="touch-right"><button data-touch="drift">DRIFT</button><button data-touch="trick">TRICK</button><button data-touch="wish">SIG</button><button data-touch="item">ITEM</button><button data-touch="ultimate">ULT</button><button data-touch="accel">GO</button></div>
         </div>
       </div>
 
@@ -66,6 +68,7 @@
           <div class="card-heading">CONTROLS</div>
           <div><span>Drive</span><strong>W A S D / ARROWS</strong></div>
           <div><span>Drift boost</span><strong>HOLD SPACE + STEER · RELEASE</strong></div>
+          <div><span>Air trick</span><strong>F OVER BOOST CARPETS</strong></div>
           <div><span>Signature power</span><strong>E · HOLD FOR GENIE</strong></div>
           <div><span>Random wish item</span><strong>R</strong></div>
           <div><span>Ultimate</span><strong>Q WHEN CHARGED</strong></div>

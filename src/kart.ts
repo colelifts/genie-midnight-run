@@ -505,6 +505,8 @@ export class KartVisual {
     this.body.rotation.z += (lean - this.body.rotation.z) * Math.min(1, dt * 7);
     this.body.position.y = 0.03 + Math.sin(this.elapsed * (3.5 + speed * 0.11)) * (speed > 1 ? 0.035 : 0.015);
     this.driver.rotation.y = Math.sin(this.elapsed * 1.5) * 0.03 + steer * 0.06;
+    this.driver.rotation.z += ((stunned ? Math.sin(this.elapsed * 13) * 0.2 : -steer * (drifting ? 0.12 : 0.05)) - this.driver.rotation.z) * Math.min(1, dt * 8);
+    this.driver.rotation.x += ((boosting ? -0.09 : 0.02) - this.driver.rotation.x) * Math.min(1, dt * 6);
     this.ghost.position.y = Math.sin(this.elapsed * 3.2) * 0.13;
     this.ghost.rotation.y = Math.sin(this.elapsed * 0.85) * 0.045;
     this.ultimateRings[0].scale.setScalar(1 + Math.sin(this.elapsed * 7) * 0.025);

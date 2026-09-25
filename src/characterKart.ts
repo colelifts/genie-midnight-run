@@ -208,6 +208,83 @@ function kartDecorations(id: CharacterId, body: THREE.Group, primary: THREE.Mate
   }
 }
 
+function ultimateApparition(id: CharacterId) {
+  const group = new THREE.Group();
+  const model = CHARACTER_BY_ID[id];
+  const spirit = glow(model.accent, 0.56);
+  const highlight = glow(0xf1ffff, 0.8);
+  if (id === 'mickey' || id === 'stitch') {
+    const character = figure(id);
+    character.scale.setScalar(id === 'stitch' ? 1.14 : 1.02);
+    character.traverse((object) => {
+      if (object instanceof THREE.Mesh) { object.material = spirit; object.castShadow = false; }
+    });
+    group.add(character);
+  } else if (id === 'mulan' || id === 'maleficent') {
+    const dragonPath = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0, 0, -0.7), new THREE.Vector3(-0.55, 0.8, -0.5),
+      new THREE.Vector3(0.38, 1.7, -0.3), new THREE.Vector3(0.15, 2.65, 0.15),
+    ]);
+    add(group, new THREE.TubeGeometry(dragonPath, 22, 0.42, 9, false), spirit);
+    const head = ball(group, 0.73, spirit, 0.15, 2.65, 0.24);
+    head.scale.set(1.08, 0.73, 0.94);
+    const snout = cone(group, 0.45, 1.22, spirit, 0.15, 2.55, 1.05, 9);
+    snout.rotation.x = Math.PI / 2;
+    for (const side of [-1, 1]) {
+      const horn = cone(group, 0.16, 0.88, highlight, 0.15 + side * 0.47, 3.28, -0.06, 8);
+      horn.rotation.z = side * -0.28;
+      ball(group, 0.13, highlight, 0.15 + side * 0.47, 2.8, 0.7);
+      const wingShape = new THREE.Shape();
+      wingShape.moveTo(0, 0); wingShape.lineTo(side * 2.45, 1.3); wingShape.lineTo(side * 1.8, -0.32); wingShape.lineTo(side * 0.35, -0.4); wingShape.closePath();
+      const wing = add(group, new THREE.ShapeGeometry(wingShape), spirit, 0.15, 1.55, -0.43);
+      wing.rotation.y = side * 0.24;
+    }
+    if (id === 'maleficent') {
+      for (let n = 0; n < 3; n++) cone(group, 0.23, 0.7, spirit, (n - 1) * 0.46, 0.65, -0.8 - n * 0.16);
+    }
+  } else if (id === 'elsa') {
+    ball(group, 0.64, highlight, 0, 1.7, 0);
+    for (let n = 0; n < 8; n++) {
+      const angle = n * Math.PI / 4;
+      const from = new THREE.Vector3(Math.cos(angle) * 0.47, 1.7 + Math.sin(angle) * 0.47, 0);
+      const to = new THREE.Vector3(Math.cos(angle) * 2.05, 1.7 + Math.sin(angle) * 2.05, 0);
+      branch(group, from, to, 0.12, spirit);
+      const shard = cone(group, 0.32, 0.9, highlight, to.x, to.y, 0, 5);
+      shard.rotation.z = -angle - Math.PI / 2;
+    }
+  } else if (id === 'moana') {
+    const wave = add(group, new THREE.TorusGeometry(2.15, 0.43, 9, 40, Math.PI * 1.65), spirit, 0, 1.35, 0);
+    wave.rotation.z = Math.PI * 0.18;
+    for (let n = 0; n < 5; n++) ball(group, 0.24 + n * 0.04, highlight, -1.5 + n * 0.69, 2.63 + Math.sin(n) * 0.22, 0.15);
+  } else if (id === 'buzz') {
+    ball(group, 0.63, spirit, 0, 1.7, 0).scale.set(0.75, 1.4, 0.7);
+    for (const side of [-1, 1]) {
+      const wingShape = new THREE.Shape();
+      wingShape.moveTo(0, 0); wingShape.lineTo(side * 2.65, 1.55); wingShape.lineTo(side * 1.85, -0.4); wingShape.closePath();
+      add(group, new THREE.ShapeGeometry(wingShape), spirit, 0, 1.2, 0);
+      cone(group, 0.35, 1.7, highlight, side * 0.55, -0.1, -0.3).rotation.x = Math.PI;
+    }
+  } else if (id === 'hades') {
+    for (let n = 0; n < 7; n++) {
+      const angle = n * Math.PI * 2 / 7;
+      const flame = cone(group, 0.52, 2.4 + (n % 3) * 0.45, n % 2 ? spirit : highlight, Math.sin(angle) * 0.85, 1.25, Math.cos(angle) * 0.65);
+      flame.rotation.z = Math.sin(angle) * -0.2;
+    }
+  } else if (id === 'jack') {
+    branch(group, new THREE.Vector3(0, 0, -0.1), new THREE.Vector3(0, 3.3, -0.1), 0.14, spirit);
+    for (const side of [-1, 1]) {
+      const sailShape = new THREE.Shape();
+      sailShape.moveTo(0, 0); sailShape.lineTo(side * 1.8, 0.25); sailShape.lineTo(0, 1.9); sailShape.closePath();
+      add(group, new THREE.ShapeGeometry(sailShape), side === 1 ? spirit : highlight, 0, side === 1 ? 1.15 : 0.85, 0);
+    }
+    const prow = cone(group, 0.46, 1.2, spirit, 0, 0.25, 0.65);
+    prow.rotation.x = Math.PI / 2;
+  }
+  group.position.set(0, 2.5, -0.3);
+  group.traverse((object) => { if (object instanceof THREE.Mesh) object.castShadow = false; });
+  return group;
+}
+
 export interface RaceVisual {
   readonly group: THREE.Group;
   readonly driver: THREE.Group;
@@ -226,6 +303,7 @@ export class CharacterKartVisual implements RaceVisual {
   private readonly flames: THREE.Mesh[] = [];
   private readonly shield: THREE.Mesh;
   private readonly aura = new THREE.Group();
+  private readonly ultimateLight: THREE.PointLight;
   private readonly stunHalo = new THREE.Group();
   private readonly contactShadow: THREE.Mesh;
   private elapsed = 0;
@@ -281,26 +359,15 @@ export class CharacterKartVisual implements RaceVisual {
     this.shield = add(this.group, new THREE.SphereGeometry(2.76, 28, 18), new THREE.MeshPhongMaterial({ color: model.accent, emissive: model.color, emissiveIntensity: 0.3, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide, shininess: 90 }), 0, 2.3, 0);
     this.shield.castShadow = false;
     this.shield.visible = false;
-    const apparition = figure(id);
-    apparition.scale.setScalar(id === 'maleficent' || id === 'mulan' ? 1.75 : 1.45);
-    apparition.position.set(0, 3.8, 0.1);
-    apparition.traverse((object) => {
-      if (object instanceof THREE.Mesh) {
-        object.material = glow(model.accent, 0.42);
-        object.castShadow = false;
-      }
-    });
+    const apparition = ultimateApparition(id);
     this.aura.add(apparition);
     for (let i = 0; i < 2; i++) {
       const ring = add(this.aura, new THREE.TorusGeometry(3.2 + i * 0.4, 0.08, 8, 48), glow(i ? model.color : model.accent, 0.75), 0, 0.36 + i * 0.1, 0);
       ring.rotation.x = Math.PI / 2;
     }
-    if (id === 'maleficent' || id === 'mulan' || id === 'moana' || id === 'buzz') {
-      for (const side of [-1, 1]) {
-        const wing = cone(this.aura, 0.64, id === 'moana' ? 3.4 : 4.4, glow(model.accent, 0.33), side * 2.25, 5.2, -0.1);
-        wing.rotation.z = side * 1.05;
-      }
-    }
+    this.ultimateLight = new THREE.PointLight(model.accent, 0, 14, 2);
+    this.ultimateLight.position.set(0, 2.1, 0);
+    this.aura.add(this.ultimateLight);
     this.aura.visible = false;
     this.group.add(this.aura);
     for (let i = 0; i < 4; i++) {
@@ -313,9 +380,14 @@ export class CharacterKartVisual implements RaceVisual {
   }
 
   setShield(active: boolean) { this.shield.visible = active; }
-  setUltimate(active: boolean) { this.aura.visible = active; }
+  setUltimate(active: boolean) { this.aura.visible = active; this.ultimateLight.intensity = active ? 2.2 : 0; }
   setStunned(active: boolean) { this.stunHalo.visible = active; }
-  setGroundOffset(offset: number) { this.contactShadow.position.y = offset + 0.08; }
+  setGroundOffset(offset: number) {
+    const jump = Math.max(0, -offset);
+    this.contactShadow.position.y = offset + 0.08;
+    this.contactShadow.scale.setScalar(1 + Math.min(1, jump / 6) * 0.33);
+    (this.contactShadow.material as THREE.MeshBasicMaterial).opacity = 0.3 * Math.max(0.22, 1 - jump / 8);
+  }
   update(dt: number, speed: number, steer: number, drifting: boolean, boosting: boolean, stunned: boolean) {
     this.elapsed += dt;
     for (const wheel of this.wheels) wheel.rotation.x += speed * dt / 0.7;
@@ -323,6 +395,9 @@ export class CharacterKartVisual implements RaceVisual {
     this.body.rotation.z += (lean - this.body.rotation.z) * Math.min(1, dt * 7);
     this.body.position.y = Math.sin(this.elapsed * (3.4 + speed * 0.1)) * (speed > 1 ? 0.045 : 0.016);
     this.driver.rotation.y = steer * 0.06 + Math.sin(this.elapsed * 1.5) * 0.025;
+    this.driver.rotation.z += ((stunned ? Math.sin(this.elapsed * 13) * 0.2 : -steer * (drifting ? 0.13 : 0.055)) - this.driver.rotation.z) * Math.min(1, dt * 8);
+    this.driver.rotation.x += ((boosting ? -0.1 : 0.025) - this.driver.rotation.x) * Math.min(1, dt * 6);
+    this.driver.position.y = 1.75 + Math.sin(this.elapsed * (4 + speed * 0.09)) * (speed > 1 ? 0.025 : 0.012);
     this.aura.position.y = Math.sin(this.elapsed * 3) * 0.13;
     this.aura.rotation.y = Math.sin(this.elapsed * 0.8) * 0.07;
     this.stunHalo.rotation.y += dt * 4;

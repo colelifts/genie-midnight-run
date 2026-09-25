@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 
-const blueSkin = new THREE.MeshStandardMaterial({ color: 0x398ee8, roughness: 0.64, metalness: 0.06, flatShading: true });
-const lightBlue = new THREE.MeshStandardMaterial({ color: 0x72b8fa, roughness: 0.62, flatShading: true });
+const blueSkin = new THREE.MeshStandardMaterial({ color: 0x367edc, roughness: 0.62, metalness: 0.04, flatShading: true });
+const lightBlue = new THREE.MeshStandardMaterial({ color: 0x63a9f2, roughness: 0.6, flatShading: true });
 const darkHair = new THREE.MeshStandardMaterial({ color: 0x17243e, roughness: 0.74, flatShading: true });
 const eyeWhite = new THREE.MeshBasicMaterial({ color: 0xfff9eb });
 const pupil = new THREE.MeshBasicMaterial({ color: 0x101a38 });
 const smile = new THREE.MeshBasicMaterial({ color: 0x24233e });
-const gold = new THREE.MeshStandardMaterial({ color: 0xf2af38, metalness: 0.58, roughness: 0.3 });
+const gold = new THREE.MeshStandardMaterial({ color: 0xffbb48, metalness: 0.38, roughness: 0.34, emissive: 0x6a3908, emissiveIntensity: 0.2 });
 const goldLight = new THREE.MeshStandardMaterial({ color: 0xffd977, metalness: 0.46, roughness: 0.29 });
 const tire = new THREE.MeshStandardMaterial({ color: 0x25273a, roughness: 0.94 });
 const purple = new THREE.MeshStandardMaterial({ color: 0x70448f, roughness: 0.64 });
@@ -100,15 +100,12 @@ function taperedTube(curve: THREE.CatmullRomCurve3, count: number, firstRadius: 
 
 function createGenieFigure(ultimatePose = false): THREE.Group {
   const figure = new THREE.Group();
-  const outline = new THREE.Shape();
-  outline.moveTo(-0.58, 0);
-  outline.lineTo(0.58, 0);
-  outline.lineTo(0.96, 1.06);
-  outline.lineTo(0.77, 1.42);
-  outline.lineTo(-0.77, 1.42);
-  outline.lineTo(-0.96, 1.06);
-  outline.closePath();
-  const torso = mesh(new THREE.ExtrudeGeometry(outline, { depth: 0.77, bevelEnabled: true, bevelThickness: 0.1, bevelSize: 0.12, bevelSegments: 2, steps: 1 }), blueSkin, 0, 0.57, -0.58);
+  const torsoProfile = [
+    [0.43, 0], [0.58, 0.17], [0.72, 0.42], [0.88, 0.78],
+    [0.91, 1.06], [0.76, 1.31], [0.42, 1.47],
+  ].map(([radius, height]) => new THREE.Vector2(radius, height));
+  const torso = mesh(new THREE.LatheGeometry(torsoProfile, 18), blueSkin, 0, 0.54, -0.14);
+  torso.scale.z = 0.69;
   figure.add(torso);
   const sash = mesh(new THREE.CylinderGeometry(0.58, 0.55, 0.22, 12), purple, 0, 0.67, -0.16);
   sash.scale.z = 0.87;
@@ -192,6 +189,34 @@ function createGenieFigure(ultimatePose = false): THREE.Group {
   return figure;
 }
 
+function createRivalFigure(color: number): THREE.Group {
+  const figure = new THREE.Group();
+  const outfit = new THREE.MeshStandardMaterial({ color, roughness: 0.68, flatShading: true });
+  const helmet = new THREE.MeshStandardMaterial({ color: new THREE.Color(color).multiplyScalar(0.76), roughness: 0.48, flatShading: true });
+  const glove = new THREE.MeshStandardMaterial({ color: 0x293147, roughness: 0.85 });
+  const torso = sphere(0.8, outfit, 0, 1.18, -0.11, 12);
+  torso.scale.set(1, 0.99, 0.7);
+  figure.add(torso);
+  const collar = mesh(new THREE.CylinderGeometry(0.38, 0.46, 0.18, 12), helmet, 0, 1.82, -0.08);
+  figure.add(collar);
+  const head = sphere(0.62, helmet, 0, 2.46, -0.04, 14);
+  head.scale.set(0.98, 0.87, 1.02);
+  figure.add(head);
+  const visor = mesh(new THREE.BoxGeometry(1.02, 0.16, 0.5), helmet, 0, 2.44, 0.42);
+  visor.rotation.x = -0.08;
+  figure.add(visor);
+  for (const side of [-1, 1]) {
+    const shoulder = new THREE.Vector3(side * 0.72, 1.48, -0.05);
+    const elbow = new THREE.Vector3(side * 1.03, 1.04, 0.33);
+    const wrist = new THREE.Vector3(side * 0.83, 0.78, 0.8);
+    figure.add(sphere(0.29, outfit, shoulder.x, shoulder.y, shoulder.z, 10));
+    figure.add(limb(shoulder, elbow, 0.26, 0.3, outfit));
+    figure.add(limb(elbow, wrist, 0.26, 0.22, outfit));
+    figure.add(sphere(0.23, glove, wrist.x, wrist.y, wrist.z, 9));
+  }
+  return figure;
+}
+
 function makeBird(): THREE.Group {
   const bird = new THREE.Group();
   const wingMat = new THREE.MeshBasicMaterial({ color: 0xfef3d6, side: THREE.DoubleSide });
@@ -226,13 +251,15 @@ export class KartVisual {
   constructor(accent: 'gold' | 'cyan' | 'violet' = 'gold') {
     const trim = accent === 'cyan' ? new THREE.MeshStandardMaterial({ color: 0x67dce6, metalness: 0.25, roughness: 0.45 })
       : accent === 'violet' ? new THREE.MeshStandardMaterial({ color: 0xc29cf3, metalness: 0.2, roughness: 0.5 }) : goldLight;
+    const lampPaint = accent === 'cyan' ? new THREE.MeshStandardMaterial({ color: 0x327460, metalness: 0.37, roughness: 0.47 })
+      : accent === 'violet' ? new THREE.MeshStandardMaterial({ color: 0x9a3f56, metalness: 0.36, roughness: 0.46 }) : gold;
     const chassis = mesh(new THREE.BoxGeometry(2.45, 0.34, 3.25), tire, 0, 0.72, -0.06);
     this.body.add(chassis);
     const lampProfile = [
       [0.04, 0.74], [0.75, 0.75], [1.18, 0.87], [1.42, 1.12],
       [1.45, 1.34], [1.3, 1.52], [1.03, 1.64], [0.83, 1.74], [0.82, 1.83],
     ].map(([radius, height]) => new THREE.Vector2(radius, height));
-    const lampBody = mesh(new THREE.LatheGeometry(lampProfile, 32), gold, 0, 0, -0.1);
+    const lampBody = mesh(new THREE.LatheGeometry(lampProfile, 32), lampPaint, 0, 0, -0.1);
     lampBody.scale.z = 1.23;
     this.body.add(lampBody);
     const innerBowl = mesh(new THREE.CylinderGeometry(0.78, 0.93, 0.18, 22), innerLamp, 0, 1.72, -0.16);
@@ -253,7 +280,7 @@ export class KartVisual {
       new THREE.Vector3(2.48, 1.55, 1.87),
       new THREE.Vector3(2.68, 1.72, 1.95),
     ]);
-    const spout = taperedTube(spoutCurve, 28, 0.4, 0.2, gold);
+    const spout = taperedTube(spoutCurve, 28, 0.4, 0.2, lampPaint);
     this.body.add(spout);
     const tip = mesh(new THREE.TorusGeometry(0.33, 0.105, 10, 20), goldLight, 2.72, 1.73, 1.98);
     tip.rotation.y = Math.PI / 2;
@@ -262,7 +289,7 @@ export class KartVisual {
     const spoutOpening = mesh(new THREE.CircleGeometry(0.27, 16), innerLamp, 2.76, 1.73, 1.98);
     spoutOpening.rotation.y = Math.PI / 2;
     this.body.add(spoutOpening);
-    const handle = mesh(new THREE.TorusGeometry(0.76, 0.22, 10, 22), gold, -0.96, 1.45, -1.47);
+    const handle = mesh(new THREE.TorusGeometry(0.76, 0.22, 10, 22), lampPaint, -0.96, 1.45, -1.47);
     handle.rotation.y = Math.PI / 2;
     this.body.add(handle);
     const seat = mesh(new THREE.BoxGeometry(1.49, 0.2, 1.24), purple, 0, 1.88, -0.42);
@@ -300,7 +327,7 @@ export class KartVisual {
     if (accent === 'gold') lantern.add(new THREE.PointLight(0xffb450, 2.2, 7, 2));
     this.body.add(lantern);
 
-    this.driver = createGenieFigure();
+    this.driver = accent === 'gold' ? createGenieFigure() : createRivalFigure(accent === 'cyan' ? 0x4caa47 : 0xc3494f);
     this.driver.position.set(0, 1.77, -0.53);
     this.driver.scale.setScalar(0.83);
     this.body.add(this.driver);
@@ -330,6 +357,10 @@ export class KartVisual {
         }
         this.wheels.push(wheelGroup);
         this.group.add(wheelGroup);
+        const wheelGlow = mesh(new THREE.PlaneGeometry(2.2, 2.35), new THREE.MeshBasicMaterial({ map: radialTexture, color: 0x19dff8, transparent: true, opacity: 0.48, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }), x, 0.105, z);
+        wheelGlow.rotation.x = -Math.PI / 2;
+        wheelGlow.castShadow = false;
+        this.group.add(wheelGlow);
       }
     }
     for (const x of [-0.7, 0.7]) {
@@ -337,7 +368,7 @@ export class KartVisual {
       exhaust.scale.set(0.7, 0.7, 1.1);
       this.exhaust.push(exhaust);
       this.body.add(exhaust);
-      const flame = mesh(new THREE.ConeGeometry(0.27, 1.45, 10), new THREE.MeshBasicMaterial({ color: 0x54eeff, transparent: true, opacity: 0.77, blending: THREE.AdditiveBlending, depthWrite: false }), x, 0.94, -2.68);
+      const flame = mesh(new THREE.ConeGeometry(0.27, 1.45, 10), new THREE.MeshBasicMaterial({ color: 0x208aff, transparent: true, opacity: 0.65, blending: THREE.AdditiveBlending, depthWrite: false }), x, 0.94, -2.68);
       flame.rotation.x = -Math.PI / 2;
       flame.visible = false;
       this.boostFlames.push(flame);
@@ -377,14 +408,14 @@ export class KartVisual {
 
     this.shield = new THREE.Group();
     const shieldGeometry = new THREE.IcosahedronGeometry(2.68, 1);
-    const bubble = mesh(shieldGeometry, new THREE.MeshPhongMaterial({ color: 0x45c9f3, emissive: 0x117d9d, emissiveIntensity: 0.32, transparent: true, opacity: 0.27, depthWrite: false, side: THREE.DoubleSide, flatShading: true, shininess: 92 }), 0, 2.3, 0);
+    const bubble = mesh(shieldGeometry, new THREE.MeshPhongMaterial({ color: 0x45c9f3, emissive: 0x117d9d, emissiveIntensity: 0.32, transparent: true, opacity: 0.33, depthWrite: false, side: THREE.DoubleSide, flatShading: true, shininess: 92 }), 0, 2.3, 0);
     this.shield.add(bubble);
-    const seams = new THREE.LineSegments(new THREE.EdgesGeometry(shieldGeometry, 9), new THREE.LineBasicMaterial({ color: 0x9ceeff, transparent: true, opacity: 0.23, depthWrite: false }));
+    const seams = new THREE.LineSegments(new THREE.EdgesGeometry(shieldGeometry, 9), new THREE.LineBasicMaterial({ color: 0x9ceeff, transparent: true, opacity: 0.11, depthWrite: false }));
     seams.position.y = 2.3;
     this.shield.add(seams);
     const rim = new THREE.Mesh(new THREE.SphereGeometry(2.74, 28, 18), new THREE.ShaderMaterial({
       vertexShader: 'varying vec3 vNormal; void main() { vNormal = normalize(normalMatrix * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-      fragmentShader: 'varying vec3 vNormal; void main() { float edge = pow(1.0 - abs(dot(normalize(vNormal), vec3(0.0, 0.0, 1.0))), 2.5); gl_FragColor = vec4(0.26, 0.88, 1.0, edge * 0.62); }',
+      fragmentShader: 'varying vec3 vNormal; void main() { float edge = pow(1.0 - abs(dot(normalize(vNormal), vec3(0.0, 0.0, 1.0))), 2.3); gl_FragColor = vec4(0.26, 0.88, 1.0, edge * 0.78); }',
       transparent: true,
       depthWrite: false,
       side: THREE.DoubleSide,
@@ -396,14 +427,24 @@ export class KartVisual {
 
     this.ghost = new THREE.Group();
     const apparition = createGenieFigure(true);
+    const ghostMeshes: THREE.Mesh[] = [];
     apparition.traverse((object) => {
       if (object instanceof THREE.Mesh) {
+        ghostMeshes.push(object);
         const isHair = object.material === darkHair;
         const isGold = object.material === goldLight || object.material === gold;
         object.material = new THREE.MeshBasicMaterial({ color: isHair ? 0x284b80 : isGold ? 0xffd17a : 0x2b80e3, transparent: true, opacity: isHair ? 0.8 : isGold ? 0.62 : 0.68, depthWrite: true, side: THREE.FrontSide, toneMapped: false });
         object.castShadow = false;
       }
     });
+    for (const object of ghostMeshes) {
+      const contour = new THREE.Mesh(object.geometry, new THREE.MeshBasicMaterial({ color: 0x67cbff, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, side: THREE.BackSide, depthWrite: false, toneMapped: false }));
+      contour.position.copy(object.position);
+      contour.rotation.copy(object.rotation);
+      contour.scale.copy(object.scale).multiplyScalar(1.055);
+      contour.renderOrder = 1;
+      apparition.add(contour);
+    }
     apparition.scale.setScalar(2.4);
     apparition.position.set(2.7, 0.8, 1.5);
     this.ghost.add(apparition);
@@ -472,16 +513,16 @@ export class KartVisual {
 
 export function makeProjectile(): THREE.Group {
   const group = new THREE.Group();
-  const core = mesh(new THREE.IcosahedronGeometry(0.58, 1), new THREE.MeshBasicMaterial({ color: 0xe72d48, toneMapped: false }));
+  const core = mesh(new THREE.IcosahedronGeometry(0.72, 1), new THREE.MeshBasicMaterial({ color: 0xe72d48, toneMapped: false }));
   group.add(core);
-  const shell = mesh(new THREE.IcosahedronGeometry(0.69, 1), new THREE.MeshBasicMaterial({ color: 0xff6756, transparent: true, opacity: 0.26, depthWrite: false, toneMapped: false }));
+  const shell = mesh(new THREE.IcosahedronGeometry(0.88, 1), new THREE.MeshBasicMaterial({ color: 0xff6756, transparent: true, opacity: 0.26, depthWrite: false, toneMapped: false }));
   group.add(shell);
-  const glowRing = mesh(new THREE.TorusGeometry(0.7, 0.075, 8, 20), new THREE.MeshBasicMaterial({ color: 0xffbc58, transparent: true, opacity: 0.84, toneMapped: false }));
+  const glowRing = mesh(new THREE.TorusGeometry(0.93, 0.09, 8, 20), new THREE.MeshBasicMaterial({ color: 0xffbc58, transparent: true, opacity: 0.84, toneMapped: false }));
   group.add(glowRing);
-  const tail = mesh(new THREE.ConeGeometry(0.33, 2.55, 10), new THREE.MeshBasicMaterial({ color: 0xff5c4a, transparent: true, opacity: 0.52, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }), 0, 0, -1.57);
+  const tail = mesh(new THREE.ConeGeometry(0.42, 3.4, 10), new THREE.MeshBasicMaterial({ color: 0xff5c4a, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }), 0, 0, -2.08);
   tail.rotation.x = -Math.PI / 2;
   group.add(tail);
-  const halo = glowSprite(0xff5147, 3.1, 0.54);
+  const halo = glowSprite(0xff5147, 4.2, 0.58);
   group.add(halo);
   return group;
 }

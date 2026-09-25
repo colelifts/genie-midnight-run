@@ -527,22 +527,25 @@ class GenieRace {
     if (racer.stunTime > 0) return;
     if (wish === 'boost') {
       racer.boostTime = Math.max(racer.boostTime, 1.8);
-      this.makePulse(racer.position, 0xffcc68, 0.43, 0.85);
+      const ignition = racer.position.clone().add(new THREE.Vector3(0, 0.7, 0));
+      this.burst(ignition, 0x55dfff, 0xffd56c, 18);
       if (racer.id === 0) this.showBanner('WISH: BOOST', 0.9);
       this.audio.play('boost');
     } else if (wish === 'shield') {
       racer.shieldTime = Math.max(racer.shieldTime, 4);
-      this.makePulse(racer.position, 0x4ee1ff, 0.43, 0.85);
+      this.burst(racer.position.clone().add(new THREE.Vector3(0, 2.3, 0)), 0x71e7ff, 0xc9f6ff, 14);
       if (racer.id === 0) this.showBanner('WISH: SHIELD', 0.9);
       this.audio.play('shield');
     } else {
       const mesh = makeProjectile();
       const direction = new THREE.Vector3(Math.sin(racer.yaw), 0, Math.cos(racer.yaw));
-      mesh.position.copy(racer.position).addScaledVector(direction, 3.5);
-      mesh.position.y += 1.3;
+      mesh.position.copy(racer.position).addScaledVector(direction, 3.6);
+      mesh.position.y += 2.1;
       mesh.rotation.y = racer.yaw;
+      this.makeFlash(mesh.position, 0xff7561, 4.8, 0.4);
+      this.burst(mesh.position, 0xffbd66, 0xff4d5b, 16);
       this.scene.add(mesh);
-      this.projectiles.push({ owner: racer.id, mesh, velocity: direction.multiplyScalar(50), life: 3 });
+      this.projectiles.push({ owner: racer.id, mesh, velocity: direction.multiplyScalar(44), life: 3 });
       if (racer.id === 0) this.showBanner('WISH: STAR SHOT', 0.9);
       this.audio.play('shot');
     }
@@ -556,7 +559,7 @@ class GenieRace {
     if (racer.speed > 5) racer.speed = Math.max(racer.speed, 34);
     racer.ultimateHit.clear();
     racer.visual.setUltimate(true);
-    if (racer.id === 0) this.showBanner('COSMIC SHOWSTOPPER!', 1.4);
+    if (racer.id === 0) this.showBanner('COSMIC SHOWSTOPPER!', 0.7);
     this.audio.play('ultimate');
   }
 

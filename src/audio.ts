@@ -16,6 +16,8 @@ const ASSETS = {
 const AUDIO_REVISION = '6';
 type AssetName = keyof typeof ASSETS;
 type Loop = { source: AudioBufferSourceNode; gain: GainNode };
+type RivalEngine = { id: number; position: { x: number; y: number; z: number }; speed: number };
+type RivalVoice = { id: number; source: AudioBufferSourceNode; gain: GainNode; filter: BiquadFilterNode; pan: StereoPannerNode };
 const level = (key: string, fallback: number) => {
   try {
     const raw = localStorage.getItem(key);
@@ -38,11 +40,14 @@ export class GameAudio {
   private readonly downloads = new Map<AssetName, Promise<ArrayBuffer | null>>();
   private readonly buffers = new Map<AssetName, AudioBuffer>();
   private readonly loops = new Map<AssetName, Loop>();
+  private readonly rivalVoices: RivalVoice[] = [];
+  private rivalsAudible = 0;
   private paused = false;
   private duckUntil = 0;
   private musicLevel = level('genie-midnight-music', 0.8);
   private effectsLevel = level('genie-midnight-effects', 0.9);
   private listenerX = 0;
+  private listenerY = 0;
   private listenerZ = 0;
   private listenerYaw = 0;
   private eventScale = 1;
@@ -132,6 +137,7 @@ export class GameAudio {
         const buffer = await context.decodeAudioData(raw);
         this.buffers.set(name, buffer);
         if (name === 'menu' || name === 'race' || name === 'engine' || name === 'skid' || name === 'boostLoop') this.startLoop(name);
+        if (name === 'engine') this.startRivalVoices(buffer);
       } catch (error) { console.warn(`Could not decode ${ASSETS[name]}`, error); }
     }));
   }
@@ -150,6 +156,26 @@ export class GameAudio {
     if (name === 'engine') source.playbackRate.value = 0.48;
     source.start();
     this.loops.set(name, { source, gain });
+  }
+
+  private startRivalVoices(buffer: AudioBuffer) {
+    const context = this.context;
+    if (!context || !this.motorBus || this.rivalVoices.length) return;
+    for (let i = 0; i < 3; i++) {
+      const source = context.createBufferSource();
+      const filter = context.createBiquadFilter();
+      const gain = context.createGain();
+      const pan = context.createStereoPanner();
+      source.buffer = buffer;
+      source.loop = true;
+      source.playbackRate.value = 0.7;
+      filter.type = 'lowpass';
+      filter.frequency.value = 900;
+      gain.gain.value = 0;
+      source.connect(filter).connect(gain).connect(pan).connect(this.motorBus);
+      source.start(context.currentTime, (i * 0.91) % buffer.duration);
+      this.rivalVoices.push({ id: -1, source, gain, filter, pan });
+    }
   }
 
   setMuted(value: boolean) {
@@ -181,6 +207,8 @@ export class GameAudio {
     this.loops.get('engine')?.gain.gain.setTargetAtTime(value ? 0 : 0.2, now, 0.08);
     this.loops.get('skid')?.gain.gain.setTargetAtTime(0, now, 0.06);
     this.loops.get('boostLoop')?.gain.gain.setTargetAtTime(0, now, 0.06);
+    for (const voice of this.rivalVoices) voice.gain.gain.setTargetAtTime(0, now, 0.06);
+    if (value) this.rivalsAudible = 0;
     if (value) this.boostAudible = false;
   }
 
@@ -191,16 +219,61 @@ export class GameAudio {
       samplesExpected: Object.keys(ASSETS).length,
       loops: [...this.loops.keys()],
       boostActive: this.boostAudible,
+      rivalVoices: this.rivalVoices.length,
+      rivalsAudible: this.rivalsAudible,
       muted: this.muted,
       musicLevel: this.musicLevel,
       effectsLevel: this.effectsLevel,
     };
   }
 
-  setListener(x: number, z: number, yaw: number) {
+  setListener(x: number, y: number, z: number, yaw: number) {
     this.listenerX = x;
+    this.listenerY = y;
     this.listenerZ = z;
     this.listenerYaw = yaw;
+  }
+
+  updateRivals(racers: readonly RivalEngine[], active: boolean) {
+    const context = this.context;
+    if (!context || !this.rivalVoices.length) return;
+    const now = context.currentTime;
+    const nearby = active && !this.paused ? racers.filter((racer) => {
+      if (racer.id === 0 || Math.abs(racer.position.y - this.listenerY) > 5) return false;
+      return Math.hypot(racer.position.x - this.listenerX, racer.position.z - this.listenerZ) < 48;
+    }).sort((a, b) => {
+      const adx = a.position.x - this.listenerX;
+      const adz = a.position.z - this.listenerZ;
+      const bdx = b.position.x - this.listenerX;
+      const bdz = b.position.z - this.listenerZ;
+      return adx * adx + adz * adz - bdx * bdx - bdz * bdz;
+    }).slice(0, this.rivalVoices.length) : [];
+    const chosen = new Set(nearby.map((racer) => racer.id));
+    for (const voice of this.rivalVoices) {
+      if (!chosen.has(voice.id)) voice.id = -1;
+    }
+    for (const racer of nearby) {
+      if (this.rivalVoices.some((voice) => voice.id === racer.id)) continue;
+      const free = this.rivalVoices.find((voice) => voice.id === -1);
+      if (free) free.id = racer.id;
+    }
+    for (const voice of this.rivalVoices) {
+      const racer = nearby.find((entry) => entry.id === voice.id);
+      if (!racer) {
+        voice.gain.gain.setTargetAtTime(0, now, 0.1);
+        continue;
+      }
+      const dx = racer.position.x - this.listenerX;
+      const dz = racer.position.z - this.listenerZ;
+      const distance = Math.hypot(dx, dz);
+      const proximity = Math.max(0, 1 - distance / 48);
+      const side = dx * Math.cos(this.listenerYaw) - dz * Math.sin(this.listenerYaw);
+      voice.source.playbackRate.setTargetAtTime(0.52 + Math.min(racer.speed, 70) * 0.0095, now, 0.2);
+      voice.filter.frequency.setTargetAtTime(850 + proximity * 2450, now, 0.2);
+      voice.pan.pan.setTargetAtTime(Math.max(-0.9, Math.min(0.9, side / Math.max(9, distance * 0.75))), now, 0.13);
+      voice.gain.gain.setTargetAtTime(0.115 * proximity * proximity * Math.min(1, racer.speed / 20), now, 0.13);
+    }
+    this.rivalsAudible = nearby.length;
   }
 
   playAt(name: SoundName, position: { x: number; z: number }) {

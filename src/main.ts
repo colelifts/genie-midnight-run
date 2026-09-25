@@ -1485,6 +1485,7 @@ class GenieRace {
     hud.dataset.audioSamples = `${audioStatus.samplesLoaded}/${audioStatus.samplesExpected}`;
     hud.dataset.audioLoops = audioStatus.loops.join(',');
     hud.dataset.audioBoost = String(audioStatus.boostActive);
+    hud.dataset.audioRivals = `${audioStatus.rivalsAudible}/${audioStatus.rivalVoices}`;
     hud.dataset.audioMix = `${Math.round(audioStatus.musicLevel * 100)}/${Math.round(audioStatus.effectsLevel * 100)}`;
     if (this.mode !== 'paused') this.elapsed += dt;
     if (this.mode === 'menu') this.showcase.update(dt);
@@ -1516,8 +1517,9 @@ class GenieRace {
       this.updatePulses(dt);
       this.updateFlashes(dt);
       this.updateDashDragons(dt);
-      this.audio.setListener(this.racers[0].position.x, this.racers[0].position.z, this.racers[0].yaw);
+      this.audio.setListener(this.racers[0].position.x, this.racers[0].position.y, this.racers[0].position.z, this.racers[0].yaw);
       this.audio.update(this.racers[0].speed, this.racers[0].drifting, this.racers[0].ultimateTime > 0, this.racers[0].boostTime > 0, this.mode === 'race', this.track.zone(this.racers[0].progress), this.racers[0].lap >= 3, this.racers[0].progress);
+      this.audio.updateRivals(this.racers, this.mode === 'race');
       if (this.announcementTime > 0) {
         this.announcementTime -= dt;
         if (this.announcementTime <= 0) ultimateAnnouncement.classList.add('hidden');

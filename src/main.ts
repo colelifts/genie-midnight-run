@@ -42,6 +42,8 @@ const clamp = (value: number, min: number, max: number) => Math.max(min, Math.mi
 const wrap = (value: number) => ((value % 1) + 1) % 1;
 const angleDiff = (target: number, current: number) => Math.atan2(Math.sin(target - current), Math.cos(target - current));
 const formatLapTime = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${(seconds % 60).toFixed(2).padStart(5, '0')}`;
+const RACE_SPEED_SCALE = 1.3;
+const raceSpeed = (speed: number) => speed * RACE_SPEED_SCALE;
 const RACER_COUNT = 8;
 const START_LANES = [0, -4, 4, -4, 4, -4, 4, 0];
 
@@ -56,6 +58,7 @@ interface Racer {
   position: THREE.Vector3;
   yaw: number;
   moveYaw: number;
+  yawRate: number;
   speed: number;
   progress: number;
   lap: number;
@@ -305,8 +308,9 @@ class GenieRace {
   private finishCount = 0;
   private bestLap = Infinity;
   private cameraLook = new THREE.Vector3();
+  private cameraYaw = 0;
   private sunlight!: THREE.DirectionalLight;
-  private cameraDistance = 13.1;
+  private cameraDistance = 14.3;
   private cameraReady = false;
   private mapTransform = { centerX: 0, centerZ: 0, scale: 0.25 };
   private smoothedFps = 60;
@@ -481,7 +485,7 @@ class GenieRace {
       itemOrbit.visible = false;
       this.scene.add(itemOrbit);
       const racer: Racer = {
-        id: i, character, visual, itemOrbit, position: gridPosition.clone(), yaw, moveYaw: yaw, speed: 0, progress: starts[i], lap: 1, finishPlace: 0,
+        id: i, character, visual, itemOrbit, position: gridPosition.clone(), yaw, moveYaw: yaw, yawRate: 0, speed: 0, progress: starts[i], lap: 1, finishPlace: 0,
         boostTime: 0, padBoostTime: 0, shieldTime: 0, oceanBarrierTime: 0, ultimateTime: 0, ultimateMeter: 0, signatureCooldown: 0, item: null, tripleSparks: 0, fogTime: 0, featherTime: 0, mirrorTime: 0, wishUpgrade: false, curseTime: 0, iceSpeedTime: 0, luckyEscapeCooldown: 0, wobbleTime: 0, hauntedTime: 0, hotHeadTime: 0, laserReadyTime: 0, powerTick: 0, stunTime: 0, hitCooldown: 0, offTrackTime: 0, lastPad: 0,
         drifting: false, driftCharge: 0, jumpTime: 0, jumpDuration: 0, jumpPower: 0, trickReady: false, trickBoost: false, trickAnim: 0, slipCharge: 0, slipCooldown: 0, tricksLanded: 0, draftBoosts: 0, compassTime: 0, compassTarget: null, compassShortcut: null,
         lastSafe: gridPosition.clone(), lastSafeProgress: starts[i], aiRoute: this.aiRouteForLap(i, 1), aiLane: START_LANES[i], aiLine: START_LANES[i],
@@ -692,6 +696,7 @@ class GenieRace {
       racer.position.copy(point.position).addScaledVector(point.right, racer.aiLane);
       racer.yaw = Math.atan2(point.tangent.x, point.tangent.z);
       racer.moveYaw = racer.yaw;
+      racer.yawRate = 0;
       racer.speed = 0;
       racer.progress = starts[i];
       racer.lap = 1;
@@ -728,6 +733,7 @@ class GenieRace {
       racer.visual.setUltimate(false);
       racer.visual.setStunned(false);
     });
+    this.cameraYaw = this.racers[0].yaw;
     this.projectiles.forEach((projectile) => { this.scene.remove(projectile.mesh); disposeTransient(projectile.mesh); });
     this.projectiles.length = 0;
     this.powerFields.forEach((field) => { this.scene.remove(field.mesh); disposeTransient(field.mesh); });
@@ -880,7 +886,7 @@ class GenieRace {
     switch (item) {
       case 'dash':
         racer.boostTime = Math.max(racer.boostTime, 2.65);
-        racer.speed = Math.max(racer.speed, 41);
+        racer.speed = Math.max(racer.speed, raceSpeed(41));
         this.racerSound('boost', racer);
         break;
       case 'mirror':
@@ -1036,7 +1042,7 @@ class GenieRace {
       }
       case 'mulan':
         racer.boostTime = Math.max(racer.boostTime, 1.55);
-        racer.speed = Math.max(racer.speed, 39);
+        racer.speed = Math.max(racer.speed, raceSpeed(39));
         this.makePulse(racer.position, 0x71e4cf, 0.4, 3.2);
         this.spawnDashDragon(racer);
         break;
@@ -1080,7 +1086,7 @@ class GenieRace {
     racer.shieldTime = Math.max(racer.shieldTime, racer.ultimateTime);
     racer.boostTime = Math.max(racer.boostTime, racer.ultimateTime);
     if (racer.character === 'maleficent') racer.signatureCooldown = 0;
-    racer.speed = Math.max(racer.speed, 34);
+    racer.speed = Math.max(racer.speed, raceSpeed(34));
     racer.ultimateHit.clear();
     racer.powerTick = 0;
     racer.visual.setUltimate(true);
@@ -1593,18 +1599,24 @@ class GenieRace {
     player.steerVisual = steer;
     if (player.stunTime > 0) {
       player.speed = 0;
+      player.yawRate = 0;
       return;
     }
     const roadBefore = this.track.nearest(player.position, player.progress);
     const offRoad = !roadBefore.onRoad && player.jumpTime <= 0;
     const stats = CHARACTER_BY_ID[player.character];
     const iceGrip = player.iceSpeedTime > 0 && !offRoad;
-    const maxSpeed = (player.padBoostTime > 0 ? 53 : player.ultimateTime > 0 ? 43 : player.boostTime > 0 ? 40 : offRoad && player.featherTime <= 0 ? 20 : iceGrip ? 34 : 31) * stats.speed;
-    if (accel > 0) player.speed += (player.padBoostTime > 0 ? 32 : player.ultimateTime > 0 ? 28 : iceGrip ? 22 : 19) * (player.curseTime > 0 ? 0.52 : 1) * (player.hotHeadTime > 0 ? 1.45 : 1) * stats.acceleration * accel * dt;
+    const maxSpeed = raceSpeed(player.padBoostTime > 0 ? 53 : player.ultimateTime > 0 ? 43 : player.boostTime > 0 ? 40 : offRoad && player.featherTime <= 0 ? 20 : iceGrip ? 34 : 31) * stats.speed;
+    const carriedOverspeed = player.speed > maxSpeed;
+    if (accel > 0 && !carriedOverspeed) player.speed += raceSpeed(player.padBoostTime > 0 ? 32 : player.ultimateTime > 0 ? 28 : iceGrip ? 22 : 19) * (player.curseTime > 0 ? 0.52 : 1) * (player.hotHeadTime > 0 ? 1.45 : 1) * stats.acceleration * accel * dt;
     else player.speed += player.speed > 0 ? -Math.min(player.speed, 5.3 * dt) : Math.min(-player.speed, 5.3 * dt);
     if (brake > 0) player.speed -= 29 * brake * dt;
-    if (player.boostTime > 0) player.speed += 11 * dt;
-    player.speed = clamp(player.speed, -8, maxSpeed);
+    if (player.boostTime > 0) player.speed += raceSpeed(11) * dt;
+    player.speed = Math.max(-raceSpeed(8), player.speed);
+    if (player.speed > maxSpeed) {
+      const excess = player.speed - maxSpeed;
+      player.speed = carriedOverspeed ? player.speed - Math.min(excess, (10 + excess * 0.7) * dt) : maxSpeed;
+    }
 
     if (driftPressed && player.speed > 10) {
       if (!player.drifting) {
@@ -1615,10 +1627,15 @@ class GenieRace {
     } else if (player.drifting) {
       this.releaseDrift(player);
     }
-    const boostHandling = player.padBoostTime > 0 ? 1.7 : player.ultimateTime > 0 ? 1.35 : 1;
-    const turnRate = (1.5 - Math.min(Math.abs(player.speed) / 50, 0.5)) * (player.drifting ? 1.25 : 1) * boostHandling * stats.handling * (player.wobbleTime > 0 ? 0.62 : 1);
-    player.yaw -= (steer + (player.wobbleTime > 0 ? Math.sin(this.elapsed * 19) * 0.22 : 0)) * turnRate * dt * Math.min(1, Math.abs(player.speed) / 6);
-    player.moveYaw += angleDiff(player.yaw, player.moveYaw) * Math.min(1, dt * (player.drifting ? 3.6 : 7.5));
+    const boostHandling = player.padBoostTime > 0 ? 1.2 : player.ultimateTime > 0 ? 1.12 : 1;
+    const turnRate = (1.52 - Math.min(Math.abs(player.speed) / raceSpeed(50), 1) * 0.45)
+      * (player.drifting ? 2.1 : 1) * boostHandling * stats.handling * (player.wobbleTime > 0 ? 0.62 : 1);
+    const desiredYawRate = -(steer + (player.wobbleTime > 0 ? Math.sin(this.elapsed * 19) * 0.22 : 0))
+      * turnRate * Math.min(1, Math.abs(player.speed) / raceSpeed(6));
+    // Steering builds and releases with inertia; the travel direction follows the nose later.
+    player.yawRate += (desiredYawRate - player.yawRate) * (1 - Math.exp(-dt * (Math.abs(steer) < 0.05 ? 5 : player.drifting ? 6.5 : 8)));
+    player.yaw += player.yawRate * dt;
+    player.moveYaw += angleDiff(player.yaw, player.moveYaw) * (1 - Math.exp(-dt * (player.drifting ? 3.1 : 6.2)));
     player.position.x += Math.sin(player.moveYaw) * player.speed * dt;
     player.position.z += Math.cos(player.moveYaw) * player.speed * dt;
     this.followRoadHeight(player, dt);
@@ -1632,7 +1649,7 @@ class GenieRace {
       }
     } else {
       player.offTrackTime += dt;
-      if (player.featherTime <= 0 && (player.ultimateTime <= 0 || player.character !== 'moana')) player.speed = Math.min(player.speed, 20);
+      if (player.featherTime <= 0 && (player.ultimateTime <= 0 || player.character !== 'moana')) player.speed = Math.min(player.speed, raceSpeed(20));
       if (road.distance > road.point.width / 2 + 14 || player.offTrackTime > 2.2) this.respawn(player);
     }
     if (player.drifting && Math.abs(steer) > 0.15 && player.speed > 12) {
@@ -1652,6 +1669,8 @@ class GenieRace {
     if (racer.aiRoute === 'alley' && ahead > 0.045 && ahead < 0.16) route = 'alley';
     if (racer.aiRoute === 'roof' && ahead > 0.19 && ahead < 0.33) route = 'roof';
     if (racer.aiRoute === 'garden' && ahead > 0.37 && ahead < GARDEN_ROUTE_END) route = 'garden';
+    const roadUnderKart = this.track.nearest(racer.position, racer.progress);
+    if (roadUnderKart.onRoad && roadUnderKart.point.route !== 'main') route = roadUnderKart.point.route;
     const target = this.track.routeAt(route, ahead);
     const currentTangent = this.track.routeAt(route, racer.progress).tangent;
     const bend = target.tangent.dot(new THREE.Vector3(-currentTangent.z, 0, currentTangent.x));
@@ -1704,7 +1723,7 @@ class GenieRace {
     const error = angleDiff(targetYaw, racer.yaw);
     const steer = clamp(error * 2.4, -1, 1);
     racer.steerVisual = steer;
-    racer.yaw += (steer + (racer.wobbleTime > 0 ? Math.sin(this.elapsed * 17) * 0.2 : 0)) * (1.2 - Math.min(racer.speed / 100, 0.25)) * (racer.drifting ? 1.25 : 1) * (racer.padBoostTime > 0 ? 1.3 : 1) * CHARACTER_BY_ID[racer.character].handling * dt;
+    racer.yaw += (steer + (racer.wobbleTime > 0 ? Math.sin(this.elapsed * 17) * 0.2 : 0)) * (1.65 - Math.min(racer.speed / raceSpeed(125), 0.3)) * (racer.drifting ? 1.5 : 1) * (racer.padBoostTime > 0 ? 1.2 : 1) * CHARACTER_BY_ID[racer.character].handling * dt;
     racer.moveYaw += angleDiff(racer.yaw, racer.moveYaw) * Math.min(1, dt * 5);
     let targetSpeed = 27.7 + Math.sin(racer.id * 1.7) * 1.8 + Math.sin(this.elapsed * 0.5 + racer.id) * 1.1;
     if (Math.abs(error) > 0.5) targetSpeed = 22;
@@ -1712,7 +1731,7 @@ class GenieRace {
     if (racer.padBoostTime > 0) targetSpeed = 49;
     if (racer.ultimateTime > 0) targetSpeed = 41;
     if (racer.iceSpeedTime > 0 && racer.boostTime <= 0 && racer.padBoostTime <= 0 && racer.ultimateTime <= 0) targetSpeed += 3;
-    targetSpeed *= CHARACTER_BY_ID[racer.character].speed;
+    targetSpeed = raceSpeed(targetSpeed) * CHARACTER_BY_ID[racer.character].speed;
     racer.speed += (targetSpeed - racer.speed) * Math.min(1, dt * (targetSpeed > racer.speed ? (racer.curseTime > 0 ? 0.55 : 1.2) * CHARACTER_BY_ID[racer.character].acceleration : 2.2));
     racer.position.x += Math.sin(racer.moveYaw) * racer.speed * dt;
     racer.position.z += Math.cos(racer.moveYaw) * racer.speed * dt;
@@ -1750,7 +1769,7 @@ class GenieRace {
         if (racer.trickBoost) {
           racer.tricksLanded++;
           racer.boostTime = Math.max(racer.boostTime, 1.35);
-          racer.speed = Math.max(racer.speed, 38);
+          racer.speed = Math.max(racer.speed, raceSpeed(38));
           racer.ultimateMeter = Math.min(100, racer.ultimateMeter + 8);
           this.makePulse(racer.position, CHARACTER_BY_ID[racer.character].accent, 0.4, 3.5);
           this.burst(racer.position.clone().add(new THREE.Vector3(0, 0.8, 0)), CHARACTER_BY_ID[racer.character].accent, 0xffffff, 22);
@@ -1838,8 +1857,8 @@ class GenieRace {
     racer.boostTime = Math.max(racer.boostTime, [0, 0.65, 1.2, 1.8][stage] * (racer.character === 'mulan' ? 1.28 : 1));
     racer.ultimateMeter = Math.min(100, racer.ultimateMeter + (8 + stage * 5) * (racer.character === 'mickey' ? 1.45 : 1));
     const stats = CHARACTER_BY_ID[racer.character];
-    const speedCap = (racer.padBoostTime > 0 ? 53 : racer.ultimateTime > 0 ? 43 : racer.id === 0 ? 40 : 37) * stats.speed;
-    racer.speed = Math.max(racer.speed, Math.min(speedCap, racer.speed + [0, 3.3, 5.2, 7.3][stage] * stats.speed));
+    const speedCap = raceSpeed(racer.padBoostTime > 0 ? 53 : racer.ultimateTime > 0 ? 43 : racer.id === 0 ? 40 : 37) * stats.speed;
+    racer.speed = Math.max(racer.speed, Math.min(speedCap, racer.speed + raceSpeed([0, 3.3, 5.2, 7.3][stage]) * stats.speed));
     const color = [0, 0x61d8ff, 0xffc866, 0xd799ff][stage];
     this.makePulse(racer.position, color, 0.4, 2.3 + stage * 0.7);
     if (racer.id === 0) {
@@ -1927,7 +1946,7 @@ class GenieRace {
       if (touchesBoostPad(pad, racer.position, route)) {
         racer.boostTime = Math.max(racer.boostTime, pad.boostSeconds);
         racer.padBoostTime = Math.max(racer.padBoostTime, pad.boostSeconds);
-        racer.speed = Math.max(racer.speed, 44);
+        racer.speed = Math.max(racer.speed, raceSpeed(44));
         racer.lastPad = 1.25;
         racer.ultimateMeter = Math.min(100, racer.ultimateMeter + 6);
         if (racer.character === 'buzz') racer.laserReadyTime = 12;
@@ -2054,12 +2073,14 @@ class GenieRace {
     racer.yaw = Math.atan2(point.tangent.x, point.tangent.z);
     racer.moveYaw = racer.yaw;
     racer.progress = point.progress;
-    racer.speed = 12;
+    racer.speed = raceSpeed(12);
+    racer.yawRate = 0;
     racer.padBoostTime = 0;
     racer.offTrackTime = 0;
     racer.shieldTime = Math.max(racer.shieldTime, 1.2);
     if (racer.id === 0) {
       this.showBanner('MAGIC RECOVERY', 1.3);
+      this.cameraYaw = racer.yaw;
       const forward = new THREE.Vector3(Math.sin(racer.yaw), 0, Math.cos(racer.yaw));
       this.camera.position.copy(racer.position).addScaledVector(forward, -9).add(new THREE.Vector3(0, 4, 0));
       this.cameraLook.copy(racer.position).addScaledVector(forward, 8).add(new THREE.Vector3(0, 2, 0));
@@ -2411,15 +2432,18 @@ class GenieRace {
         this.cameraLook.lerp(target, Math.min(1, dt * 2));
       }
     } else {
+      // The chase view follows travel direction with a little lag, exposing the kart's drift angle.
+      this.cameraYaw += angleDiff(player.moveYaw, this.cameraYaw) * (1 - Math.exp(-dt * (player.drifting ? 3.5 : 6.5)));
+      const chaseForward = new THREE.Vector3(Math.sin(this.cameraYaw), 0, Math.cos(this.cameraYaw));
       const insideCave = player.progress > 0.665 && player.progress < 0.78;
-      const targetDistance = insideCave ? 12.7 : player.padBoostTime > 0 ? 14.6 : player.ultimateTime > 0 ? 14.1 : player.boostTime > 0 ? 13.5 : 13.1;
+      const targetDistance = insideCave ? 13.3 : player.padBoostTime > 0 ? 16 : player.ultimateTime > 0 ? 15.5 : player.boostTime > 0 ? 15 : 14.3;
       this.cameraDistance += (targetDistance - this.cameraDistance) * Math.min(1, dt * 4);
       const distance = this.cameraDistance;
-      const desired = player.position.clone().addScaledVector(forward, -distance).add(new THREE.Vector3(0, 4.55 + player.speed * 0.012, 0));
+      const desired = player.position.clone().addScaledVector(chaseForward, -distance).add(new THREE.Vector3(0, 4.55 + player.speed * 0.012, 0));
       this.camera.position.copy(desired);
-      const target = player.position.clone().addScaledVector(forward, 12).add(new THREE.Vector3(0, 2.4, 0));
+      const target = player.position.clone().addScaledVector(chaseForward, 12).add(new THREE.Vector3(0, 2.4, 0));
       this.cameraLook.copy(target);
-      const targetFov = player.padBoostTime > 0 ? 77 : player.ultimateTime > 0 ? 77 : player.boostTime > 0 ? 72 : 67 + Math.min(player.speed / 31, 1) * 2;
+      const targetFov = player.padBoostTime > 0 ? 77 : player.ultimateTime > 0 ? 77 : player.boostTime > 0 ? 72 : 67 + Math.min(player.speed / raceSpeed(31), 1) * 2;
       this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, dt * 2.3);
       this.camera.updateProjectionMatrix();
     }
@@ -2438,7 +2462,10 @@ class GenieRace {
 
   private updateHUD() {
     const player = this.racers[0];
-    hud.dataset.state = JSON.stringify(this.racers.map((racer) => ({ id: racer.id, character: racer.character, lap: racer.lap, p: Number(racer.progress.toFixed(3)), x: Number(racer.position.x.toFixed(2)), y: Number(racer.position.y.toFixed(2)), z: Number(racer.position.z.toFixed(2)), yaw: Number(racer.yaw.toFixed(3)), route: this.track.nearest(racer.position, racer.progress).point.route, aiRoute: racer.aiRoute, aiLine: Number(racer.aiLine.toFixed(1)), speed: Math.round(racer.speed), drift: Number(racer.driftCharge.toFixed(2)), jump: Number(racer.jumpTime.toFixed(2)), trickReady: racer.trickReady, trickBoost: racer.trickBoost, tricks: racer.tricksLanded, drafts: racer.draftBoosts, slip: Number(racer.slipCharge.toFixed(2)), padBoost: Number(racer.padBoostTime.toFixed(2)), iceSpeed: Number(racer.iceSpeedTime.toFixed(2)), stun: Number(racer.stunTime.toFixed(2)), hitGrace: Number(racer.hitCooldown.toFixed(2)), ultimate: Number(racer.ultimateTime.toFixed(2)), meter: Math.round(racer.ultimateMeter), signatureCooldown: Number(racer.signatureCooldown.toFixed(1)), item: racer.item, tripleSparks: racer.tripleSparks })));
+    hud.dataset.state = JSON.stringify(this.racers.map((racer) => {
+      const road = this.track.nearest(racer.position, racer.progress);
+      return { id: racer.id, character: racer.character, lap: racer.lap, p: Number(racer.progress.toFixed(3)), x: Number(racer.position.x.toFixed(2)), y: Number(racer.position.y.toFixed(2)), z: Number(racer.position.z.toFixed(2)), yaw: Number(racer.yaw.toFixed(3)), moveYaw: Number(racer.moveYaw.toFixed(3)), yawRate: Number(racer.yawRate.toFixed(2)), route: road.point.route, lateral: Number(road.lateral.toFixed(2)), roadHalfWidth: Number((road.point.width / 2).toFixed(2)), onRoad: road.onRoad, aiRoute: racer.aiRoute, aiLine: Number(racer.aiLine.toFixed(1)), speed: Math.round(racer.speed), drift: Number(racer.driftCharge.toFixed(2)), jump: Number(racer.jumpTime.toFixed(2)), trickReady: racer.trickReady, trickBoost: racer.trickBoost, tricks: racer.tricksLanded, drafts: racer.draftBoosts, slip: Number(racer.slipCharge.toFixed(2)), padBoost: Number(racer.padBoostTime.toFixed(2)), iceSpeed: Number(racer.iceSpeedTime.toFixed(2)), stun: Number(racer.stunTime.toFixed(2)), hitGrace: Number(racer.hitCooldown.toFixed(2)), ultimate: Number(racer.ultimateTime.toFixed(2)), meter: Math.round(racer.ultimateMeter), signatureCooldown: Number(racer.signatureCooldown.toFixed(1)), item: racer.item, tripleSparks: racer.tripleSparks };
+    }));
     if (this.debugPowers) hud.dataset.effects = JSON.stringify({ projectiles: this.projectiles.map((projectile) => projectile.kind), fields: this.powerFields.map((field) => field.kind) });
     const standings = [...this.racers].sort((a, b) => (b.lap - 1 + b.progress) - (a.lap - 1 + a.progress));
     const rank = standings.findIndex((racer) => racer.id === 0) + 1;

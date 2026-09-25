@@ -215,21 +215,21 @@ export class GameAudio {
     const running = active && !this.paused;
     const engine = this.loops.get('engine');
     if (engine) {
-      engine.source.playbackRate.setTargetAtTime(0.7 + Math.min(speed, 53) * (ultimate ? 0.023 : 0.018), now, 0.1);
-      engine.gain.gain.setTargetAtTime(running ? 0.24 + Math.min(speed, 45) * 0.006 : 0, now, 0.1);
+      engine.source.playbackRate.setTargetAtTime(0.7 + Math.min(speed, 70) * (ultimate ? 0.019 : 0.016), now, 0.1);
+      engine.gain.gain.setTargetAtTime(running ? 0.24 + Math.min(speed, 65) * 0.0048 : 0, now, 0.1);
     }
     const skid = this.loops.get('skid');
     if (skid) {
-      skid.source.playbackRate.setTargetAtTime(0.84 + Math.min(speed, 45) * 0.008, now, 0.14);
-      skid.gain.gain.setTargetAtTime(running && drifting ? 0.15 + Math.min(speed, 40) * 0.005 : 0, now, 0.085);
+      skid.source.playbackRate.setTargetAtTime(0.84 + Math.min(speed, 70) * 0.0065, now, 0.14);
+      skid.gain.gain.setTargetAtTime(running && drifting ? 0.15 + Math.min(speed, 65) * 0.004 : 0, now, 0.085);
     }
     const duck = now < this.duckUntil ? 0.5 : 1;
     this.loops.get('menu')?.gain.gain.setTargetAtTime(!active && !this.paused ? 0.52 : 0, now, 0.32);
     this.loops.get('race')?.gain.gain.setTargetAtTime(running ? (finalLap ? 0.8 : 0.66) * duck : this.paused ? 0.08 : 0, now, 0.32);
     const cave = zone === 'DESERT CAVE';
     const garden = zone === 'PALACE GARDEN';
-    this.windGain?.gain.setTargetAtTime(running ? cave ? 0.036 : garden ? 0.018 : 0.025 + Math.min(speed, 50) * 0.0005 : 0, now, 0.35);
-    this.windFilter?.frequency.setTargetAtTime(cave ? 340 : garden ? 730 : 490 + Math.min(speed, 50) * 8, now, 0.4);
+    this.windGain?.gain.setTargetAtTime(running ? cave ? 0.036 : garden ? 0.018 : 0.025 + Math.min(speed, 70) * 0.0004 : 0, now, 0.35);
+    this.windFilter?.frequency.setTargetAtTime(cave ? 340 : garden ? 730 : 490 + Math.min(speed, 70) * 6.5, now, 0.4);
     const fountainPresence = garden ? Math.max(0, 1 - Math.abs(progress - 0.44) / 0.065) : 0;
     this.fountainGain?.gain.setTargetAtTime(running ? fountainPresence * 0.022 : 0, now, 0.2);
     this.fountainFilter?.frequency.setTargetAtTime(620 + Math.sin(now * 1.8) * 110, now, 0.25);

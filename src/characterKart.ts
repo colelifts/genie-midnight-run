@@ -49,7 +49,7 @@ function branch(parent: THREE.Group, from: THREE.Vector3, to: THREE.Vector3, rad
 function figure(id: CharacterId) {
   const root = new THREE.Group();
   const model = CHARACTER_BY_ID[id];
-  const suit = paint(id === 'hades' ? 0x34374e : model.color, 0.04, 0.66);
+  const suit = paint(id === 'hades' ? 0x34374e : id === 'maleficent' ? 0x30263f : model.color, 0.04, 0.66);
   const accent = paint(model.accent, 0.25, 0.4);
   const skin = paint(id === 'stitch' ? 0x447bd6 : id === 'hades' ? 0x6b9fe0 : id === 'maleficent' ? 0xb4b4b0 : id === 'mickey' ? 0x202532 : id === 'elsa' ? 0xf9ddcf : id === 'moana' ? 0xc58964 : id === 'jack' ? 0xb48662 : id === 'mulan' ? 0xd8a27c : 0xf2c7ac);
   const hair = paint(id === 'elsa' ? 0xf3e7c1 : id === 'hades' ? 0x54d8ff : id === 'stitch' ? 0x31558b : 0x252238, 0.02, 0.7);
@@ -175,15 +175,50 @@ function figure(id: CharacterId) {
     ball(root, 0.12, glow(0xe53b51), 0.23, 1.63, 0.61);
     ball(root, 0.12, glow(0x5eda6e), -0.1, 1.63, 0.61);
   } else if (id === 'maleficent') {
-    const hood = cone(root, 0.75, 1.25, dark, 0, 2.84, -0.21);
-    hood.scale.z = 0.75;
+    const hornMat = paint(0x171822, 0.08, 0.72);
+    const cloakMat = paint(0x211b30, 0.04, 0.78);
+    const lining = paint(0x6b347c, 0.06, 0.64);
+    const hood = ball(root, 0.69, hornMat, 0, 2.68, -0.21);
+    hood.scale.set(1.04, 0.82, 0.76);
     for (const side of [-1, 1]) {
-      const horn = cone(root, 0.25, 1.48, dark, side * 0.43, 3.21, -0.16);
-      horn.rotation.z = side * -0.31;
+      const hornPoints = [
+        new THREE.Vector3(side * 0.41, 2.95, -0.18),
+        new THREE.Vector3(side * 0.69, 3.33, -0.2),
+        new THREE.Vector3(side * 0.8, 3.73, -0.19),
+        new THREE.Vector3(side * 0.67, 4.11, -0.17),
+      ];
+      for (let n = 0; n < 3; n++) {
+        const direction = hornPoints[n + 1].clone().sub(hornPoints[n]);
+        const section = add(root, new THREE.CylinderGeometry(0.035 + (2 - n) * 0.046, 0.16 + (2 - n) * 0.062, direction.length(), 12), hornMat);
+        section.position.copy(hornPoints[n]).add(hornPoints[n + 1]).multiplyScalar(0.5);
+        section.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
+      }
+      const collarShape = new THREE.Shape();
+      collarShape.moveTo(side * 0.38, 1.42);
+      collarShape.lineTo(side * 1.12, 2.05);
+      collarShape.lineTo(side * 1.25, 3.0);
+      collarShape.lineTo(side * 0.72, 2.62);
+      collarShape.lineTo(side * 0.53, 1.49);
+      collarShape.closePath();
+      add(root, new THREE.ShapeGeometry(collarShape), cloakMat, 0, 0, -0.38);
+      const innerCollar = new THREE.Shape();
+      innerCollar.moveTo(side * 0.61, 1.65);
+      innerCollar.lineTo(side * 1.15, 2.93);
+      innerCollar.lineTo(side * 0.76, 2.49);
+      innerCollar.closePath();
+      add(root, new THREE.ShapeGeometry(innerCollar), lining, 0, 0, -0.33);
+      const shoulderPoint = cone(root, 0.25, 0.78, hornMat, side * 0.83, 1.81, -0.06);
+      shoulderPoint.rotation.z = side * -0.37;
     }
-    const cloak = cone(root, 1.05, 1.8, paint(0x332849), 0, 0.85, -0.5);
-    cloak.scale.z = 0.62;
-    ball(root, 0.11, glow(0x84fc6d), 0, 1.52, 0.53);
+    const cloak = cone(root, 1.11, 1.9, cloakMat, 0, 0.88, -0.4);
+    cloak.scale.z = 0.67;
+    const bodice = cone(root, 0.43, 0.95, lining, 0, 1.35, 0.47);
+    bodice.rotation.z = Math.PI;
+    bodice.scale.z = 0.37;
+    const brooch = ball(root, 0.16, glow(0x8dff78), 0, 1.62, 0.67);
+    brooch.scale.set(0.9, 1.1, 0.42);
+    const lip = box(root, 0.21, 0.032, 0.018, paint(0x922b52), 0, 2.08, 0.635);
+    lip.rotation.z = -0.04;
   } else if (id === 'hades') {
     const flameBlue = glow(0x338de4, 0.9);
     const flameCyan = glow(0x7be9ff, 0.88);
@@ -424,6 +459,7 @@ export interface RaceVisual {
   readonly group: THREE.Group;
   readonly driver: THREE.Group;
   setShield(active: boolean): void;
+  setOceanBarrier?(active: boolean): void;
   setUltimate(active: boolean): void;
   setStunned(active: boolean): void;
   setGroundOffset(offset: number): void;
@@ -440,6 +476,7 @@ export class CharacterKartVisual implements RaceVisual {
   private readonly hairFlames: THREE.Mesh[] = [];
   private readonly hairEmbers: THREE.Mesh[] = [];
   private readonly shield: THREE.Mesh;
+  private readonly oceanBarrier = new THREE.Group();
   private readonly aura = new THREE.Group();
   private readonly ultimateLight: THREE.PointLight;
   private readonly stunHalo = new THREE.Group();
@@ -508,6 +545,34 @@ export class CharacterKartVisual implements RaceVisual {
     this.shield = add(this.group, new THREE.SphereGeometry(2.76, 28, 18), new THREE.MeshPhongMaterial({ color: model.accent, emissive: model.color, emissiveIntensity: 0.3, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide, shininess: 90 }), 0, 2.3, 0);
     this.shield.castShadow = false;
     this.shield.visible = false;
+    if (id === 'moana') {
+      const waterShape = new THREE.Shape();
+      waterShape.moveTo(-2.04, 0);
+      waterShape.bezierCurveTo(-2.23, 0.72, -2.12, 2.38, -1.29, 2.36);
+      waterShape.bezierCurveTo(-0.81, 2.34, -1.26, 1.23, -0.4, 1.22);
+      waterShape.bezierCurveTo(0.15, 1.12, 0.52, 1.16, 0.83, 1.29);
+      waterShape.bezierCurveTo(1.23, 1.5, 1.21, 2.46, 1.71, 2.4);
+      waterShape.bezierCurveTo(2.28, 2.29, 2.19, 0.8, 2.04, 0);
+      waterShape.closePath();
+      const water = add(this.oceanBarrier, new THREE.ShapeGeometry(waterShape), new THREE.MeshBasicMaterial({ color: 0x43dedb, transparent: true, opacity: 0.38, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }));
+      water.castShadow = false;
+      water.receiveShadow = false;
+      const crest = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(-2.04, 0.08, -0.02), new THREE.Vector3(-1.98, 1.22, -0.02),
+        new THREE.Vector3(-1.37, 2.36, -0.02), new THREE.Vector3(-0.91, 1.49, -0.02),
+        new THREE.Vector3(0.05, 1.2, -0.02), new THREE.Vector3(0.88, 1.4, -0.02),
+        new THREE.Vector3(1.7, 2.39, -0.02), new THREE.Vector3(2.02, 0.08, -0.02),
+      ]);
+      const foam = add(this.oceanBarrier, new THREE.TubeGeometry(crest, 38, 0.095, 7, false), glow(0xe4ffff, 0.9));
+      foam.castShadow = false;
+      for (let i = 0; i < 8; i++) {
+        const bubble = ball(this.oceanBarrier, 0.09 + (i % 3) * 0.03, glow(i % 2 ? 0xb3fff6 : 0xffffff, 0.82), -1.7 + i * 0.47, 0.47 + (i % 3) * 0.34, -0.06);
+        bubble.castShadow = false;
+      }
+      this.oceanBarrier.position.set(0, 0.26, -2.5);
+      this.oceanBarrier.visible = false;
+      this.group.add(this.oceanBarrier);
+    }
     const apparition = ultimateApparition(id);
     this.aura.add(apparition);
     for (let i = 0; i < 2; i++) {
@@ -529,6 +594,7 @@ export class CharacterKartVisual implements RaceVisual {
   }
 
   setShield(active: boolean) { this.shield.visible = active; }
+  setOceanBarrier(active: boolean) { this.oceanBarrier.visible = active; }
   setUltimate(active: boolean) { this.aura.visible = active; this.ultimateLight.intensity = active ? 2.2 : 0; }
   setStunned(active: boolean) { this.stunHalo.visible = active; }
   setGroundOffset(offset: number) {
@@ -550,6 +616,10 @@ export class CharacterKartVisual implements RaceVisual {
     this.aura.position.y = Math.sin(this.elapsed * 3) * 0.13;
     this.aura.rotation.y = Math.sin(this.elapsed * 0.8) * 0.07;
     this.stunHalo.rotation.y += dt * 4;
+    if (this.oceanBarrier.visible) {
+      this.oceanBarrier.rotation.y = Math.sin(this.elapsed * 4.5) * 0.07;
+      this.oceanBarrier.scale.y = 0.96 + Math.sin(this.elapsed * 6) * 0.045;
+    }
     for (let i = 0; i < this.hairFlames.length; i++) {
       const flame = this.hairFlames[i];
       const phase = flame.userData.hadesFlamePhase as number;

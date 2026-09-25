@@ -62,6 +62,7 @@ interface Racer {
   boostTime: number;
   padBoostTime: number;
   shieldTime: number;
+  oceanBarrierTime: number;
   ultimateTime: number;
   ultimateMeter: number;
   signatureCooldown: number;
@@ -461,7 +462,7 @@ class GenieRace {
       this.scene.add(itemOrbit);
       const racer: Racer = {
         id: i, character, visual, itemOrbit, position: gridPosition.clone(), yaw, moveYaw: yaw, speed: 0, progress: starts[i], lap: 1, finishPlace: 0,
-        boostTime: 0, padBoostTime: 0, shieldTime: 0, ultimateTime: 0, ultimateMeter: 0, signatureCooldown: 0, item: null, tripleSparks: 0, fogTime: 0, featherTime: 0, mirrorTime: 0, wishUpgrade: false, curseTime: 0, wobbleTime: 0, hotHeadTime: 0, laserReadyTime: 0, powerTick: 0, stunTime: 0, hitCooldown: 0, offTrackTime: 0, lastPad: 0,
+        boostTime: 0, padBoostTime: 0, shieldTime: 0, oceanBarrierTime: 0, ultimateTime: 0, ultimateMeter: 0, signatureCooldown: 0, item: null, tripleSparks: 0, fogTime: 0, featherTime: 0, mirrorTime: 0, wishUpgrade: false, curseTime: 0, wobbleTime: 0, hotHeadTime: 0, laserReadyTime: 0, powerTick: 0, stunTime: 0, hitCooldown: 0, offTrackTime: 0, lastPad: 0,
         drifting: false, driftCharge: 0, jumpTime: 0, jumpDuration: 0, jumpPower: 0, trickReady: false, trickBoost: false, trickAnim: 0, slipCharge: 0, slipCooldown: 0, tricksLanded: 0, draftBoosts: 0, compassTime: 0, compassTarget: null, compassShortcut: null,
         lastSafe: gridPosition.clone(), lastSafeProgress: starts[i], aiRoute: this.aiRouteForLap(i, 1), aiLane: START_LANES[i], aiLine: START_LANES[i],
         aiAbilityTimer: 7 + i * 1.2, aiUltimateTimer: 40 + i * 3, ultimateHit: new Set<number>(), steerVisual: 0,
@@ -640,7 +641,7 @@ class GenieRace {
       racer.progress = starts[i];
       racer.lap = 1;
       racer.finishPlace = 0;
-      racer.boostTime = racer.padBoostTime = racer.shieldTime = racer.ultimateTime = racer.stunTime = 0;
+      racer.boostTime = racer.padBoostTime = racer.shieldTime = racer.oceanBarrierTime = racer.ultimateTime = racer.stunTime = 0;
       racer.ultimateMeter = this.debugPowers ? 100 : 0;
       racer.signatureCooldown = racer.curseTime = racer.wobbleTime = racer.hotHeadTime = racer.laserReadyTime = racer.powerTick = 0;
       const requestedItem = new URLSearchParams(window.location.search).get('debugItem');
@@ -657,6 +658,7 @@ class GenieRace {
       racer.compassTime = 0;
       racer.compassTarget = null;
       racer.compassShortcut = null;
+      racer.visual.setOceanBarrier?.(false);
       racer.lastSafe.copy(racer.position);
       racer.lastSafeProgress = starts[i];
       racer.aiRoute = this.aiRouteForLap(i, 1);
@@ -846,7 +848,7 @@ class GenieRace {
     const def = CHARACTER_BY_ID[racer.character];
     racer.signatureCooldown = def.signatureCooldown;
     const forward = new THREE.Vector3(Math.sin(racer.yaw), 0, Math.cos(racer.yaw));
-    const braking = racer.id === 0 && (this.keys.has('KeyS') || this.keys.has('ArrowDown'));
+    const braking = racer.id === 0 && (this.keys.has('KeyS') || this.keys.has('ArrowDown') || this.gamepadBrake > 0.2);
     const origin = racer.position.clone().add(new THREE.Vector3(0, 1.4, 0));
     this.makeFlash(origin, def.accent, 4.8, 0.38);
     this.burst(origin, def.color, def.accent, 20);
@@ -868,8 +870,11 @@ class GenieRace {
         break;
       case 'moana':
         if (braking) {
-          racer.shieldTime = Math.max(racer.shieldTime, 2.8);
-          this.makePulse(racer.position, 0x66e9e9, 0.65, 4.5);
+          racer.oceanBarrierTime = Math.max(racer.oceanBarrierTime, 3.2);
+          const rear = racer.position.clone().addScaledVector(forward, -2.7);
+          this.makePulse(rear, 0x66e9e9, 0.65, 3.6);
+          if (racer.id === 0) this.showBanner('OCEAN BARRIER · REAR GUARD', 1.1);
+          this.audio.play('shield');
         } else this.launchPower(racer, 'wave', 0x58e8db, 30, 1.25);
         break;
       case 'buzz': {
@@ -1314,6 +1319,7 @@ class GenieRace {
       racer.visual.group.rotation.z = racer.trickAnim > 0 ? Math.sin((1 - racer.trickAnim / 0.65) * Math.PI) * 0.24 : 0;
       racer.visual.setGroundOffset(this.track.nearest(racer.position, racer.progress).point.position.y - racer.position.y);
       racer.visual.setShield(racer.shieldTime > 0 && racer.ultimateTime <= 0);
+      racer.visual.setOceanBarrier?.(racer.oceanBarrierTime > 0);
       racer.visual.setUltimate(racer.ultimateTime > 0);
       racer.visual.setStunned(racer.stunTime > 0);
       racer.visual.update(dt, racer.speed, racer.steerVisual, racer.drifting, racer.boostTime > 0, racer.stunTime > 0);
@@ -1672,6 +1678,7 @@ class GenieRace {
     racer.boostTime = Math.max(0, racer.boostTime - dt);
     racer.padBoostTime = Math.max(0, racer.padBoostTime - dt);
     racer.shieldTime = Math.max(0, racer.shieldTime - dt);
+    racer.oceanBarrierTime = Math.max(0, racer.oceanBarrierTime - dt);
     racer.mirrorTime = Math.max(0, racer.mirrorTime - dt);
     racer.fogTime = Math.max(0, racer.fogTime - dt);
     racer.featherTime = Math.max(0, racer.featherTime - dt);
@@ -1797,6 +1804,14 @@ class GenieRace {
         b.position.addScaledVector(normal, separation);
         if (a.ultimateTime > 0 && !a.ultimateHit.has(b.id)) this.ultimateBump(a, b, normal);
         if (b.ultimateTime > 0 && !b.ultimateHit.has(a.id)) this.ultimateBump(b, a, normal.clone().negate());
+        if (a.character === 'moana' && a.oceanBarrierTime > 0 && b.hitCooldown <= 0 && b.ultimateTime <= 0 && normal.dot(new THREE.Vector3(Math.sin(a.yaw), 0, Math.cos(a.yaw))) < -0.3) {
+          this.repelFromOceanBarrier(a, b, normal);
+          continue;
+        }
+        if (b.character === 'moana' && b.oceanBarrierTime > 0 && a.hitCooldown <= 0 && a.ultimateTime <= 0 && normal.dot(new THREE.Vector3(Math.sin(b.yaw), 0, Math.cos(b.yaw))) > 0.3) {
+          this.repelFromOceanBarrier(b, a, normal.clone().negate());
+          continue;
+        }
         if (a.ultimateTime <= 0 && b.ultimateTime <= 0 && a.hitCooldown <= 0 && b.hitCooldown <= 0) {
           if (a.character === 'maleficent' && normal.dot(new THREE.Vector3(Math.sin(a.yaw), 0, Math.cos(a.yaw))) < -0.35) { b.speed *= 0.65; b.wobbleTime = Math.max(b.wobbleTime, 0.55); this.makeFlash(b.position, 0x94f36e, 3, 0.25); }
           if (b.character === 'maleficent' && normal.dot(new THREE.Vector3(Math.sin(b.yaw), 0, Math.cos(b.yaw))) > 0.35) { a.speed *= 0.65; a.wobbleTime = Math.max(a.wobbleTime, 0.55); this.makeFlash(a.position, 0x94f36e, 3, 0.25); }
@@ -1809,6 +1824,20 @@ class GenieRace {
         }
       }
     }
+  }
+
+  private repelFromOceanBarrier(defender: Racer, attacker: Racer, outward: THREE.Vector3) {
+    attacker.position.addScaledVector(outward, 2.6);
+    attacker.speed *= 0.48;
+    attacker.wobbleTime = Math.max(attacker.wobbleTime, 0.85);
+    defender.hitCooldown = Math.max(defender.hitCooldown, 0.4);
+    attacker.hitCooldown = Math.max(attacker.hitCooldown, 0.65);
+    const impact = attacker.position.clone().add(new THREE.Vector3(0, 1.5, 0));
+    this.makeFlash(impact, 0x6ff4ec, 4.4, 0.35);
+    this.burst(impact, 0x43cfc9, 0xd7ffef, 18);
+    this.makePulse(defender.position.clone().addScaledVector(outward, 2), 0x7be9dd, 0.45, 2.9);
+    if (defender.id === 0) this.showBanner('OCEAN BARRIER REPEL!', 0.9);
+    this.audio.play('shield');
   }
 
   private ultimateBump(attacker: Racer, victim: Racer, direction: THREE.Vector3) {
@@ -1864,6 +1893,15 @@ class GenieRace {
         if (obstacle.broken || Math.abs(racer.position.y - obstacle.position.y) > 3) continue;
         const distance = Math.hypot(racer.position.x - obstacle.position.x, racer.position.z - obstacle.position.z);
         if (distance >= obstacle.radius + 1.7) continue;
+        if (racer.character === 'buzz' && racer.ultimateTime > 0 && (obstacle.kind === 'crate' || obstacle.kind === 'urn')) {
+          if (obstacle.kind === 'crate') {
+            obstacle.broken = true;
+            obstacle.respawn = 12;
+            obstacle.mesh.visible = false;
+            this.burst(obstacle.position.clone().add(new THREE.Vector3(0, 1, 0)), 0xbfff7e, 0xffffff, 12);
+          }
+          continue;
+        }
         const forward = new THREE.Vector3(Math.sin(racer.yaw), 0, Math.cos(racer.yaw));
         const normal = distance > 0.05
           ? new THREE.Vector3((racer.position.x - obstacle.position.x) / distance, 0, (racer.position.z - obstacle.position.z) / distance)
@@ -1929,8 +1967,16 @@ class GenieRace {
       let remove = projectile.life <= 0;
       for (const racer of this.racers) {
         if (racer.id === projectile.owner || racer.stunTime > 0 || racer.hitCooldown > 0) continue;
-        if (racer.position.distanceTo(projectile.mesh.position) < (projectile.kind === 'dragon' ? 3.8 : projectile.kind === 'wave' || projectile.kind === 'tornado' ? 4.3 : projectile.kind === 'firefly' ? 2.3 : 2.8)) {
-          if (racer.mirrorTime > 0) {
+        const offset = projectile.mesh.position.clone().sub(racer.position);
+        const rearGuard = racer.character === 'moana' && racer.oceanBarrierTime > 0 && offset.dot(new THREE.Vector3(Math.sin(racer.yaw), 0, Math.cos(racer.yaw))) < -0.5 && offset.length() < 4.5;
+        if (rearGuard || offset.length() < (projectile.kind === 'dragon' ? 3.8 : projectile.kind === 'wave' || projectile.kind === 'tornado' ? 4.3 : projectile.kind === 'firefly' ? 2.3 : 2.8)) {
+          if (rearGuard) {
+            this.makePulse(projectile.mesh.position, 0x6ff4ec, 0.42, 2.4);
+            this.burst(projectile.mesh.position, 0x56ddd7, 0xd4fff4, 17);
+            racer.hitCooldown = Math.max(racer.hitCooldown, 0.25);
+            if (racer.id === 0) this.showBanner('OCEAN BARRIER BLOCK!', 0.9);
+            this.audio.play('shield');
+          } else if (racer.mirrorTime > 0) {
             racer.mirrorTime = 0;
             racer.shieldTime = 0;
             this.stun(this.racers[projectile.owner], 0.65);
@@ -1957,8 +2003,8 @@ class GenieRace {
           this.burst(projectile.mesh.position, projectile.color, 0xffffff, 16);
           this.makePulse(projectile.mesh.position, projectile.color, 0.32, 1.7);
           const owner = this.racers[projectile.owner];
-          owner.ultimateMeter = Math.min(100, owner.ultimateMeter + 8);
-          if (projectile.owner === 0) this.showBanner(`${projectile.kind.toUpperCase()} HIT!`, 1);
+          if (!rearGuard) owner.ultimateMeter = Math.min(100, owner.ultimateMeter + 8);
+          if (projectile.owner === 0) this.showBanner(rearGuard ? `${projectile.kind.toUpperCase()} BLOCKED!` : `${projectile.kind.toUpperCase()} HIT!`, 1);
           remove = true;
           break;
         }

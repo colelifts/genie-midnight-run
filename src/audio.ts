@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import type { CharacterId } from './characters';
 
-type SoundName = 'go' | 'drift' | 'boost' | 'pad' | 'wish' | 'shield' | 'shot' | 'laser' | 'water' | 'cannon' | 'fire' | 'ice' | 'hit' | 'stun' | 'lap' | 'final-lap' | 'ultimate' | 'trick' | 'draft' | 'pickup' | 'cart-warning' | 'birds' | 'crate-hit' | 'market-hit' | 'boulder-hit' | 'urn-hit' | 'cart-hit' | 'field-soul' | 'field-clock' | 'field-anchor' | 'field-star' | 'field-fire' | 'ufo-arrival' | 'ufo-lock' | 'ufo-impact';
+type SoundName = 'go' | 'drift' | 'boost' | 'pad' | 'wish' | 'shield' | 'shot' | 'laser' | 'water' | 'cannon' | 'fire' | 'ice' | 'hit' | 'stun' | 'lap' | 'final-lap' | 'ultimate' | 'trick' | 'draft' | 'pickup' | 'cart-warning' | 'birds' | 'crate-hit' | 'market-hit' | 'boulder-hit' | 'urn-hit' | 'cart-hit' | 'field-soul' | 'field-clock' | 'field-anchor' | 'field-star' | 'field-fire' | 'plasma-shot' | 'plasma-hit' | 'ufo-arrival' | 'ufo-lock' | 'ufo-warning' | 'ufo-beam' | 'ufo-impact';
 
 // Sources, licenses, and processing notes are documented in AUDIO_CREDITS.md.
 const ASSETS = {
@@ -17,8 +17,9 @@ const ASSETS = {
   urnShatter: 'urn-shatter.mp3', cartClank: 'cart-clank.mp3',
   wind: 'wind-ambience.mp3', fountain: 'fountain-ambience.mp3',
   ufoArrival: 'rampage-arrival.ogg', ufoInbound: 'rampage-inbound.ogg', ufoLock: 'rampage-lock.ogg',
+  plasmaCast: 'plasma-cast.ogg', plasmaImpact: 'plasma-impact.ogg',
 } as const;
-const AUDIO_REVISION = '12';
+const AUDIO_REVISION = '13';
 type AssetName = keyof typeof ASSETS;
 type Loop = { source: AudioBufferSourceNode; gain: GainNode };
 type RivalEngine = { id: number; position: { x: number; y: number; z: number }; speed: number };
@@ -51,6 +52,7 @@ export class GameAudio {
   private readonly downloads = new Map<AssetName, Promise<ArrayBuffer | null>>();
   private readonly buffers = new Map<AssetName, AudioBuffer>();
   private readonly loops = new Map<AssetName, Loop>();
+  private ufoDrone: Loop | null = null;
   private assetsReady = false;
   private readonly rivalVoices: RivalVoice[] = [];
   private rivalsAudible = 0;
@@ -273,6 +275,7 @@ export class GameAudio {
   setPaused(value: boolean) {
     this.paused = value;
     if (!this.context) return;
+    if (value) this.setUfoDrone(false);
     const now = this.context.currentTime;
     this.raceMusicGain?.gain.setTargetAtTime(value ? 0.08 : 0.65, now, 0.22);
     this.loops.get('engine')?.gain.gain.setTargetAtTime(value ? 0 : 0.2, now, 0.08);
@@ -300,6 +303,7 @@ export class GameAudio {
       muted: this.muted,
       musicLevel: this.musicLevel,
       effectsLevel: this.effectsLevel,
+      ufoDrone: Boolean(this.ufoDrone),
     };
   }
 
@@ -364,11 +368,12 @@ export class GameAudio {
     this.eventPan = 0;
   }
 
-  update(speed: number, drifting: boolean, ultimate: boolean, boosting: boolean, active: boolean, zone: string, finalLap = false, fountain?: { x: number; z: number }) {
+  update(speed: number, drifting: boolean, ultimate: boolean, boosting: boolean, active: boolean, zone: string, finalLap = false, fountain?: { x: number; z: number }, atmosphere: 'none' | 'ultimate' | 'ufo' = 'none') {
     const context = this.context;
     if (!context) return;
     const now = context.currentTime;
     const running = active && !this.paused;
+    this.setUfoDrone(running && atmosphere === 'ufo');
     const engine = this.loops.get('engine');
     if (engine) {
       engine.source.playbackRate.setTargetAtTime(0.48 + Math.min(speed, 70) * (ultimate ? 0.0128 : 0.011), now, 0.16);
@@ -392,7 +397,8 @@ export class GameAudio {
     }
     const duck = now < this.duckUntil ? 0.5 : 1;
     this.loops.get('menu')?.gain.gain.setTargetAtTime(!active && !this.paused ? 0.52 : 0, now, 0.32);
-    this.raceMusicGain?.gain.setTargetAtTime(running ? (finalLap ? 0.8 : 0.66) * duck : this.paused ? 0.08 : 0, now, 0.32);
+    const ultimateMix = atmosphere === 'ufo' ? 0.53 : atmosphere === 'ultimate' ? 0.84 : 1;
+    this.raceMusicGain?.gain.setTargetAtTime(running ? (finalLap ? 0.8 : 0.66) * duck * ultimateMix : this.paused ? 0.08 : 0, now, 0.32);
     const cave = zone === 'DESERT CAVE';
     const garden = zone === 'PALACE GARDEN';
     this.windGain?.gain.setTargetAtTime(running ? cave ? 0.036 : garden ? 0.018 : 0.025 + Math.min(speed, 70) * 0.0004 : 0, now, 0.35);
@@ -405,6 +411,29 @@ export class GameAudio {
     this.fountainFilter?.frequency.setTargetAtTime(1800 + fountainPresence * 4800, now, 0.32);
     const side = dx * Math.cos(this.listenerYaw) - dz * Math.sin(this.listenerYaw);
     this.fountainPan?.pan.setTargetAtTime(Math.max(-0.75, Math.min(0.75, side / Math.max(18, distance * 0.8))), now, 0.2);
+  }
+
+  private setUfoDrone(active: boolean) {
+    const context = this.context;
+    if (!context || !this.effectsBus) return;
+    if (!active && this.ufoDrone) {
+      this.ufoDrone.gain.gain.setTargetAtTime(0, context.currentTime, 0.16);
+      this.ufoDrone.source.stop(context.currentTime + 0.55);
+      this.ufoDrone = null;
+    }
+    if (!active || this.ufoDrone) return;
+    const buffer = this.buffers.get('ufoArrival');
+    if (!buffer) return;
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    source.buffer = buffer;
+    source.loop = true;
+    source.playbackRate.value = 0.86;
+    gain.gain.value = 0;
+    source.connect(gain).connect(this.effectsBus);
+    source.start();
+    gain.gain.setTargetAtTime(0.24, context.currentTime, 0.6);
+    this.ufoDrone = { source, gain };
   }
 
   private sample(name: AssetName, volume: number, rate = 1, delay = 0, duration?: number, pan = 0) {
@@ -445,6 +474,8 @@ export class GameAudio {
       case 'shield': this.sample('surge', 0.35, 1.13); this.sample('light', 0.15, 1.08); break;
       case 'shot': this.sample('time', 0.32, 1.24); this.sample('spark', 0.13, 1.7, 0.06); break;
       case 'laser': this.sample('laser', 0.38, 1); this.sample('whoosh', 0.13, 1.3); break;
+      case 'plasma-shot': this.sample('plasmaCast', 0.27, 1.12 + Math.random() * 0.12, 0, 0.26); break;
+      case 'plasma-hit': this.sample('plasmaImpact', 0.46, 1.02, 0, 0.55); this.sample('spark', 0.15, 1.38); break;
       case 'water': this.sample('water', 0.39, 1); this.sample('whoosh', 0.15, 0.9); break;
       case 'cannon': this.sample('cannon', 0.44, 1, 0, 1.5); this.sample('heavy', 0.13, 0.8); break;
       case 'fire': this.sample('fire', 0.4, 1, 0, 1.3); this.sample('whoosh', 0.16, 0.8); break;
@@ -466,7 +497,9 @@ export class GameAudio {
       case 'ultimate': this.sample('grand', 0.52, 0.91); this.sample('whoosh', 0.38, 0.83); break;
       case 'ufo-arrival': this.sample('ufoInbound', 0.54, 1); this.sample('ufoArrival', 0.45, 0.94); break;
       case 'ufo-lock': this.sample('ufoLock', 0.46, 1); break;
-      case 'ufo-impact': this.sample('laser', 0.25, 0.77); this.sample('heavy', 0.22, 0.92); break;
+      case 'ufo-warning': this.sample('ufoLock', 0.57, 0.76); this.sample('time', 0.27, 0.77); break;
+      case 'ufo-beam': this.sample('plasmaCast', 0.38, 0.62, 0, 1.1); this.sample('surge', 0.33, 0.69, 0.12, 1.45); break;
+      case 'ufo-impact': this.sample('plasmaImpact', 0.36, 0.78, 0, 0.45); this.sample('heavy', 0.2, 0.9); break;
       case 'trick': this.sample('spark', 0.3, 1.37); this.sample('whoosh', 0.18, 1.4); break;
       case 'draft': this.sample('whoosh', 0.33, 1.34); break;
       case 'pickup': this.sample('spark', 0.27, 1.3); break;
@@ -495,14 +528,19 @@ export class GameAudio {
   }
 
   playSignature(character: CharacterId) {
+    if (character === 'stitch') {
+      this.sample('plasmaCast', 0.52, 1.02);
+      this.sample('whoosh', 0.16, 1.16);
+      return;
+    }
     const palette: Record<CharacterId, [AssetName, number, number]> = {
-      genie: ['grand', 0.38, 1.08], mickey: ['spark', 0.36, 1.28], stitch: ['time', 0.43, 1.48],
+      genie: ['grand', 0.38, 1.08], mickey: ['spark', 0.36, 1.28], stitch: ['plasmaCast', 0.52, 1.02],
       elsa: ['ice', 0.4, 1], moana: ['whoosh', 0.4, 0.88], buzz: ['time', 0.42, 1.7],
       maleficent: ['grand', 0.42, 0.68], hades: ['surge', 0.44, 0.74], jack: ['spark', 0.36, 0.9], mulan: ['whoosh', 0.41, 1.23],
     };
     const [name, volume, rate] = palette[character];
     this.sample(name, volume, rate);
-    if (character === 'stitch' || character === 'buzz' || character === 'maleficent') this.sample('whoosh', 0.19, rate * 0.82, 0.055);
+    if (character === 'buzz' || character === 'maleficent') this.sample('whoosh', 0.19, rate * 0.82, 0.055);
   }
 
   playUltimate(character: CharacterId) {

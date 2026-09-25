@@ -20,3 +20,10 @@
 #stitch-ufo-alert{position:absolute;left:50%;top:13%;transform:translateX(-50%);z-index:7;pointer-events:none;padding:8px 19px 10px;border:1px solid #e2b567;border-radius:8px;background:linear-gradient(100deg,#151c36ed,#432b52ed,#151c36ed);color:#ffe5ac;box-shadow:0 0 18px #be77ff86,inset 0 0 16px #dd8aff26;font:900 clamp(15px,1.7vw,25px)/1.1 'Barlow Condensed',Impact,sans-serif;letter-spacing:.13em;text-align:center;white-space:nowrap;text-shadow:0 0 9px #a98cf3;animation:ufo-alert-pulse .45s ease-in-out infinite alternate}
 #stitch-ufo-alert[data-phase="locked"],#stitch-ufo-alert[data-phase="beam"]{border-color:#ff635b;color:#fff;background:linear-gradient(100deg,#301a31ee,#923b46ee,#301a31ee);box-shadow:0 0 25px #ff635baa,inset 0 0 18px #ff8a7470}
 @keyframes ufo-alert-pulse{to{filter:brightness(1.22);transform:translateX(-50%) scale(1.025)}}
+#atmosphere-shade{position:absolute;inset:0;z-index:2;pointer-events:none;opacity:0;background:var(--atmosphere-color,#1b1236);box-shadow:inset 0 0 180px 35px #090917}
+#stitch-ufo-intro{position:absolute;top:23%;left:50%;z-index:8;width:min(750px,86vw);transform:translateX(-50%);pointer-events:none;text-align:center;padding:16px 24px 19px;border-top:2px solid #ffd69b;border-bottom:2px solid #9275ff;background:linear-gradient(90deg,transparent,#111631e8 13%,#382244f5 50%,#111631e8 87%,transparent);box-shadow:0 0 75px #8b62ff99;text-shadow:0 3px 15px #060818;animation:ufo-intro-arrive .32s ease-out}
+#stitch-ufo-intro span{display:block;color:#ffd69b;font-size:12px;font-weight:900;letter-spacing:.35em}
+#stitch-ufo-intro strong{display:block;font:900 clamp(36px,6vw,76px)/.95 'Barlow Condensed',Impact,sans-serif;letter-spacing:.035em;color:#fff;margin:7px 0}
+#stitch-ufo-intro small{display:block;color:#b8eaff;font-size:12px;font-weight:900;letter-spacing:.16em}
+@keyframes ufo-intro-arrive{from{opacity:0;transform:translate(-50%,20px) scale(.82)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
+@media(max-width:750px){#stitch-ufo-intro{top:20%;padding:12px 15px}#stitch-ufo-intro span,#stitch-ufo-intro small{font-size:9px;letter-spacing:.12em}}

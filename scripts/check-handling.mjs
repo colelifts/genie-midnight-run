@@ -1,5 +1,12 @@
 import assert from 'node:assert/strict';
-import { advanceChaseYaw, advanceHeading, driftBoostStage, raceSpeed, railScrapeSpeed, slideHeadingAlongRail } from '../src/handling.ts';
+import { advanceChaseYaw, advanceHeading, driftBoostStage, raceSpeed, railScrapeSpeed, screenSteer, slideHeadingAlongRail } from '../src/handling.ts';
+
+const screenRight = { x: -1, z: 0 }; // Camera behind a +Z kart faces +Z.
+const rightTurn = advanceHeading({ yaw: 0, moveYaw: 0, yawRate: 0 }, { steer: screenSteer(false, true), speed: raceSpeed(31), handling: 1, drifting: false, driftDirection: 0, boostHandling: 1, wobble: 0, dt: 1 / 30 });
+const leftTurn = advanceHeading({ yaw: 0, moveYaw: 0, yawRate: 0 }, { steer: screenSteer(true, false), speed: raceSpeed(31), handling: 1, drifting: false, driftDirection: 0, boostHandling: 1, wobble: 0, dt: 1 / 30 });
+assert.ok(Math.sin(rightTurn.moveYaw) * screenRight.x > 0, 'D must move toward screen right in the chase camera');
+assert.ok(Math.sin(leftTurn.moveYaw) * screenRight.x < 0, 'A must move toward screen left in the chase camera');
+assert.equal(screenSteer(false, true, 0), screenSteer(false, false, 1), 'Right stick and D must agree');
 
 const angle = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
 assert.deepEqual([0, 0.57, 0.58, 1.17, 1.18, 1.89, 1.9].map(driftBoostStage),

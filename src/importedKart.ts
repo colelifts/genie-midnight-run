@@ -65,7 +65,7 @@ export class ImportedKartVisual implements RaceVisual {
     }
     kart.traverse((part) => {
       if (part instanceof THREE.Mesh) {
-        part.castShadow = true;
+        part.castShadow = false;
         part.receiveShadow = true;
       }
     });

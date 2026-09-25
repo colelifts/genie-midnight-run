@@ -518,6 +518,9 @@ export class KartVisual {
     this.stunHalo.position.y = 4.55;
     this.stunHalo.visible = false;
     this.group.add(this.stunHalo);
+    // A soft contact shadow reads better on the road than the low-resolution
+    // directional silhouette from a moving kart.
+    this.group.traverse((part) => { if (part instanceof THREE.Mesh) part.castShadow = false; });
   }
 
   setShield(active: boolean) { this.shield.visible = active; }

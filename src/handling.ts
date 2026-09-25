@@ -1,5 +1,8 @@
 export const RACE_SPEED_SCALE = 1.3;
 export const raceSpeed = (speed: number) => speed * RACE_SPEED_SCALE;
+// The chase camera looks toward +Z, so world -X is screen right.
+export const screenSteer = (left: boolean, right: boolean, gamepadAxis = 0) =>
+  Math.max(-1, Math.min(1, (left ? 1 : 0) - (right ? 1 : 0) - gamepadAxis));
 export const driftBoostStage = (charge: number): 0 | 1 | 2 | 3 =>
   charge >= 1.9 ? 3 : charge >= 1.18 ? 2 : charge >= 0.58 ? 1 : 0;
 

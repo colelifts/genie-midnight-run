@@ -8,6 +8,21 @@ const cream = paint(0xffe9c7);
 const white = paint(0xf5f4ee);
 const eye = glow(0x1a2440);
 
+function makeContactShadowTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 128;
+  const context = canvas.getContext('2d')!;
+  const gradient = context.createRadialGradient(64, 64, 5, 64, 64, 62);
+  gradient.addColorStop(0, 'rgba(255,255,255,0.82)');
+  gradient.addColorStop(0.35, 'rgba(255,255,255,0.43)');
+  gradient.addColorStop(0.72, 'rgba(255,255,255,0.08)');
+  gradient.addColorStop(1, 'rgba(255,255,255,0)');
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(canvas);
+}
+const contactShadowTexture = makeContactShadowTexture();
+
 function add(parent: THREE.Group, geometry: THREE.BufferGeometry, material: THREE.Material, x = 0, y = 0, z = 0) {
   const object = new THREE.Mesh(geometry, material);
   object.position.set(x, y, z);
@@ -567,9 +582,10 @@ export class CharacterKartVisual implements RaceVisual {
     const primary = paint(model.kartColor, id === 'buzz' ? 0.16 : 0.23, 0.46);
     const accent = paint(model.accent, 0.34, 0.42);
     const trim = paint(model.color, 0.29, 0.35);
-    this.contactShadow = add(this.group, new THREE.PlaneGeometry(5.2, 5.6), new THREE.MeshBasicMaterial({ color: 0x15131f, transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide }), 0, 0.08, 0);
+    this.contactShadow = add(this.group, new THREE.PlaneGeometry(5.2, 5.6), new THREE.MeshBasicMaterial({ map: contactShadowTexture, color: 0x10121f, transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide }), 0, 0.095, 0);
     this.contactShadow.rotation.x = -Math.PI / 2;
     this.contactShadow.castShadow = false;
+    this.contactShadow.receiveShadow = false;
     box(this.body, 2.52, 0.38, 3.65, dark, 0, 0.73, 0);
     const hull = ball(this.body, 1.37, primary, 0, 1.15, 0.14);
     hull.scale.set(1.05, 0.42, 1.5);
@@ -699,6 +715,7 @@ export class CharacterKartVisual implements RaceVisual {
     this.stunHalo.position.y = 4.5;
     this.stunHalo.visible = false;
     this.group.add(this.stunHalo);
+    this.group.traverse((part) => { if (part instanceof THREE.Mesh) part.castShadow = false; });
   }
 
   setShield(active: boolean) { this.shield.visible = active; }
@@ -711,9 +728,9 @@ export class CharacterKartVisual implements RaceVisual {
   setStunned(active: boolean) { this.stunHalo.visible = active; }
   setGroundOffset(offset: number) {
     const jump = Math.max(0, -offset);
-    this.contactShadow.position.y = offset + 0.08;
+    this.contactShadow.position.y = offset + 0.095;
     this.contactShadow.scale.setScalar(1 + Math.min(1, jump / 6) * 0.33);
-    (this.contactShadow.material as THREE.MeshBasicMaterial).opacity = 0.3 * Math.max(0.22, 1 - jump / 8);
+    (this.contactShadow.material as THREE.MeshBasicMaterial).opacity = 0.32 * Math.max(0.22, 1 - jump / 8);
   }
   update(dt: number, speed: number, steer: number, drifting: boolean, boosting: boolean, stunned: boolean) {
     this.elapsed += dt;

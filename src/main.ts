@@ -1551,7 +1551,7 @@ class GenieRace {
     if (remaining > 0 && remaining !== this.countShown) {
       this.countShown = remaining;
       countdown.textContent = String(remaining);
-      this.audio.play('count');
+      this.audio.playCountdown(remaining);
     }
     if (this.countdownElapsed >= 3 && this.mode === 'countdown') {
       countdown.textContent = 'GO!';

@@ -1,11 +1,12 @@
 /// <reference types="vite/client" />
 import type { CharacterId } from './characters';
 
-type SoundName = 'count' | 'go' | 'drift' | 'boost' | 'pad' | 'wish' | 'shield' | 'shot' | 'laser' | 'water' | 'cannon' | 'fire' | 'ice' | 'hit' | 'stun' | 'lap' | 'final-lap' | 'ultimate' | 'trick' | 'draft' | 'pickup' | 'cart-warning' | 'birds' | 'crate-hit' | 'market-hit' | 'boulder-hit' | 'urn-hit' | 'cart-hit' | 'field-soul' | 'field-clock' | 'field-anchor' | 'field-star' | 'field-fire';
+type SoundName = 'go' | 'drift' | 'boost' | 'pad' | 'wish' | 'shield' | 'shot' | 'laser' | 'water' | 'cannon' | 'fire' | 'ice' | 'hit' | 'stun' | 'lap' | 'final-lap' | 'ultimate' | 'trick' | 'draft' | 'pickup' | 'cart-warning' | 'birds' | 'crate-hit' | 'market-hit' | 'boulder-hit' | 'urn-hit' | 'cart-hit' | 'field-soul' | 'field-clock' | 'field-anchor' | 'field-star' | 'field-fire';
 
 // Sources, licenses, and processing notes are documented in AUDIO_CREDITS.md.
 const ASSETS = {
   menu: 'desert-menu.mp3', raceIntro: 'desert-race-intro.mp3', race: 'desert-race.mp3', engine: 'engine.wav', skid: 'skid.wav',
+  countDrum: 'countdown-drum.wav',
   boostStart: 'boost-start.wav', boostLoop: 'boost-loop.wav', boostEnd: 'boost-end.wav',
   spark: 'spell-spark.mp3', surge: 'spell-surge.mp3', grand: 'spell-grand.mp3',
   whoosh: 'boost-whoosh.mp3', time: 'time-whoosh.mp3',
@@ -16,7 +17,7 @@ const ASSETS = {
   urnShatter: 'urn-shatter.mp3', cartClank: 'cart-clank.mp3',
   wind: 'wind-ambience.mp3', fountain: 'fountain-ambience.mp3',
 } as const;
-const AUDIO_REVISION = '10';
+const AUDIO_REVISION = '11';
 type AssetName = keyof typeof ASSETS;
 type Loop = { source: AudioBufferSourceNode; gain: GainNode };
 type RivalEngine = { id: number; position: { x: number; y: number; z: number }; speed: number };
@@ -426,11 +427,16 @@ export class GameAudio {
     source.stop(time + length + 0.01);
   }
 
+  playCountdown(remaining: number) {
+    if (!this.context || this.muted) return;
+    const step = 4 - Math.max(1, Math.min(3, remaining));
+    this.sample('countDrum', 0.19 + step * 0.045, 0.93 + step * 0.055);
+  }
+
   play(name: SoundName) {
     if (!this.context || this.muted) return;
     switch (name) {
-      case 'count': this.sample('spark', 0.2, 0.7, 0, 0.35); break;
-      case 'go': this.sample('grand', 0.42, 1.1); this.sample('whoosh', 0.23, 1.2); break;
+      case 'go': this.sample('countDrum', 0.37, 1.18); this.sample('grand', 0.42, 1.1); this.sample('whoosh', 0.23, 1.2); break;
       case 'drift': this.sample('light', 0.13, 1.2, 0, 0.27); this.sample('skid', 0.1, 1.15, 0.02, 0.26); break;
       case 'boost': this.sample('whoosh', 0.48, 1.13); break;
       case 'pad': this.sample('whoosh', 0.58, 1.24); this.sample('spark', 0.17, 1.15, 0.05); break;

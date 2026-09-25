@@ -3,13 +3,13 @@ import './style.css';
 import './roster.css';
 import { GameAudio } from './audio';
 import { sweptSphereHit } from './collision';
-import { advanceChaseYaw, advanceHeading, raceSpeed, railScrapeSpeed, slideHeadingAlongRail } from './handling';
+import { advanceChaseYaw, advanceHeading, driftBoostStage, raceSpeed, railScrapeSpeed, slideHeadingAlongRail } from './handling';
 import { CharacterKartVisual, type RaceVisual } from './characterKart';
 import { CHARACTERS, CHARACTER_BY_ID, type CharacterId } from './characters';
 import { KartVisual, makeProjectile } from './kart';
 import { RacerShowcase } from './showcase';
 import { ITEMS, rollItem, type ItemId } from './items';
-import { BOOST_PAD_LAYOUT, GARDEN_ROUTE_END, MARKET_CROSSING_PROGRESS, MARKET_CROSSING_TRAVEL, marketCartState, PICKUP_LAYOUT, RaceTrack, touchesBoostPad, type RoadHit, type RoadPoint, type RouteName } from './track';
+import { BOOST_PAD_LAYOUT, GARDEN_ROUTE_END, MARKET_CROSSING_PROGRESS, MARKET_CROSSING_TRAVEL, marketCartState, PICKUP_LAYOUT, RaceTrack, START_GRID_BASE_PROGRESS, START_GRID_LANES, startGridProgress, touchesBoostPad, type RoadHit, type RoadPoint, type RouteName } from './track';
 
 const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = el<HTMLCanvasElement>('game');
@@ -45,8 +45,7 @@ const wrap = (value: number) => ((value % 1) + 1) % 1;
 const angleDiff = (target: number, current: number) => Math.atan2(Math.sin(target - current), Math.cos(target - current));
 const formatLapTime = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${(seconds % 60).toFixed(2).padStart(5, '0')}`;
 const KART_HITBOX_HEIGHT = 1.45;
-const RACER_COUNT = 8;
-const START_LANES = [0, -4, 4, -4, 4, -4, 4, 0];
+const RACER_COUNT = START_GRID_LANES.length;
 
 type GameMode = 'menu' | 'countdown' | 'race' | 'paused' | 'finished';
 type Wish = 'boost' | 'shield' | 'shot';
@@ -457,8 +456,8 @@ class GenieRace {
   private raceStarts() {
     const requestedStart = new URLSearchParams(window.location.search).get('demoStart');
     const demoStart = requestedStart === null ? NaN : Number(requestedStart);
-    const base = this.demoMode && Number.isFinite(demoStart) && demoStart >= 0 && demoStart < 1 ? demoStart : 0.006;
-    return Array.from({ length: RACER_COUNT }, (_, i) => wrap(base + (i === 0 ? 0 : Math.ceil(i / 2) * 0.006)));
+    const base = this.demoMode && Number.isFinite(demoStart) && demoStart >= 0 && demoStart < 1 ? demoStart : START_GRID_BASE_PROGRESS;
+    return Array.from({ length: RACER_COUNT }, (_, i) => startGridProgress(base, i));
   }
 
   private aiRouteForLap(id: number, lap: number): RouteName {
@@ -472,7 +471,7 @@ class GenieRace {
     const candidates = CHARACTERS.map((character) => character.id).filter((id) => id !== this.selectedCharacter);
     for (let i = 0; i < RACER_COUNT; i++) {
       const start = this.track.at(starts[i]);
-      const gridPosition = start.position.clone().addScaledVector(start.right, START_LANES[i]);
+      const gridPosition = start.position.clone().addScaledVector(start.right, START_GRID_LANES[i]);
       const yaw = Math.atan2(start.tangent.x, start.tangent.z);
       const character: CharacterId = i === 0 ? this.selectedCharacter : candidates[i - 1];
       const visual = this.makeVisual(character);
@@ -494,7 +493,7 @@ class GenieRace {
         id: i, character, visual, itemOrbit, position: gridPosition.clone(), previousPosition: gridPosition.clone(), yaw, moveYaw: yaw, yawRate: 0, speed: 0, progress: starts[i], lap: 1, finishPlace: 0,
         boostTime: 0, padBoostTime: 0, shieldTime: 0, oceanBarrierTime: 0, ultimateTime: 0, ultimateMeter: 0, signatureCooldown: 0, item: null, tripleSparks: 0, fogTime: 0, featherTime: 0, mirrorTime: 0, wishUpgrade: false, curseTime: 0, iceSpeedTime: 0, luckyEscapeCooldown: 0, wobbleTime: 0, hauntedTime: 0, hotHeadTime: 0, laserReadyTime: 0, powerTick: 0, stunTime: 0, hitCooldown: 0, offTrackTime: 0, lastPad: 0,
         drifting: false, driftDirection: 0, driftCharge: 0, jumpTime: 0, jumpDuration: 0, jumpPower: 0, trickReady: false, trickBoost: false, trickAnim: 0, slipCharge: 0, slipCooldown: 0, tricksLanded: 0, draftBoosts: 0, compassTime: 0, compassTarget: null, compassShortcut: null,
-        lastSafe: gridPosition.clone(), lastSafeProgress: starts[i], aiRoute: this.aiRouteForLap(i, 1), aiLane: START_LANES[i], aiLine: START_LANES[i],
+        lastSafe: gridPosition.clone(), lastSafeProgress: starts[i], aiRoute: this.aiRouteForLap(i, 1), aiLane: START_GRID_LANES[i], aiLine: START_GRID_LANES[i],
         aiAbilityTimer: 7 + i * 1.2, aiUltimateTimer: 40 + i * 3, ultimateHit: new Set<number>(), steerVisual: 0,
       };
       this.racers.push(racer);
@@ -1495,6 +1494,7 @@ class GenieRace {
     hud.dataset.audioSamples = `${audioStatus.samplesLoaded}/${audioStatus.samplesExpected}`;
     hud.dataset.audioLoops = audioStatus.loops.join(',');
     hud.dataset.audioBoost = String(audioStatus.boostActive);
+    hud.dataset.audioDriftCues = `${audioStatus.driftCueCount}/${audioStatus.lastDriftCue}`;
     hud.dataset.audioRivals = `${audioStatus.rivalsAudible}/${audioStatus.rivalVoices}`;
     hud.dataset.audioMusic = audioStatus.musicPhase;
     hud.dataset.audioMix = `${Math.round(audioStatus.musicLevel * 100)}/${Math.round(audioStatus.effectsLevel * 100)}`;
@@ -1622,13 +1622,15 @@ class GenieRace {
 
   private updatePlayer(dt: number) {
     const player = this.racers[0];
-    const scriptedTurn = this.debugDrive && this.raceClock >= 2.2 && this.raceClock < 2.75;
+    const chargeScript = this.debugDrive === 'charge';
+    const scriptedTurn = this.debugDrive && this.raceClock >= 2.2 && this.raceClock < (chargeScript ? 4.25 : 2.75);
     const left = this.keys.has('KeyA') || this.keys.has('ArrowLeft') || this.touch.has('left');
     const right = this.keys.has('KeyD') || this.keys.has('ArrowRight') || this.touch.has('right');
     const accel = this.debugDrive || this.keys.has('KeyW') || this.keys.has('ArrowUp') || this.touch.has('accel') ? 1 : this.gamepadAccel;
     const brake = !this.debugDrive && (this.keys.has('KeyS') || this.keys.has('ArrowDown')) ? 1 : this.gamepadBrake;
-    const steer = this.debugDrive ? scriptedTurn ? 1 : 0 : clamp((right ? 1 : 0) - (left ? 1 : 0) + this.gamepadSteer, -1, 1);
-    const driftPressed = this.debugDrive ? this.debugDrive === 'corner' && scriptedTurn : this.keys.has('Space') || this.touch.has('drift') || this.gamepadDrift;
+    const scriptedSteer = scriptedTurn ? chargeScript && this.raceClock >= 2.85 ? -1 : 1 : 0;
+    const steer = this.debugDrive ? scriptedSteer : clamp((right ? 1 : 0) - (left ? 1 : 0) + this.gamepadSteer, -1, 1);
+    const driftPressed = this.debugDrive ? (this.debugDrive === 'corner' || chargeScript) && scriptedTurn : this.keys.has('Space') || this.touch.has('drift') || this.gamepadDrift;
     player.steerVisual = steer;
     if (player.stunTime > 0) {
       player.speed = 0;
@@ -1656,8 +1658,14 @@ class GenieRace {
         player.drifting = true;
         player.driftDirection = Math.sign(steer);
         this.startJump(player, 0.42, 0.42);
+        this.audio.play('drift');
       }
-      if (Math.abs(steer) > 0.18) player.driftCharge += dt;
+      if (Math.abs(steer) > 0.18) {
+        const oldStage = driftBoostStage(player.driftCharge);
+        player.driftCharge += dt;
+        const newStage = driftBoostStage(player.driftCharge);
+        if (newStage > oldStage && newStage !== 0) this.audio.playDriftCharge(newStage);
+      }
     } else if (player.drifting) {
       this.releaseDrift(player);
     }
@@ -1891,8 +1899,8 @@ class GenieRace {
     racer.driftDirection = 0;
     const charge = racer.driftCharge;
     racer.driftCharge = 0;
-    if (charge < 0.58) return;
-    const stage: 1 | 2 | 3 = charge >= 1.9 ? 3 : charge >= 1.18 ? 2 : 1;
+    const stage = driftBoostStage(charge);
+    if (stage === 0) return;
     racer.boostTime = Math.max(racer.boostTime, [0, 0.65, 1.2, 1.8][stage] * (racer.character === 'mulan' ? 1.28 : 1));
     racer.ultimateMeter = Math.min(100, racer.ultimateMeter + (8 + stage * 5) * (racer.character === 'mickey' ? 1.45 : 1));
     const stats = CHARACTER_BY_ID[racer.character];
@@ -1913,7 +1921,7 @@ class GenieRace {
   private emitDriftSparks(racer: Racer) {
     const right = new THREE.Vector3(Math.cos(racer.yaw), 0, -Math.sin(racer.yaw));
     const back = new THREE.Vector3(-Math.sin(racer.yaw), 0, -Math.cos(racer.yaw));
-    const color = racer.driftCharge >= 1.9 ? 0xd799ff : racer.driftCharge >= 1.18 ? 0xffc866 : 0x61d8ff;
+    const color = driftBoostStage(racer.driftCharge) === 3 ? 0xd799ff : driftBoostStage(racer.driftCharge) === 2 ? 0xffc866 : 0x61d8ff;
     for (const side of [-1, 1]) {
       const origin = racer.position.clone().addScaledVector(right, side * 1.5).addScaledVector(back, 1.2);
       origin.y += 0.3;
@@ -2584,9 +2592,10 @@ class GenieRace {
     const road = this.track.nearest(player.position, player.progress);
     if (player.drifting) {
       const charge = player.driftCharge;
-      surfaceText.textContent = charge >= 1.9 ? 'COSMIC DRIFT BOOST READY' : charge >= 1.18 ? 'GOLD DRIFT BOOST READY' : charge >= 0.58 ? 'BLUE DRIFT BOOST READY' : 'DRIFT · KEEP STEERING';
+      const stage = driftBoostStage(charge);
+      surfaceText.textContent = stage === 3 ? 'COSMIC DRIFT BOOST READY' : stage === 2 ? 'GOLD DRIFT BOOST READY' : stage === 1 ? 'BLUE DRIFT BOOST READY' : 'DRIFT · KEEP STEERING';
       boostFill.style.width = `${clamp(charge / 1.9, 0, 1) * 100}%`;
-      boostFill.style.background = charge >= 1.9 ? '#d799ff' : charge >= 1.18 ? '#ffd075' : '#65dbf9';
+      boostFill.style.background = stage === 3 ? '#d799ff' : stage === 2 ? '#ffd075' : '#65dbf9';
     } else {
       surfaceText.textContent = player.slipCharge > 0.1 ? `DRAFTING · ${Math.round(player.slipCharge / 1.2 * 100)}%` : player.compassTime > 0 && player.compassShortcut ? `COMPASS → ${player.compassShortcut.route.toUpperCase()} SHORTCUT` : player.compassTime > 0 && player.compassTarget ? `COMPASS → ${player.compassTarget.route.toUpperCase()} SPARK` : player.iceSpeedTime > 0 ? 'FROZEN GRIP · ICE SPEED' : road.onRoad ? road.point.route === 'main' ? 'ROAD' : `${road.point.route.toUpperCase()} ROUTE` : 'OFF ROAD';
       boostFill.style.width = `${clamp(Math.max(player.boostTime / 3, player.slipCharge / 1.2), 0, 1) * 100}%`;

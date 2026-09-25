@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
-import { advanceChaseYaw, advanceHeading, raceSpeed, railScrapeSpeed, slideHeadingAlongRail } from '../src/handling.ts';
+import { advanceChaseYaw, advanceHeading, driftBoostStage, raceSpeed, railScrapeSpeed, slideHeadingAlongRail } from '../src/handling.ts';
 
 const angle = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+assert.deepEqual([0, 0.57, 0.58, 1.17, 1.18, 1.89, 1.9].map(driftBoostStage),
+  [0, 0, 1, 1, 2, 2, 3], 'Drift audio and boost levels must switch at the same charges');
 
 function run(hz, drifting, speed = raceSpeed(31), direction = 1, boostHandling = 1) {
   const dt = 1 / hz;

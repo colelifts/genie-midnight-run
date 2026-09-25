@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { ALLEY_OFFSET, ALLEY_ROAD_WIDTH, BOOST_PAD_LAYOUT, BOOST_PAD_LENGTH, branchCoversMainEdge, CAVE_ARCH_SHAPE, CAVE_ARCH_SPANS, CAVE_TUNNEL_SHAPE, clearOfOtherRoutes, GARDEN_OFFSET, GARDEN_ROAD_WIDTH, GARDEN_ROUTE_END, MAIN_ROAD_WIDTH, mainRoadWidth, makeBranchSamples, makeMainCurve, MARKET_BANNER_SPANS, MARKET_CROSSING_PROGRESS, MARKET_CROSSING_TRAVEL, MARKET_GATE_SPANS, marketCartState, OBSTACLE_LAYOUT, overMainPavement, PICKUP_LAYOUT, ROOF_OFFSET, ROOF_ROAD_WIDTH, touchesBoostPad, TURN_SIGN_SPANS, turnSignDirection } from '../src/track.ts';
+import { ALLEY_OFFSET, ALLEY_ROAD_WIDTH, BOOST_PAD_LAYOUT, BOOST_PAD_LENGTH, branchCoversMainEdge, CAVE_ARCH_SHAPE, CAVE_ARCH_SPANS, CAVE_TUNNEL_SHAPE, clearOfOtherRoutes, GARDEN_OFFSET, GARDEN_ROAD_WIDTH, GARDEN_ROUTE_END, MAIN_ROAD_WIDTH, mainRoadWidth, makeBranchSamples, makeMainCurve, MARKET_BANNER_SPANS, MARKET_CROSSING_PROGRESS, MARKET_CROSSING_TRAVEL, MARKET_GATE_SPANS, marketCartState, OBSTACLE_LAYOUT, overMainPavement, PICKUP_LAYOUT, ROOF_OFFSET, ROOF_ROAD_WIDTH, START_GRID_BASE_PROGRESS, START_GRID_LANES, startGridProgress, touchesBoostPad, TURN_SIGN_SPANS, turnSignDirection } from '../src/track.ts';
 
 const curve = makeMainCurve();
 const count = 640;
@@ -163,6 +163,21 @@ const obstacles = OBSTACLE_LAYOUT.map((item) => {
   assert.ok(clearOfOtherRoutes(routeSamples, position, radius + 1.7, item.route), `${item.kind} at ${item.progress} obstructs another route`);
   return { ...item, position, radius };
 });
+const grid = START_GRID_LANES.map((lane, id) => {
+  const progress = startGridProgress(START_GRID_BASE_PROGRESS, id);
+  const tangent = curve.getTangentAt(progress);
+  return curve.getPointAt(progress).addScaledVector(new THREE.Vector3(-tangent.z, 0, tangent.x).normalize(), lane);
+});
+for (let id = 0; id < grid.length; id++) {
+  for (const obstacle of obstacles) {
+    if (Math.abs(grid[id].y - obstacle.position.y) > 3) continue;
+    assert.ok(Math.hypot(grid[id].x - obstacle.position.x, grid[id].z - obstacle.position.z) > obstacle.radius + 1.85,
+      `Grid racer ${id} spawns inside ${obstacle.kind} at ${obstacle.progress}`);
+  }
+  for (let other = 0; other < id; other++) {
+    assert.ok(grid[id].distanceTo(grid[other]) > 4.2, `Grid racers ${id} and ${other} overlap`);
+  }
+}
 const chicanes = obstacles.filter((obstacle) => obstacle.kind === 'marketIsland');
 assert.equal(chicanes.length, 2, 'Opening market needs two visible chicane islands');
 assert.deepEqual(chicanes.map((obstacle) => Math.sign(obstacle.lateral)), [1, -1], 'Chicane gaps should alternate across the road');

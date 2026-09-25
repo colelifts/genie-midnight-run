@@ -3,6 +3,12 @@ import * as THREE from 'three';
 export type RouteName = 'main' | 'alley' | 'roof' | 'garden';
 export type ZoneName = 'MIDNIGHT MARKET' | 'ROOFTOP RUN' | 'PALACE GARDEN' | 'DESERT CAVE';
 
+export const START_GRID_BASE_PROGRESS = 0.006;
+export const START_GRID_ROW_PROGRESS = 0.004;
+export const START_GRID_LANES = [0, -4, 4, -4, 4, -4, 4, 0] as const;
+export const startGridProgress = (base: number, racerIndex: number) =>
+  ((base + (racerIndex === 0 ? 0 : Math.ceil(racerIndex / 2) * START_GRID_ROW_PROGRESS)) % 1 + 1) % 1;
+
 export interface RoadPoint {
   position: THREE.Vector3;
   tangent: THREE.Vector3;

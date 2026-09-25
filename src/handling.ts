@@ -1,5 +1,7 @@
 export const RACE_SPEED_SCALE = 1.3;
 export const raceSpeed = (speed: number) => speed * RACE_SPEED_SCALE;
+export const driftBoostStage = (charge: number): 0 | 1 | 2 | 3 =>
+  charge >= 1.9 ? 3 : charge >= 1.18 ? 2 : charge >= 0.58 ? 1 : 0;
 
 export interface HeadingState {
   yaw: number;

@@ -63,6 +63,8 @@ export class GameAudio {
   private eventScale = 1;
   private eventPan = 0;
   private boostAudible = false;
+  private driftCueCount = 0;
+  private lastDriftCue = 0;
   muted = false;
 
   constructor() {
@@ -288,6 +290,8 @@ export class GameAudio {
       samplesExpected: Object.keys(ASSETS).length,
       loops: [...this.loops.keys()],
       boostActive: this.boostAudible,
+      driftCueCount: this.driftCueCount,
+      lastDriftCue: this.lastDriftCue,
       rivalVoices: this.rivalVoices.length,
       rivalsAudible: this.rivalsAudible,
       musicPhase: !this.raceRequested ? 'idle' : !this.raceIntroEnd ? 'loading' : (this.context?.currentTime ?? 0) < this.raceIntroEnd ? 'intro' : 'loop',
@@ -427,7 +431,7 @@ export class GameAudio {
     switch (name) {
       case 'count': this.sample('spark', 0.2, 0.7, 0, 0.35); break;
       case 'go': this.sample('grand', 0.42, 1.1); this.sample('whoosh', 0.23, 1.2); break;
-      case 'drift': this.sample('light', 0.14, 1.2); break;
+      case 'drift': this.sample('light', 0.13, 1.2, 0, 0.27); this.sample('skid', 0.1, 1.15, 0.02, 0.26); break;
       case 'boost': this.sample('whoosh', 0.48, 1.13); break;
       case 'pad': this.sample('whoosh', 0.58, 1.24); this.sample('spark', 0.17, 1.15, 0.05); break;
       case 'wish': this.sample('spark', 0.25, 1.04); break;
@@ -465,6 +469,19 @@ export class GameAudio {
   playDriftBoost(stage: 1 | 2 | 3) {
     this.sample('whoosh', 0.34 + stage * 0.11, 0.95 + stage * 0.13);
     this.sample(stage === 3 ? 'grand' : 'spark', 0.12 + stage * 0.08, 0.85 + stage * 0.17, 0.06);
+  }
+
+  playDriftCharge(stage: 1 | 2 | 3) {
+    if (!this.context || !this.buffers.has('spark')) return;
+    this.driftCueCount++;
+    this.lastDriftCue = stage;
+    // Short recorded magic accents mark the blue, gold, and cosmic sparks.
+    this.sample('spark', 0.24 + stage * 0.06, 1.08 + stage * 0.18, 0, 0.5);
+    if (stage === 2) this.sample('surge', 0.16, 1.25, 0.04, 0.55);
+    if (stage === 3) {
+      this.sample('grand', 0.3, 1.2, 0.035, 0.8);
+      this.duckUntil = Math.max(this.duckUntil, this.context.currentTime + 0.24);
+    }
   }
 
   playSignature(character: CharacterId) {

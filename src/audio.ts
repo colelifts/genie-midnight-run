@@ -5,7 +5,7 @@ type SoundName = 'count' | 'go' | 'drift' | 'boost' | 'pad' | 'wish' | 'shield' 
 
 // Sources, licenses, and processing notes are documented in AUDIO_CREDITS.md.
 const ASSETS = {
-  menu: 'desert-menu.mp3', race: 'desert-race.mp3', engine: 'engine.wav', skid: 'skid.wav',
+  menu: 'desert-menu.mp3', raceIntro: 'desert-race-intro.mp3', race: 'desert-race.mp3', engine: 'engine.wav', skid: 'skid.wav',
   boostStart: 'boost-start.wav', boostLoop: 'boost-loop.wav', boostEnd: 'boost-end.wav',
   spark: 'spell-spark.mp3', surge: 'spell-surge.mp3', grand: 'spell-grand.mp3',
   whoosh: 'boost-whoosh.mp3', time: 'time-whoosh.mp3',
@@ -13,7 +13,7 @@ const ASSETS = {
   water: 'water-splash.mp3', laser: 'laser-shot.mp3', fire: 'fire-blast.mp3', cannon: 'cannon-blast.mp3',
   ice: 'ice-crackle.mp3',
 } as const;
-const AUDIO_REVISION = '6';
+const AUDIO_REVISION = '7';
 type AssetName = keyof typeof ASSETS;
 type Loop = { source: AudioBufferSourceNode; gain: GainNode };
 type RivalEngine = { id: number; position: { x: number; y: number; z: number }; speed: number };
@@ -31,6 +31,11 @@ export class GameAudio {
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
   private musicBus: GainNode | null = null;
+  private raceMusicGain: GainNode | null = null;
+  private raceIntroSource: AudioBufferSourceNode | null = null;
+  private raceIntroGain: GainNode | null = null;
+  private raceIntroEnd = 0;
+  private raceRequested = false;
   private effectsBus: GainNode | null = null;
   private motorBus: GainNode | null = null;
   private windGain: GainNode | null = null;
@@ -40,6 +45,7 @@ export class GameAudio {
   private readonly downloads = new Map<AssetName, Promise<ArrayBuffer | null>>();
   private readonly buffers = new Map<AssetName, AudioBuffer>();
   private readonly loops = new Map<AssetName, Loop>();
+  private assetsReady = false;
   private readonly rivalVoices: RivalVoice[] = [];
   private rivalsAudible = 0;
   private paused = false;
@@ -92,9 +98,13 @@ export class GameAudio {
     musicBus.connect(master);
     effectsBus.connect(master);
     motorBus.connect(master);
+    const raceMusicGain = context.createGain();
+    raceMusicGain.gain.value = 0;
+    raceMusicGain.connect(musicBus);
     this.context = context;
     this.master = master;
     this.musicBus = musicBus;
+    this.raceMusicGain = raceMusicGain;
     this.effectsBus = effectsBus;
     this.motorBus = motorBus;
     this.paused = false;
@@ -136,16 +146,19 @@ export class GameAudio {
       try {
         const buffer = await context.decodeAudioData(raw);
         this.buffers.set(name, buffer);
-        if (name === 'menu' || name === 'race' || name === 'engine' || name === 'skid' || name === 'boostLoop') this.startLoop(name);
+        if (name === 'menu' || name === 'engine' || name === 'skid' || name === 'boostLoop') this.startLoop(name);
         if (name === 'engine') this.startRivalVoices(buffer);
+        if (name === 'raceIntro' || name === 'race') this.tryStartRaceMusic();
       } catch (error) { console.warn(`Could not decode ${ASSETS[name]}`, error); }
     }));
+    this.assetsReady = true;
+    this.tryStartRaceMusic();
   }
 
-  private startLoop(name: 'menu' | 'race' | 'engine' | 'skid' | 'boostLoop') {
+  private startLoop(name: 'menu' | 'engine' | 'skid' | 'boostLoop') {
     const context = this.context;
     const buffer = this.buffers.get(name);
-    const bus = name === 'menu' || name === 'race' ? this.musicBus : name === 'boostLoop' ? this.effectsBus : this.motorBus;
+    const bus = name === 'menu' ? this.musicBus : name === 'boostLoop' ? this.effectsBus : this.motorBus;
     if (!context || !buffer || !bus || this.loops.has(name)) return;
     const source = context.createBufferSource();
     const gain = context.createGain();
@@ -156,6 +169,64 @@ export class GameAudio {
     if (name === 'engine') source.playbackRate.value = 0.48;
     source.start();
     this.loops.set(name, { source, gain });
+  }
+
+  resetRaceMusic() {
+    const now = this.context?.currentTime ?? 0;
+    this.raceMusicGain?.gain.setValueAtTime(0, now);
+    this.raceRequested = false;
+    this.raceIntroEnd = 0;
+    if (this.raceIntroSource) {
+      try { this.raceIntroSource.stop(); } catch { /* The intro may have already ended. */ }
+      this.raceIntroSource.disconnect();
+      this.raceIntroSource = null;
+    }
+    this.raceIntroGain?.disconnect();
+    this.raceIntroGain = null;
+    const race = this.loops.get('race');
+    if (race) {
+      try { race.source.stop(); } catch { /* A scheduled source may have already ended. */ }
+      race.source.disconnect();
+      race.gain.disconnect();
+      this.loops.delete('race');
+    }
+  }
+
+  beginRaceMusic() {
+    this.resetRaceMusic();
+    this.raceRequested = true;
+    this.tryStartRaceMusic();
+  }
+
+  private tryStartRaceMusic() {
+    const context = this.context;
+    const intro = this.buffers.get('raceIntro');
+    const loop = this.buffers.get('race');
+    if (!this.raceRequested || !context || !loop || !this.raceMusicGain || this.loops.has('race') || (!intro && !this.assetsReady)) return;
+    const now = context.currentTime;
+    const handoff = intro ? now + intro.duration - 0.16 : now;
+    if (intro) {
+      const introSource = context.createBufferSource();
+      const introGain = context.createGain();
+      introSource.buffer = intro;
+      introSource.connect(introGain).connect(this.raceMusicGain);
+      introGain.gain.setValueAtTime(1, now);
+      introGain.gain.setValueAtTime(1, handoff);
+      introGain.gain.linearRampToValueAtTime(0, now + intro.duration);
+      introSource.start(now);
+      this.raceIntroSource = introSource;
+      this.raceIntroGain = introGain;
+    }
+    this.raceIntroEnd = intro ? now + intro.duration : now;
+    const loopSource = context.createBufferSource();
+    const loopGain = context.createGain();
+    loopSource.buffer = loop;
+    loopSource.loop = true;
+    loopSource.connect(loopGain).connect(this.raceMusicGain);
+    loopGain.gain.setValueAtTime(intro ? 0 : 1, handoff);
+    if (intro) loopGain.gain.linearRampToValueAtTime(1, now + intro.duration);
+    loopSource.start(handoff);
+    this.loops.set('race', { source: loopSource, gain: loopGain });
   }
 
   private startRivalVoices(buffer: AudioBuffer) {
@@ -203,7 +274,7 @@ export class GameAudio {
     this.paused = value;
     if (!this.context) return;
     const now = this.context.currentTime;
-    this.loops.get('race')?.gain.gain.setTargetAtTime(value ? 0.08 : 0.65, now, 0.22);
+    this.raceMusicGain?.gain.setTargetAtTime(value ? 0.08 : 0.65, now, 0.22);
     this.loops.get('engine')?.gain.gain.setTargetAtTime(value ? 0 : 0.2, now, 0.08);
     this.loops.get('skid')?.gain.gain.setTargetAtTime(0, now, 0.06);
     this.loops.get('boostLoop')?.gain.gain.setTargetAtTime(0, now, 0.06);
@@ -221,6 +292,7 @@ export class GameAudio {
       boostActive: this.boostAudible,
       rivalVoices: this.rivalVoices.length,
       rivalsAudible: this.rivalsAudible,
+      musicPhase: !this.raceRequested ? 'idle' : !this.raceIntroEnd ? 'loading' : (this.context?.currentTime ?? 0) < this.raceIntroEnd ? 'intro' : 'loop',
       muted: this.muted,
       musicLevel: this.musicLevel,
       effectsLevel: this.effectsLevel,
@@ -316,7 +388,7 @@ export class GameAudio {
     }
     const duck = now < this.duckUntil ? 0.5 : 1;
     this.loops.get('menu')?.gain.gain.setTargetAtTime(!active && !this.paused ? 0.52 : 0, now, 0.32);
-    this.loops.get('race')?.gain.gain.setTargetAtTime(running ? (finalLap ? 0.8 : 0.66) * duck : this.paused ? 0.08 : 0, now, 0.32);
+    this.raceMusicGain?.gain.setTargetAtTime(running ? (finalLap ? 0.8 : 0.66) * duck : this.paused ? 0.08 : 0, now, 0.32);
     const cave = zone === 'DESERT CAVE';
     const garden = zone === 'PALACE GARDEN';
     this.windGain?.gain.setTargetAtTime(running ? cave ? 0.036 : garden ? 0.018 : 0.025 + Math.min(speed, 70) * 0.0004 : 0, now, 0.35);

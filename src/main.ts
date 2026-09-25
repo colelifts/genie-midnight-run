@@ -673,6 +673,7 @@ class GenieRace {
 
   private startRace() {
     this.audio.start();
+    this.audio.resetRaceMusic();
     this.resetRace();
     this.mode = 'countdown';
     this.countdownElapsed = 0;
@@ -1486,6 +1487,7 @@ class GenieRace {
     hud.dataset.audioLoops = audioStatus.loops.join(',');
     hud.dataset.audioBoost = String(audioStatus.boostActive);
     hud.dataset.audioRivals = `${audioStatus.rivalsAudible}/${audioStatus.rivalVoices}`;
+    hud.dataset.audioMusic = audioStatus.musicPhase;
     hud.dataset.audioMix = `${Math.round(audioStatus.musicLevel * 100)}/${Math.round(audioStatus.effectsLevel * 100)}`;
     if (this.mode !== 'paused') this.elapsed += dt;
     if (this.mode === 'menu') this.showcase.update(dt);
@@ -1545,6 +1547,7 @@ class GenieRace {
     if (this.countdownElapsed >= 3 && this.mode === 'countdown') {
       countdown.textContent = 'GO!';
       this.audio.play('go');
+      this.audio.beginRaceMusic();
       this.mode = 'race';
       this.racers[0].boostTime = this.keys.has('KeyW') || this.keys.has('ArrowUp') ? 0.9 : 0;
       this.showBanner('DRIFT · RELEASE FOR BOOST', 2.3);

@@ -310,7 +310,7 @@ class GenieRace {
   private lapClock = 0;
   private raceClock = 0;
   private finishCount = 0;
-  private collisionAudit = { frames: 0, roadFrames: 0, obstacleFrames: 0, maxRoad: 0, maxObstacle: 0, examples: [] as string[] };
+  private collisionAudit = { frames: 0, roadFrames: 0, obstacleFrames: 0, racerFrames: 0, maxRoad: 0, maxObstacle: 0, maxRacer: 0, examples: [] as string[] };
   private bestLap = Infinity;
   private cameraLook = new THREE.Vector3();
   private cameraYaw = 0;
@@ -695,7 +695,7 @@ class GenieRace {
     delete hud.dataset.handlingStart;
     delete hud.dataset.handlingEnd;
     this.finishCount = 0;
-    this.collisionAudit = { frames: 0, roadFrames: 0, obstacleFrames: 0, maxRoad: 0, maxObstacle: 0, examples: [] };
+    this.collisionAudit = { frames: 0, roadFrames: 0, obstacleFrames: 0, racerFrames: 0, maxRoad: 0, maxObstacle: 0, maxRacer: 0, examples: [] };
     const rivals = CHARACTERS.map((character) => character.id).filter((id) => id !== this.selectedCharacter);
     for (let i = rivals.length - 1; i > 0; i--) { const pick = Math.floor(Math.random() * (i + 1)); [rivals[i], rivals[pick]] = [rivals[pick], rivals[i]]; }
     for (let i = 1; i < RACER_COUNT; i++) this.replaceVisual(this.racers[i], rivals[i - 1]);
@@ -1598,6 +1598,20 @@ class GenieRace {
     // Racer bumps and powers can move karts after their individual road checks.
     for (const racer of this.racers) this.keepOnCourse(racer);
     if (projectileKnockback) this.checkObstacleCollisions();
+    // Wall and obstacle pushes can re-overlap a pack after its first bump.
+    // The first pass applies effects to new contacts; later passes only relax geometry.
+    for (let pass = 0; pass < 5; pass++) {
+      const racerContact = this.checkRacerCollisions(pass === 0);
+      const obstacleContact = this.checkObstacleCollisions(pass === 0);
+      let railContact = false;
+      for (const racer of this.racers) {
+        const x = racer.position.x;
+        const z = racer.position.z;
+        this.keepOnCourse(racer);
+        railContact ||= Math.hypot(racer.position.x - x, racer.position.z - z) > 0.01;
+      }
+      if (!racerContact && !obstacleContact && !railContact) break;
+    }
     this.emitMagicTrails();
     for (const racer of this.racers) {
       racer.visual.group.position.copy(racer.position);
@@ -2140,7 +2154,8 @@ class GenieRace {
     }
   }
 
-  private checkRacerCollisions() {
+  private checkRacerCollisions(applyEffects = true) {
+    let contact = false;
     for (let i = 0; i < this.racers.length; i++) {
       for (let j = i + 1; j < this.racers.length; j++) {
         const a = this.racers[i];
@@ -2150,12 +2165,14 @@ class GenieRace {
         const dz = b.position.z - a.position.z;
         const distance = Math.hypot(dx, dz);
         if (distance >= 4.15) continue;
+        contact = true;
         const normal = distance > 0.01
           ? new THREE.Vector3(dx / distance, 0, dz / distance)
           : new THREE.Vector3(Math.cos(a.yaw), 0, -Math.sin(a.yaw));
         const separation = (4.15 - distance) * 0.5;
         a.position.addScaledVector(normal, -separation);
         b.position.addScaledVector(normal, separation);
+        if (!applyEffects) continue;
         if (a.ultimateTime > 0 && !a.ultimateHit.has(b.id)) this.ultimateBump(a, b, normal);
         if (b.ultimateTime > 0 && !b.ultimateHit.has(a.id)) this.ultimateBump(b, a, normal.clone().negate());
         if (a.character === 'moana' && a.oceanBarrierTime > 0 && b.hitCooldown <= 0 && b.ultimateTime <= 0 && normal.dot(new THREE.Vector3(Math.sin(a.yaw), 0, Math.cos(a.yaw))) < -0.3) {
@@ -2179,6 +2196,7 @@ class GenieRace {
         }
       }
     }
+    return contact;
   }
 
   private repelFromOceanBarrier(defender: Racer, attacker: Racer, outward: THREE.Vector3) {
@@ -2244,12 +2262,14 @@ class GenieRace {
     this.racerSound('stun', racer);
   }
 
-  private checkObstacleCollisions() {
+  private checkObstacleCollisions(applyEffects = true) {
+    let contact = false;
     for (const racer of this.racers) {
       for (const obstacle of this.track.obstacles) {
         if (obstacle.broken || Math.abs(racer.position.y - obstacle.position.y) > 3) continue;
         const distance = Math.hypot(racer.position.x - obstacle.position.x, racer.position.z - obstacle.position.z);
         if (distance >= obstacle.radius + 1.7) continue;
+        contact = true;
         if (racer.character === 'buzz' && racer.ultimateTime > 0 && (obstacle.kind === 'crate' || obstacle.kind === 'urn')) {
           if (obstacle.kind === 'crate') {
             obstacle.broken = true;
@@ -2277,7 +2297,7 @@ class GenieRace {
           this.keepOnCourse(racer);
         }
         // Keep collision geometry solid during hit grace without applying another hit.
-        if (racer.hitCooldown > 0) continue;
+        if (!applyEffects || racer.hitCooldown > 0) continue;
         if (obstacle.kind === 'crate') {
           obstacle.broken = true;
           obstacle.respawn = 12;
@@ -2306,6 +2326,7 @@ class GenieRace {
         // Resolve any other overlap on this frame; hitCooldown prevents a second impact.
       }
     }
+    return contact;
   }
 
   private updateProjectiles(dt: number) {
@@ -2544,7 +2565,9 @@ class GenieRace {
     if (this.debugCollision) {
       let roadExcess = 0;
       let obstaclePenetration = 0;
-      let example = '';
+      let racerPenetration = 0;
+      let obstacleExample = '';
+      let racerExample = '';
       for (const racer of this.racers) {
         const road = this.track.nearest(racer.position, racer.progress);
         roadExcess = Math.max(roadExcess, Math.abs(road.lateral) - Math.max(1, road.point.width / 2 - 1.55));
@@ -2553,7 +2576,19 @@ class GenieRace {
           const penetration = obstacle.radius + 1.7 - Math.hypot(racer.position.x - obstacle.position.x, racer.position.z - obstacle.position.z);
           if (penetration > obstaclePenetration) {
             obstaclePenetration = penetration;
-            example = `${racer.id}:${obstacle.kind}@${obstacle.progress.toFixed(3)}`;
+            obstacleExample = `${racer.id}:${obstacle.kind}@${obstacle.progress.toFixed(3)}`;
+          }
+        }
+      }
+      for (let i = 0; i < this.racers.length; i++) {
+        for (let j = i + 1; j < this.racers.length; j++) {
+          const a = this.racers[i];
+          const b = this.racers[j];
+          if (Math.abs(a.position.y - b.position.y) > 3.5) continue;
+          const penetration = 4.15 - Math.hypot(a.position.x - b.position.x, a.position.z - b.position.z);
+          if (penetration > racerPenetration) {
+            racerPenetration = penetration;
+            if (penetration > 0.15) racerExample = `${a.id}:${b.id}@${a.progress.toFixed(3)}`;
           }
         }
       }
@@ -2562,10 +2597,15 @@ class GenieRace {
       if (roadExcess > 0.15) audit.roadFrames++;
       if (obstaclePenetration > 0.15) {
         audit.obstacleFrames++;
-        if (audit.examples.length < 5) audit.examples.push(example);
+        if (audit.examples.length < 5) audit.examples.push(obstacleExample);
+      }
+      if (racerPenetration > 0.15) {
+        audit.racerFrames++;
+        if (audit.examples.length < 5) audit.examples.push(racerExample);
       }
       audit.maxRoad = Math.max(audit.maxRoad, roadExcess);
       audit.maxObstacle = Math.max(audit.maxObstacle, obstaclePenetration);
+      audit.maxRacer = Math.max(audit.maxRacer, racerPenetration);
       hud.dataset.collisionAudit = JSON.stringify(audit);
     }
     if (this.debugDrive) {

@@ -55,8 +55,23 @@ function figure(id: CharacterId) {
     if (id !== 'mickey' && id !== 'stitch' && id !== 'buzz') {
       const eyeWhite = ball(root, 0.13, white, side * 0.23, 2.47, 0.53);
       eyeWhite.scale.set(0.86, 1.16, 0.4);
-      ball(root, 0.067, eye, side * 0.23, 2.45, 0.59).scale.z = 0.5;
+      ball(root, 0.067, eye, side * 0.23, 2.45, 0.61).scale.z = 0.58;
+      ball(root, 0.024, white, side * 0.205, 2.49, 0.65).scale.z = 0.36;
+      branch(root, new THREE.Vector3(side * 0.13, 2.68, 0.53), new THREE.Vector3(side * 0.34, id === 'maleficent' ? 2.73 : 2.66, 0.5), 0.042, hair);
+      const cheek = ball(root, 0.1, skin, side * 0.43, 2.21, 0.43);
+      cheek.scale.set(0.88, 0.56, 0.54);
+      ball(root, 0.14, skin, side * 0.59, 2.34, -0.02).scale.set(0.47, 1, 0.6);
     }
+  }
+  if (id !== 'mickey' && id !== 'stitch' && id !== 'buzz') {
+    const nose = ball(root, 0.115, skin, 0, 2.25, 0.6);
+    nose.scale.set(0.73, 1.08, 0.85);
+    const smile = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-0.16, 2.08, 0.57),
+      new THREE.Vector3(0, id === 'hades' || id === 'maleficent' ? 2.09 : 2.045, 0.625),
+      new THREE.Vector3(0.16, 2.08, 0.57),
+    ]);
+    add(root, new THREE.TubeGeometry(smile, 8, 0.026, 5, false), eye);
   }
   if (id === 'mickey') {
     ball(root, 0.33, paint(0x202532), -0.62, 2.95, -0.14).scale.z = 0.45;
@@ -68,6 +83,8 @@ function figure(id: CharacterId) {
       ball(root, 0.07, eye, side * 0.2, 2.52, 0.5);
     }
     ball(root, 0.16, dark, 0, 2.27, 0.62);
+    const smile = new THREE.CatmullRomCurve3([new THREE.Vector3(-0.28, 2.15, 0.52), new THREE.Vector3(0, 2.02, 0.58), new THREE.Vector3(0.28, 2.15, 0.52)]);
+    add(root, new THREE.TubeGeometry(smile, 10, 0.035, 6, false), eye);
     box(root, 0.95, 0.34, 0.7, paint(0xc52e38), 0, 0.87, -0.03);
     for (const side of [-1, 1]) ball(root, 0.09, paint(0xffd56e), side * 0.23, 1.01, 0.34);
   } else if (id === 'stitch') {
@@ -82,9 +99,12 @@ function figure(id: CharacterId) {
       ball(root, 0.08, white, side * 0.17, 2.53, 0.56);
     }
     ball(root, 0.21, dark, 0, 2.2, 0.58).scale.set(1.25, 0.8, 0.86);
+    const grin = new THREE.CatmullRomCurve3([new THREE.Vector3(-0.28, 2.05, 0.47), new THREE.Vector3(0, 1.98, 0.52), new THREE.Vector3(0.28, 2.05, 0.47)]);
+    add(root, new THREE.TubeGeometry(grin, 10, 0.035, 6, false), eye);
     ball(root, 0.55, paint(0x9bc2e5), 0, 1.2, 0.45).scale.set(0.65, 0.75, 0.22);
   } else if (id === 'elsa') {
     ball(root, 0.7, hair, 0, 2.66, -0.19).scale.set(0.98, 0.75, 0.7);
+    branch(root, new THREE.Vector3(-0.39, 2.82, 0.22), new THREE.Vector3(0.26, 2.65, 0.48), 0.12, hair);
     const braid = new THREE.CatmullRomCurve3([new THREE.Vector3(0.32, 2.65, -0.4), new THREE.Vector3(0.6, 2.28, -0.46), new THREE.Vector3(0.74, 1.84, -0.15), new THREE.Vector3(0.78, 1.45, 0.27)]);
     add(root, new THREE.TubeGeometry(braid, 18, 0.19, 8, false), hair);
     const cape = cone(root, 0.84, 1.6, paint(0xbdeefa, 0.08, 0.68), 0, 0.95, -0.47);
@@ -96,6 +116,7 @@ function figure(id: CharacterId) {
   } else if (id === 'moana') {
     ball(root, 0.72, hair, 0, 2.48, -0.28).scale.set(1.1, 1.22, 0.75);
     for (const side of [-1, 1]) ball(root, 0.34, hair, side * 0.43, 1.92, -0.3).scale.set(0.6, 1.4, 0.65);
+    for (const side of [-1, 1]) ball(root, 0.2, hair, side * 0.57, 2.44, 0.19).scale.set(0.7, 1.7, 0.56);
     box(root, 0.92, 0.3, 0.72, paint(0xd35246), 0, 1.25, 0.23);
     const skirt = cone(root, 0.7, 0.75, paint(0xe6d5ac), 0, 0.76, -0.06);
     skirt.scale.z = 0.7;
@@ -104,7 +125,18 @@ function figure(id: CharacterId) {
     ball(root, 0.73, white, 0, 1.23, -0.02).scale.set(1.05, 0.88, 0.76);
     const helmet = ball(root, 0.78, new THREE.MeshPhongMaterial({ color: 0xe4faff, transparent: true, opacity: 0.26, depthWrite: false, shininess: 96 }), 0, 2.42, 0);
     helmet.castShadow = false;
+    const cowl = ball(root, 0.59, paint(0x7753a7, 0.08, 0.43), 0, 2.62, -0.2);
+    cowl.scale.set(0.98, 0.67, 0.76);
     ball(root, 0.62, skin, 0, 2.38, 0).scale.set(0.9, 1, 0.85);
+    for (const side of [-1, 1]) {
+      const faceEye = ball(root, 0.115, white, side * 0.21, 2.45, 0.52);
+      faceEye.scale.set(0.82, 1.1, 0.36);
+      ball(root, 0.055, eye, side * 0.21, 2.43, 0.565);
+      branch(root, new THREE.Vector3(side * 0.12, 2.63, 0.48), new THREE.Vector3(side * 0.32, 2.62, 0.45), 0.042, hair);
+    }
+    ball(root, 0.085, skin, 0, 2.25, 0.56).scale.z = 0.7;
+    const buzzSmile = new THREE.CatmullRomCurve3([new THREE.Vector3(-0.13, 2.13, 0.5), new THREE.Vector3(0, 2.1, 0.56), new THREE.Vector3(0.13, 2.13, 0.5)]);
+    add(root, new THREE.TubeGeometry(buzzSmile, 8, 0.024, 5, false), eye);
     box(root, 1.1, 0.27, 0.55, paint(0x7dc34a), 0, 1.67, 0.31);
     for (const side of [-1, 1]) box(root, 0.38, 0.5, 0.55, paint(0x8a58b8), side * 0.72, 1.51, -0.08);
     ball(root, 0.12, glow(0xe53b51), 0.23, 1.63, 0.61);
@@ -133,17 +165,22 @@ function figure(id: CharacterId) {
     hatBrim.scale.set(1.4, 0.18, 0.78);
     const hat = cone(root, 0.68, 0.78, paint(0x3a2c2b), 0, 3.35, -0.07);
     hat.scale.z = 0.68;
+    const hatBand = box(root, 1.04, 0.13, 0.9, paint(0x714d3c), 0, 3.12, -0.07);
+    hatBand.rotation.z = 0.06;
     for (const side of [-1, 1]) {
       const braid = ball(root, 0.17, hair, side * 0.51, 2.0, -0.17);
       braid.scale.set(0.68, 2.9, 0.7);
+      for (let n = 0; n < 3; n++) ball(root, 0.075, n === 1 ? accent : cream, side * 0.51, 1.67 + n * 0.24, 0.02);
     }
     cone(root, 0.25, 0.43, hair, 0, 1.95, 0.48).rotation.x = Math.PI;
     box(root, 1.08, 0.55, 0.75, paint(0x74543c), 0, 1.27, -0.05);
     box(root, 0.12, 0.65, 0.12, accent, 0, 1.21, 0.39);
   } else if (id === 'mulan') {
     ball(root, 0.68, hair, 0, 2.61, -0.22).scale.set(1.03, 0.85, 0.73);
+    for (const side of [-1, 1]) ball(root, 0.2, hair, side * 0.37, 2.69, 0.24).scale.set(0.8, 0.78, 0.82);
     const bun = ball(root, 0.32, hair, 0, 3.1, -0.42);
     bun.scale.z = 0.85;
+    branch(root, new THREE.Vector3(-0.42, 3.08, -0.36), new THREE.Vector3(0.44, 3.08, -0.36), 0.045, accent);
     box(root, 1.12, 0.35, 0.62, paint(0xb43843), 0, 1.37, 0.22);
     for (const side of [-1, 1]) {
       box(root, 0.18, 0.75, 0.12, accent, side * 0.5, 1.31, 0.18).rotation.z = side * 0.25;

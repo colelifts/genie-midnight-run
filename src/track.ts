@@ -82,7 +82,7 @@ export function branchCoversMainEdge(branches: RoadPoint[][], position: THREE.Ve
 
 export const MARKET_BANNER_SPANS = [0.025, 0.08, 0.17, 0.235, 0.29, 0.89, 0.93, 0.97];
 export const MARKET_GATE_SPANS = [0.175, 0.91];
-export const TURN_SIGN_SPANS = [0.235, 0.28, 0.315, 0.345, 0.435, 0.475, 0.535, 0.585, 0.625, 0.695, 0.785, 0.865, 0.905, 0.935];
+export const TURN_SIGN_SPANS = [0.235, 0.28, 0.315, 0.345, 0.435, 0.475, 0.535, 0.595, 0.662, 0.722, 0.785, 0.865, 0.905, 0.935];
 export const CAVE_ARCH_SPANS = [0.684, 0.721, 0.758];
 export const CAVE_ARCH_SHAPE = { pillarOutset: 8, pillarHalfWidth: 7.4, crystalOutset: 5.5, crystalRadius: 1.7, ceilingY: 16.5, ceilingHalfHeight: 4.8 };
 export const CAVE_TUNNEL_SHAPE = { wallOutset: 20, wallRadius: 14, roofCenterY: 19, roofEdgeY: 9 };
@@ -90,10 +90,11 @@ export const COURSE_SCALE = 2;
 export const MAIN_ROAD_WIDTH = 36;
 export const ALLEY_ROAD_WIDTH = 26;
 export const ROOF_ROAD_WIDTH = 26;
-export const ALLEY_OFFSET = -61;
+export const ALLEY_OFFSET = -56;
 export const ROOF_OFFSET = -60;
 export const GARDEN_OFFSET = 20;
 export const GARDEN_ROAD_WIDTH = 22;
+export const GARDEN_ROUTE_END = 0.508;
 export const MARKET_CROSSING_PROGRESS = 0.842;
 export const MARKET_CROSSING_TRAVEL = MAIN_ROAD_WIDTH / 2 + 5;
 export const BOOST_PAD_LENGTH = 10;
@@ -111,11 +112,11 @@ export const BOOST_PAD_LAYOUT: Array<{ route: RouteName; progress: number; boost
   { route: 'roof', progress: 0.22, boostSeconds: 5.3 },
   { route: 'roof', progress: 0.266, boostSeconds: 5.3 },
   { route: 'roof', progress: 0.311, boostSeconds: 5.3 },
-  { route: 'main', progress: 0.43, boostSeconds: 2.4, lateral: 10, width: 9 },
+  { route: 'main', progress: 0.418, boostSeconds: 2.4, lateral: 10, width: 9 },
   { route: 'garden', progress: 0.487, boostSeconds: 3.1 },
   { route: 'main', progress: 0.535, boostSeconds: 3.3 },
-  { route: 'main', progress: 0.59, boostSeconds: 2.4, lateral: -10, width: 9 },
-  { route: 'main', progress: 0.645, boostSeconds: 2.4, lateral: -10, width: 9 },
+  { route: 'main', progress: 0.582, boostSeconds: 2.4, lateral: 10, width: 9 },
+  { route: 'main', progress: 0.612, boostSeconds: 2.4, lateral: -10, width: 9 },
   { route: 'main', progress: 0.88, boostSeconds: 2.4, lateral: 10, width: 9 },
   { route: 'main', progress: 0.975, boostSeconds: 3.3 },
 ];
@@ -127,7 +128,7 @@ export const PICKUP_LAYOUT: Array<{ route: RouteName; progress: number; lateral:
   { route: 'roof', progress: 0.3, lateral: -5 },
   { route: 'main', progress: 0.39, lateral: -9 },
   { route: 'garden', progress: 0.445, lateral: 0 },
-  { route: 'main', progress: 0.5, lateral: -9 },
+  { route: 'main', progress: 0.575, lateral: -9 },
   { route: 'main', progress: 0.55, lateral: 8 },
   { route: 'main', progress: 0.62, lateral: 9 },
   { route: 'main', progress: 0.735, lateral: 0 },
@@ -272,16 +273,16 @@ export function makeMainCurve() {
     new THREE.Vector3(14, 0, 88),
     new THREE.Vector3(5, 0, 72),
     new THREE.Vector3(7, 0, 53),
-    new THREE.Vector3(1, 0, 36),
+    new THREE.Vector3(1, 0, 37.7),
     new THREE.Vector3(-8, 0, 12),
     new THREE.Vector3(-30, 0, 5),
-    new THREE.Vector3(-56, 0, -1),
+    new THREE.Vector3(-58, 0, -2.5),
     new THREE.Vector3(-86, 0, 30),
     new THREE.Vector3(-115, 0, 45),
-    new THREE.Vector3(-145, 0, 35),
-    new THREE.Vector3(-160, 0, 5),
-    new THREE.Vector3(-180, 0, -20),
-    new THREE.Vector3(-179, 0, -57),
+    new THREE.Vector3(-152.8, 0, 62.2),
+    new THREE.Vector3(-187, 0, 27.8),
+    new THREE.Vector3(-174.4, 0, -15),
+    new THREE.Vector3(-183, 0, -50),
     new THREE.Vector3(-151, 0, -77),
     new THREE.Vector3(-130, 0, -98),
   ].map((point) => point.multiplyScalar(COURSE_SCALE)), true, 'catmullrom', 0.5);
@@ -528,7 +529,7 @@ export class RaceTrack {
     }
     this.alleySamples.push(...makeBranchSamples(this.mainCurve, 'alley', 0.045, 0.16, ALLEY_OFFSET, 0, ALLEY_ROAD_WIDTH));
     this.roofSamples.push(...makeBranchSamples(this.mainCurve, 'roof', 0.19, 0.33, ROOF_OFFSET, 5.4, ROOF_ROAD_WIDTH));
-    this.gardenSamples.push(...makeBranchSamples(this.mainCurve, 'garden', 0.37, 0.53, GARDEN_OFFSET, 0, GARDEN_ROAD_WIDTH));
+    this.gardenSamples.push(...makeBranchSamples(this.mainCurve, 'garden', 0.37, GARDEN_ROUTE_END, GARDEN_OFFSET, 0, GARDEN_ROAD_WIDTH));
     this.samples.push(...this.mainSamples, ...this.alleySamples, ...this.roofSamples, ...this.gardenSamples);
   }
 

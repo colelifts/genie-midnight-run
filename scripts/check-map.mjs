@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { ALLEY_OFFSET, ALLEY_ROAD_WIDTH, BOOST_PAD_LAYOUT, BOOST_PAD_LENGTH, branchCoversMainEdge, CAVE_ARCH_SHAPE, CAVE_ARCH_SPANS, CAVE_TUNNEL_SHAPE, clearOfOtherRoutes, GARDEN_OFFSET, GARDEN_ROAD_WIDTH, MAIN_ROAD_WIDTH, makeBranchSamples, makeMainCurve, MARKET_BANNER_SPANS, MARKET_CROSSING_PROGRESS, MARKET_CROSSING_TRAVEL, MARKET_GATE_SPANS, marketCartState, OBSTACLE_LAYOUT, overMainPavement, PICKUP_LAYOUT, ROOF_OFFSET, ROOF_ROAD_WIDTH, touchesBoostPad, TURN_SIGN_SPANS, turnSignDirection } from '../src/track.ts';
+import { ALLEY_OFFSET, ALLEY_ROAD_WIDTH, BOOST_PAD_LAYOUT, BOOST_PAD_LENGTH, branchCoversMainEdge, CAVE_ARCH_SHAPE, CAVE_ARCH_SPANS, CAVE_TUNNEL_SHAPE, clearOfOtherRoutes, GARDEN_OFFSET, GARDEN_ROAD_WIDTH, GARDEN_ROUTE_END, MAIN_ROAD_WIDTH, makeBranchSamples, makeMainCurve, MARKET_BANNER_SPANS, MARKET_CROSSING_PROGRESS, MARKET_CROSSING_TRAVEL, MARKET_GATE_SPANS, marketCartState, OBSTACLE_LAYOUT, overMainPavement, PICKUP_LAYOUT, ROOF_OFFSET, ROOF_ROAD_WIDTH, touchesBoostPad, TURN_SIGN_SPANS, turnSignDirection } from '../src/track.ts';
 
 const curve = makeMainCurve();
 const count = 640;
@@ -61,13 +61,13 @@ for (let i = 0; i < 200; i++) {
   if (turnDirections.at(-1) !== direction) turnDirections.push(direction);
 }
 if (turnDirections[0] === turnDirections.at(-1)) turnDirections.pop();
-assert.ok(turnDirections.length >= 16, `Course needs at least 16 alternating drift turns; found ${turnDirections.length}`);
+assert.ok(turnDirections.length >= 20, `Course needs at least 20 alternating drift turns; found ${turnDirections.length}`);
 
 const branches = [];
 for (const [route, start, end, offset, height, width] of [
   ['alley', 0.045, 0.16, ALLEY_OFFSET, 0, ALLEY_ROAD_WIDTH],
   ['roof', 0.19, 0.33, ROOF_OFFSET, 5.4, ROOF_ROAD_WIDTH],
-  ['garden', 0.37, 0.53, GARDEN_OFFSET, 0, GARDEN_ROAD_WIDTH],
+  ['garden', 0.37, GARDEN_ROUTE_END, GARDEN_OFFSET, 0, GARDEN_ROAD_WIDTH],
 ]) {
   const samples = makeBranchSamples(curve, route, start, end, offset, height, width);
   branches.push(samples);

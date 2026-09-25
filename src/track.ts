@@ -34,9 +34,22 @@ export interface Obstacle {
 
 export interface BoostPad {
   position: THREE.Vector3;
-  radius: number;
+  tangent: THREE.Vector3;
+  right: THREE.Vector3;
+  halfWidth: number;
+  halfLength: number;
   route: RouteName;
   mesh: THREE.Group;
+}
+
+export function touchesBoostPad(pad: BoostPad, position: THREE.Vector3, route: RouteName) {
+  if (route !== pad.route || Math.abs(position.y - pad.position.y) > 2.5) return false;
+  const toPad = position.clone().sub(pad.position);
+  return Math.abs(toPad.dot(pad.right)) <= pad.halfWidth + 1.2 && Math.abs(toPad.dot(pad.tangent)) <= pad.halfLength + 1.8;
+}
+
+export function roadArrowRotation(tangent: THREE.Vector3) {
+  return new THREE.Euler(Math.PI / 2, Math.atan2(tangent.x, tangent.z), 0, 'YXZ');
 }
 
 const sand = new THREE.MeshStandardMaterial({ color: 0xb77b5c, roughness: 1, flatShading: true });
@@ -86,6 +99,52 @@ function seededRandom(seed: number) {
   };
 }
 
+export function makeMainCurve() {
+  return new THREE.CatmullRomCurve3([
+    new THREE.Vector3(-95, 0, -96),
+    new THREE.Vector3(-44, 0, -107),
+    new THREE.Vector3(7, 0, -102),
+    new THREE.Vector3(55, 0, -91),
+    new THREE.Vector3(100, 0, -60),
+    new THREE.Vector3(118, 0, -15),
+    new THREE.Vector3(110, 0, 35),
+    new THREE.Vector3(85, 0, 78),
+    new THREE.Vector3(35, 0, 103),
+    new THREE.Vector3(-20, 0, 105),
+    new THREE.Vector3(-68, 0, 106),
+    new THREE.Vector3(-111, 0, 77),
+    new THREE.Vector3(-135, 0, 31),
+    new THREE.Vector3(-130, 0, -20),
+    new THREE.Vector3(-125, 0, -68),
+  ].map((point) => point.multiplyScalar(1.55)), true, 'catmullrom', 0.5);
+}
+
+export function makeBranchSamples(mainCurve: THREE.CatmullRomCurve3, route: RouteName, start: number, end: number, maxOffset: number, maxHeight: number, width: number): RoadPoint[] {
+  const result: RoadPoint[] = [];
+  const count = 90;
+  const startPoint = mainCurve.getPointAt(start);
+  const endPoint = mainCurve.getPointAt(end);
+  for (let i = 0; i <= count; i++) {
+    const f = i / count;
+    const progress = start + (end - start) * f;
+    const mainPoint = mainCurve.getPointAt(progress);
+    const tangent = mainCurve.getTangentAt(progress).normalize();
+    const right = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+    const chord = startPoint.clone().lerp(endPoint, f);
+    const cut = Math.pow(Math.sin(Math.PI * f), 1.2) * 0.42;
+    const position = mainPoint.clone().lerp(chord, cut).addScaledVector(right, maxOffset * Math.sin(Math.PI * f) ** 2);
+    position.y = 0.07 + maxHeight * Math.pow(Math.sin(Math.PI * f), 2);
+    result.push({ position, tangent, right, progress, width, route });
+  }
+  for (let i = 0; i < result.length; i++) {
+    const a = result[Math.max(0, i - 1)].position;
+    const b = result[Math.min(result.length - 1, i + 1)].position;
+    result[i].tangent = b.clone().sub(a).normalize();
+    result[i].right = new THREE.Vector3(-result[i].tangent.z, 0, result[i].tangent.x).normalize();
+  }
+  return result;
+}
+
 function makePavingTexture() {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 512;
@@ -127,29 +186,12 @@ export class RaceTrack {
   private readonly rng = seededRandom(626);
   private readonly carpetMaterials: THREE.MeshBasicMaterial[] = [];
   private readonly marketPeople: Array<{ figure: THREE.Group; phase: number; baseX: number }> = [];
+  private readonly marketWalkers: Array<{ figure: THREE.Group; progress: number; side: number; phase: number; leftArm: THREE.Mesh; rightArm: THREE.Mesh }> = [];
 
   constructor(scene: THREE.Scene) {
     roadMat.map = makePavingTexture();
     roadMat.needsUpdate = true;
-    this.mainCurve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(-95, 0, -96),
-      new THREE.Vector3(-44, 0, -107),
-      new THREE.Vector3(7, 0, -102),
-      new THREE.Vector3(55, 0, -91),
-      new THREE.Vector3(91, 0, -58),
-      new THREE.Vector3(106, 0, -15),
-      new THREE.Vector3(78, 0, 20),
-      new THREE.Vector3(98, 0, 52),
-      new THREE.Vector3(67, 0, 85),
-      new THREE.Vector3(24, 0, 97),
-      new THREE.Vector3(-18, 0, 81),
-      new THREE.Vector3(-58, 0, 105),
-      new THREE.Vector3(-102, 0, 80),
-      new THREE.Vector3(-119, 0, 37),
-      new THREE.Vector3(-102, 0, -2),
-      new THREE.Vector3(-119, 0, -44),
-      new THREE.Vector3(-111, 0, -76),
-    ].map((point) => point.multiplyScalar(1.55)), true, 'catmullrom', 0.5);
+    this.mainCurve = makeMainCurve();
     this.length = this.mainCurve.getLength();
     this.makeSamples();
     this.makeTerrain();
@@ -161,6 +203,7 @@ export class RaceTrack {
     this.makeMarketBanners();
     this.makeRouteSigns();
     this.makeDecor();
+    this.makeMarketWalkers();
     this.makeObstacles();
     this.makePads();
     scene.add(this.group);
@@ -175,35 +218,9 @@ export class RaceTrack {
       const right = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
       this.mainSamples.push({ position, tangent, right, progress, width: this.mainWidth, route: 'main' });
     }
-    this.alleySamples.push(...this.makeBranch('alley', 0.045, 0.16, -56, 0, 24));
-    this.roofSamples.push(...this.makeBranch('roof', 0.19, 0.33, -62, 5.4, 26));
+    this.alleySamples.push(...makeBranchSamples(this.mainCurve, 'alley', 0.045, 0.16, -48, 0, 24));
+    this.roofSamples.push(...makeBranchSamples(this.mainCurve, 'roof', 0.19, 0.33, -62, 5.4, 26));
     this.samples.push(...this.mainSamples, ...this.alleySamples, ...this.roofSamples);
-  }
-
-  private makeBranch(route: RouteName, start: number, end: number, maxOffset: number, maxHeight: number, width: number): RoadPoint[] {
-    const result: RoadPoint[] = [];
-    const count = 90;
-    const startPoint = this.mainCurve.getPointAt(start);
-    const endPoint = this.mainCurve.getPointAt(end);
-    for (let i = 0; i <= count; i++) {
-      const f = i / count;
-      const progress = start + (end - start) * f;
-      const mainPoint = this.mainCurve.getPointAt(progress);
-      const tangent = this.mainCurve.getTangentAt(progress).normalize();
-      const right = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
-      const chord = startPoint.clone().lerp(endPoint, f);
-      const cut = Math.pow(Math.sin(Math.PI * f), 1.2) * 0.42;
-      const position = mainPoint.clone().lerp(chord, cut).addScaledVector(right, maxOffset * Math.sin(Math.PI * f));
-      position.y = 0.07 + maxHeight * Math.pow(Math.sin(Math.PI * f), 2);
-      result.push({ position, tangent, right, progress, width, route });
-    }
-    for (let i = 0; i < result.length; i++) {
-      const a = result[Math.max(0, i - 1)].position;
-      const b = result[Math.min(result.length - 1, i + 1)].position;
-      result[i].tangent = b.clone().sub(a).normalize();
-      result[i].right = new THREE.Vector3(-result[i].tangent.z, 0, result[i].tangent.x).normalize();
-    }
-    return result;
   }
 
   private makeTerrain() {
@@ -377,8 +394,7 @@ export class RaceTrack {
     for (let i = 18; i < this.mainSamples.length; i += 40) {
       const sample = this.mainSamples[i];
       const arrow = new THREE.Mesh(arrowGeo, arrowMat);
-      arrow.rotation.x = -Math.PI / 2;
-      arrow.rotation.z = -Math.atan2(sample.tangent.x, sample.tangent.z);
+      arrow.rotation.copy(roadArrowRotation(sample.tangent));
       arrow.position.copy(sample.position);
       arrow.position.y += 0.045;
       this.group.add(arrow);
@@ -568,6 +584,35 @@ export class RaceTrack {
       const facing = p.right.clone().multiplyScalar(i % 2 ? -1 : 1);
       this.makeBuilding(pos, 9 + this.rng() * 7, 5 + this.rng() * 5, 9 + this.rng() * 7, i + 100, Math.atan2(facing.x, facing.z));
     }
+  }
+
+  private makeMarketWalkers() {
+    const progressPoints = [0.018, 0.058, 0.103, 0.148, 0.183, 0.895, 0.925, 0.953, 0.98];
+    const robeGeometry = new THREE.CylinderGeometry(0.4, 0.56, 1.65, 9);
+    const headGeometry = new THREE.SphereGeometry(0.34, 10, 8);
+    const turbanGeometry = new THREE.SphereGeometry(0.42, 10, 6);
+    const armGeometry = new THREE.CylinderGeometry(0.13, 0.16, 0.9, 7);
+    progressPoints.forEach((progress, i) => {
+      const figure = new THREE.Group();
+      const clothes = i % 3 === 0 ? red : i % 3 === 1 ? blue : roofMat;
+      const robe = new THREE.Mesh(robeGeometry, clothes);
+      robe.position.y = 0.95;
+      const head = new THREE.Mesh(headGeometry, stoneLight);
+      head.position.y = 2.05;
+      const turban = new THREE.Mesh(turbanGeometry, i % 2 === 0 ? stoneLight : gold);
+      turban.scale.y = 0.5;
+      turban.position.y = 2.38;
+      const leftArm = new THREE.Mesh(armGeometry, clothes);
+      const rightArm = new THREE.Mesh(armGeometry, clothes);
+      leftArm.position.set(-0.49, 1.46, 0);
+      rightArm.position.set(0.49, 1.46, 0);
+      leftArm.rotation.z = -0.23;
+      rightArm.rotation.z = 0.23;
+      figure.add(robe, head, turban, leftArm, rightArm);
+      const side = progress < 0.19 ? 1 : i % 2 === 0 ? -1 : 1;
+      this.group.add(figure);
+      this.marketWalkers.push({ figure, progress, side, phase: i * 1.35, leftArm, rightArm });
+    });
   }
 
   private clearOfRoad(position: THREE.Vector3, radius: number) {
@@ -962,13 +1007,15 @@ export class RaceTrack {
     }
     for (const progress of [0.668, 0.705, 0.742]) {
       const sample = this.at(progress);
+      const upcoming = this.at(progress + 0.018);
+      const leftTurn = sample.tangent.x * upcoming.tangent.z - sample.tangent.z * upcoming.tangent.x >= 0;
       const group = new THREE.Group();
       const sign = box(4.9, 2.6, 0.22, stoneDark);
       sign.position.y = 3.7;
       group.add(sign);
       for (let i = 0; i < 2; i++) {
         const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.62, 1.1, 3), glow);
-        arrow.rotation.z = -Math.PI / 2;
+        arrow.rotation.z = leftTurn ? Math.PI / 2 : -Math.PI / 2;
         arrow.position.set(-0.8 + i * 1.4, 3.7, 0.17);
         group.add(arrow);
       }
@@ -1141,7 +1188,7 @@ export class RaceTrack {
   }
 
   private makePads() {
-    const points = [this.roofSamples[59], this.mainSamples[Math.floor(0.54 * 640)]];
+    const points = [this.at(0.105), this.roofSamples[59], this.at(0.54), this.at(0.805)];
     for (const point of points) {
       const group = new THREE.Group();
       const base = box(point.width * 0.78, 0.045, 5.3, new THREE.MeshBasicMaterial({ color: 0x6a3c99 }));
@@ -1163,7 +1210,7 @@ export class RaceTrack {
       group.position.y += 0.08;
       group.rotation.y = Math.atan2(point.tangent.x, point.tangent.z);
       this.group.add(group);
-      this.boostPads.push({ position: group.position, radius: point.width * 0.43, route: point.route, mesh: group });
+      this.boostPads.push({ position: group.position, tangent: point.tangent.clone(), right: point.right.clone(), halfWidth: point.width * 0.39, halfLength: 2.65, route: point.route, mesh: group });
     }
   }
 
@@ -1234,6 +1281,15 @@ export class RaceTrack {
     for (const person of this.marketPeople) {
       person.figure.position.x = person.baseX + Math.sin(time * 0.65 + person.phase) * 0.22;
       person.figure.rotation.y = Math.sin(time * 0.55 + person.phase) * 0.17;
+    }
+    for (const walker of this.marketWalkers) {
+      const phase = time * 0.47 + walker.phase;
+      const point = this.at(walker.progress + Math.sin(phase) * 0.003);
+      walker.figure.position.copy(point.position).addScaledVector(point.right, walker.side * (point.width / 2 + 3.1));
+      walker.figure.position.y = Math.sin(time * 6 + walker.phase) * 0.045;
+      walker.figure.rotation.y = Math.atan2(point.tangent.x, point.tangent.z) + (Math.cos(phase) < 0 ? Math.PI : 0);
+      walker.leftArm.rotation.x = Math.sin(time * 6 + walker.phase) * 0.32;
+      walker.rightArm.rotation.x = -walker.leftArm.rotation.x;
     }
   }
 }

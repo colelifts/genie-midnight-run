@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import './style.css';
 import { GameAudio } from './audio';
 import { KartVisual, makeProjectile } from './kart';
-import { RaceTrack, type RoadHit, type RoadPoint, type RouteName } from './track';
+import { RaceTrack, touchesBoostPad, type RoadHit, type RoadPoint, type RouteName } from './track';
 
 const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = el<HTMLCanvasElement>('game');
@@ -865,8 +865,9 @@ class GenieRace {
 
   private checkPads(racer: Racer) {
     if (racer.lastPad > 0) return;
+    const route = this.track.nearest(racer.position, racer.progress).point.route;
     for (const pad of this.track.boostPads) {
-      if (racer.position.distanceTo(pad.position) < pad.radius + 1.8) {
+      if (touchesBoostPad(pad, racer.position, route)) {
         racer.boostTime = Math.max(racer.boostTime, 2.0);
         racer.lastPad = 2.2;
         this.startJump(racer, 0.75, 1.5);

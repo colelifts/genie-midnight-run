@@ -39,21 +39,41 @@ export interface BoostPad {
   mesh: THREE.Group;
 }
 
-const sand = new THREE.MeshLambertMaterial({ color: 0xb77b5c, flatShading: true });
-const stone = new THREE.MeshLambertMaterial({ color: 0xc48b66, flatShading: true });
-const stoneLight = new THREE.MeshLambertMaterial({ color: 0xd7a476, flatShading: true });
-const stoneDark = new THREE.MeshLambertMaterial({ color: 0x865e59, flatShading: true });
-const roofMat = new THREE.MeshLambertMaterial({ color: 0x9d6577, flatShading: true });
-const roadMat = new THREE.MeshLambertMaterial({ color: 0x59546a, flatShading: true, side: THREE.DoubleSide });
-const red = new THREE.MeshLambertMaterial({ color: 0xd65b62, flatShading: true });
-const blue = new THREE.MeshLambertMaterial({ color: 0x4669a3, flatShading: true });
-const leaf = new THREE.MeshLambertMaterial({ color: 0x477653, flatShading: true, side: THREE.DoubleSide });
-const wood = new THREE.MeshLambertMaterial({ color: 0x705142, flatShading: true });
+const sand = new THREE.MeshStandardMaterial({ color: 0xb77b5c, roughness: 1, flatShading: true });
+const stone = new THREE.MeshStandardMaterial({ color: 0xc48b66, roughness: 0.92 });
+const stoneLight = new THREE.MeshStandardMaterial({ color: 0xd7a476, roughness: 0.9 });
+const stoneDark = new THREE.MeshStandardMaterial({ color: 0x865e59, roughness: 0.97, flatShading: true });
+const roofMat = new THREE.MeshStandardMaterial({ color: 0x9d6577, roughness: 0.84, flatShading: true });
+const roadMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.96, side: THREE.DoubleSide });
+const red = new THREE.MeshStandardMaterial({ color: 0xd65b62, roughness: 0.93, side: THREE.DoubleSide });
+const blue = new THREE.MeshStandardMaterial({ color: 0x4669a3, roughness: 0.93, side: THREE.DoubleSide });
+const leaf = new THREE.MeshStandardMaterial({ color: 0x477653, roughness: 0.92, flatShading: true, side: THREE.DoubleSide });
+const wood = new THREE.MeshStandardMaterial({ color: 0x705142, roughness: 0.95 });
 const water = new THREE.MeshBasicMaterial({ color: 0x51c1db, transparent: true, opacity: 0.9 });
 const glow = new THREE.MeshBasicMaterial({ color: 0xffca67 });
+const gold = new THREE.MeshStandardMaterial({ color: 0xdfaf63, metalness: 0.38, roughness: 0.52 });
 
 const box = (w: number, h: number, d: number, material: THREE.Material) =>
   new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+
+let lanternHaloTexture: THREE.CanvasTexture | undefined;
+function lanternHalo(size: number, color = 0xffba58) {
+  if (!lanternHaloTexture) {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 128;
+    const ctx = canvas.getContext('2d')!;
+    const gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 63);
+    gradient.addColorStop(0, 'rgba(255,255,255,0.8)');
+    gradient.addColorStop(0.16, 'rgba(255,255,255,0.35)');
+    gradient.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 128, 128);
+    lanternHaloTexture = new THREE.CanvasTexture(canvas);
+  }
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: lanternHaloTexture, color, transparent: true, opacity: 0.78, blending: THREE.AdditiveBlending, depthWrite: false }));
+  sprite.scale.set(size, size, 1);
+  return sprite;
+}
 
 function seededRandom(seed: number) {
   let state = seed >>> 0;
@@ -64,6 +84,33 @@ function seededRandom(seed: number) {
     x ^= x + Math.imul(x ^ (x >>> 7), x | 61);
     return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+function makePavingTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 512;
+  const ctx = canvas.getContext('2d')!;
+  const rng = seededRandom(13579);
+  ctx.fillStyle = '#595064';
+  ctx.fillRect(0, 0, 512, 512);
+  const palette = ['#806f78', '#826f76', '#776a75', '#8a7479', '#7d6d79'];
+  for (let row = 0; row < 10; row++) {
+    for (let col = -1; col < 7; col++) {
+      const x = col * 90 + (row % 2) * 45;
+      const y = row * 52;
+      ctx.fillStyle = palette[Math.floor(rng() * palette.length)];
+      ctx.fillRect(x + 3, y + 3, 85, 47);
+      ctx.fillStyle = 'rgba(255,211,180,0.045)';
+      ctx.fillRect(x + 5, y + 5, 81, 4);
+      ctx.fillStyle = 'rgba(30,23,42,0.08)';
+      ctx.fillRect(x + 5, y + 45, 81, 3);
+    }
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  return texture;
 }
 
 export class RaceTrack {
@@ -80,6 +127,8 @@ export class RaceTrack {
   private readonly carpetMaterials: THREE.MeshBasicMaterial[] = [];
 
   constructor(scene: THREE.Scene) {
+    roadMat.map = makePavingTexture();
+    roadMat.needsUpdate = true;
     this.mainCurve = new THREE.CatmullRomCurve3([
       new THREE.Vector3(-95, 0, -96),
       new THREE.Vector3(-44, 0, -107),
@@ -98,7 +147,7 @@ export class RaceTrack {
       new THREE.Vector3(-102, 0, -2),
       new THREE.Vector3(-119, 0, -44),
       new THREE.Vector3(-111, 0, -76),
-    ], true, 'catmullrom', 0.5);
+    ].map((point) => point.multiplyScalar(1.55)), true, 'catmullrom', 0.5);
     this.length = this.mainCurve.getLength();
     this.makeSamples();
     this.makeTerrain();
@@ -122,10 +171,10 @@ export class RaceTrack {
       position.y = 0.06;
       const tangent = this.mainCurve.getTangentAt(progress).normalize();
       const right = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
-      this.mainSamples.push({ position, tangent, right, progress, width: 13.5, route: 'main' });
+      this.mainSamples.push({ position, tangent, right, progress, width: 26, route: 'main' });
     }
-    this.alleySamples.push(...this.makeBranch('alley', 0.045, 0.16, -17, 0, 8.2));
-    this.roofSamples.push(...this.makeBranch('roof', 0.19, 0.33, -20, 5.4, 9.5));
+    this.alleySamples.push(...this.makeBranch('alley', 0.045, 0.16, -35, 0, 17));
+    this.roofSamples.push(...this.makeBranch('roof', 0.19, 0.33, -40, 5.4, 18));
     this.samples.push(...this.mainSamples, ...this.alleySamples, ...this.roofSamples);
   }
 
@@ -156,30 +205,44 @@ export class RaceTrack {
   }
 
   private makeTerrain() {
-    const ground = box(900, 1, 900, sand);
+    const ground = box(1400, 1, 1400, sand);
     ground.position.y = -0.7;
     ground.receiveShadow = true;
     this.group.add(ground);
     const duneGeo = new THREE.IcosahedronGeometry(1, 0);
     for (let i = 0; i < 45; i++) {
       const angle = (i / 45) * Math.PI * 2;
-      const distance = 200 + this.rng() * 155;
+      const distance = 330 + this.rng() * 180;
       const dune = new THREE.Mesh(duneGeo, i % 3 === 0 ? stoneDark : stone);
       dune.scale.set(20 + this.rng() * 28, 9 + this.rng() * 14, 18 + this.rng() * 25);
       dune.position.set(Math.sin(angle) * distance, -6, Math.cos(angle) * distance);
       this.group.add(dune);
     }
+    const distantStone = new THREE.MeshStandardMaterial({ color: 0x5f536d, roughness: 1, flatShading: true });
+    for (let i = 0; i < 18; i++) {
+      const angle = i / 18 * Math.PI * 2;
+      const distance = 440 + this.rng() * 170;
+      const mountain = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 0), distantStone);
+      mountain.scale.set(34 + this.rng() * 32, 19 + this.rng() * 22, 34 + this.rng() * 31);
+      mountain.position.set(Math.sin(angle) * distance, -7, Math.cos(angle) * distance);
+      this.group.add(mountain);
+    }
   }
 
   private makeRoad(points: RoadPoint[], closed: boolean) {
     const positions: number[] = [];
+    const uvs: number[] = [];
     const indices: number[] = [];
     const count = points.length;
-    for (const point of points) {
+    let pathDistance = 0;
+    for (let i = 0; i < points.length; i++) {
+      const point = points[i];
+      if (i > 0) pathDistance += point.position.distanceTo(points[i - 1].position);
       const half = point.width / 2;
       const left = point.position.clone().addScaledVector(point.right, -half);
       const right = point.position.clone().addScaledVector(point.right, half);
       positions.push(left.x, left.y, left.z, right.x, right.y, right.z);
+      uvs.push(0, pathDistance / 12, 1, pathDistance / 12);
     }
     const segments = closed ? count : count - 1;
     for (let i = 0; i < segments; i++) {
@@ -188,13 +251,47 @@ export class RaceTrack {
     }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
     const road = new THREE.Mesh(geometry, roadMat);
     road.receiveShadow = true;
     this.group.add(road);
     this.makeCurbs(points, closed);
-    if (points[0].route === 'roof') this.makeRoofRails(points);
+    this.makeEdgeBarriers(points, closed);
+    if (points[0].route === 'roof') {
+      this.makeRoofDeck(points);
+      this.makeRoofRails(points);
+    }
+  }
+
+  private makeEdgeBarriers(points: RoadPoint[], closed: boolean) {
+    const placements: THREE.Matrix4[] = [];
+    const dummy = new THREE.Object3D();
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < points.length - (closed ? 0 : 1); i += 3) {
+        if (!closed && (i < 18 || i > points.length - 21)) continue;
+        const a = points[i];
+        const b = points[(i + 3) % points.length];
+        if (!closed && i + 3 >= points.length) continue;
+        if (closed && side === -1 && ((a.progress > 0.035 && a.progress < 0.09) || (a.progress > 0.135 && a.progress < 0.175) || (a.progress > 0.18 && a.progress < 0.225) || (a.progress > 0.305 && a.progress < 0.35))) continue;
+        const edgeA = a.position.clone().addScaledVector(a.right, side * (a.width / 2 + 0.26));
+        const edgeB = b.position.clone().addScaledVector(b.right, side * (b.width / 2 + 0.26));
+        const middle = edgeA.clone().add(edgeB).multiplyScalar(0.5);
+        middle.y += 0.31;
+        const heading = Math.atan2(edgeB.x - edgeA.x, edgeB.z - edgeA.z);
+        dummy.position.copy(middle);
+        dummy.rotation.set(0, heading, 0);
+        dummy.scale.set(0.58, 0.58, edgeA.distanceTo(edgeB) + 0.15);
+        dummy.updateMatrix();
+        placements.push(dummy.matrix.clone());
+      }
+    }
+    const barriers = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), stoneLight, placements.length);
+    placements.forEach((matrix, i) => barriers.setMatrixAt(i, matrix));
+    barriers.instanceMatrix.needsUpdate = true;
+    barriers.receiveShadow = true;
+    this.group.add(barriers);
   }
 
   private makeCurbs(points: RoadPoint[], closed: boolean) {
@@ -226,23 +323,37 @@ export class RaceTrack {
     }
   }
 
-  private makeRoofRails(points: RoadPoint[]) {
-    for (let i = 22; i < points.length - 22; i += 4) {
-      for (const side of [-1, 1]) {
-        const sample = points[i];
-        const rail = box(2.7, 1.05, 0.42, stoneLight);
-        rail.position.copy(sample.position).addScaledVector(sample.right, side * (sample.width / 2 + 0.75));
-        rail.position.y += 0.45;
-        rail.rotation.y = Math.atan2(sample.tangent.x, sample.tangent.z);
-        rail.castShadow = true;
-        this.group.add(rail);
+  private makeRoofDeck(points: RoadPoint[]) {
+    const wallMaterial = new THREE.MeshStandardMaterial({ color: 0xb98668, roughness: 0.94, side: THREE.DoubleSide });
+    for (const side of [-1, 1]) {
+      const vertices: number[] = [];
+      const indices: number[] = [];
+      for (let i = 18; i <= points.length - 19; i++) {
+        const point = points[i];
+        const edge = point.position.clone().addScaledVector(point.right, side * (point.width / 2 + 0.5));
+        const bottom = Math.min(edge.y - 0.12, 0.04);
+        vertices.push(edge.x, edge.y - 0.08, edge.z, edge.x, bottom, edge.z);
+        const j = i - 18;
+        if (j > 0) indices.push((j - 1) * 2, (j - 1) * 2 + 1, j * 2, (j - 1) * 2 + 1, j * 2 + 1, j * 2);
       }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+      const wall = new THREE.Mesh(geometry, wallMaterial);
+      wall.receiveShadow = true;
+      this.group.add(wall);
     }
+  }
+
+  private makeRoofRails(points: RoadPoint[]) {
     for (let i = 26; i < points.length - 25; i += 12) {
       const sample = points[i];
       for (const side of [-1, 1]) {
+        const position = sample.position.clone().addScaledVector(sample.right, side * (sample.width / 2 + 1.6));
+        if (!this.clearOfOtherRoad(position, 1.3, 'roof')) continue;
         const support = box(1.8, Math.max(0.5, sample.position.y), 1.8, stoneDark);
-        support.position.copy(sample.position).addScaledVector(sample.right, side * (sample.width / 2 - 1.1));
+        support.position.copy(position);
         support.position.y = sample.position.y / 2;
         this.group.add(support);
       }
@@ -280,7 +391,7 @@ export class RaceTrack {
       this.group.add(dash);
     }
     const start = this.mainSamples[0];
-    for (let i = -6; i < 6; i++) {
+    for (let i = -11; i < 11; i++) {
       for (let j = -1; j <= 1; j++) {
         const tile = box(1.15, 0.04, 1.15, (i + j) % 2 === 0 ? stoneLight : stoneDark);
         tile.position.copy(start.position).addScaledVector(start.right, i * 1.12).addScaledVector(start.tangent, j * 1.1);
@@ -292,8 +403,8 @@ export class RaceTrack {
   }
 
   private makeRoadLights() {
-    for (let i = 0; i < 26; i++) {
-      const progress = i / 26;
+    for (let i = 0; i < 46; i++) {
+      const progress = i / 46;
       if (progress > 0.58 && progress < 0.85) continue;
       const point = this.at(progress);
       const side = i % 2 === 0 ? -1 : 1;
@@ -307,31 +418,39 @@ export class RaceTrack {
       const bright = box(0.65, 0.78, 0.66, glow);
       bright.position.y = 4.76;
       group.add(bright);
+      const halo = lanternHalo(5.4);
+      halo.position.y = 4.76;
+      group.add(halo);
+      const pool = new THREE.Mesh(new THREE.PlaneGeometry(8, 10), new THREE.MeshBasicMaterial({ map: lanternHaloTexture, color: 0xffb65d, transparent: true, opacity: 0.27, blending: THREE.AdditiveBlending, depthWrite: false }));
+      pool.rotation.x = -Math.PI / 2;
+      pool.position.copy(point.position).addScaledVector(point.right, side * 11.6);
+      pool.position.y += 0.09;
+      this.group.add(pool);
       const cap = new THREE.Mesh(new THREE.ConeGeometry(0.68, 0.7, 4), stoneDark);
       cap.position.y = 5.6;
       cap.rotation.y = Math.PI / 4;
       group.add(cap);
-      group.position.copy(point.position).addScaledVector(point.right, side * 11.2);
+      group.position.copy(point.position).addScaledVector(point.right, side * 17.3);
       group.position.y = 0;
       this.group.add(group);
     }
   }
 
   private makeMarketBanners() {
-    for (const progress of [0.025, 0.1, 0.17, 0.29, 0.93]) {
+    for (const progress of [0.025, 0.08, 0.125, 0.17, 0.235, 0.29, 0.89, 0.93, 0.97]) {
       const point = this.at(progress);
       const group = new THREE.Group();
-      const rope = box(19, 0.1, 0.1, wood);
+      const rope = box(31, 0.1, 0.1, wood);
       rope.position.y = 7.5;
       group.add(rope);
       for (const side of [-1, 1]) {
         const pole = box(0.25, 8, 0.25, wood);
-        pole.position.set(side * 9.5, 4, 0);
+        pole.position.set(side * 15.5, 4, 0);
         group.add(pole);
       }
-      for (let i = 0; i < 7; i++) {
+      for (let i = 0; i < 11; i++) {
         const flag = new THREE.Mesh(new THREE.ConeGeometry(0.88, 1.55, 3), i % 2 === 0 ? red : blue);
-        flag.position.set(-7.5 + i * 2.5, 6.75, 0);
+        flag.position.set(-12.5 + i * 2.5, 6.75, 0);
         flag.rotation.z = Math.PI;
         group.add(flag);
       }
@@ -372,7 +491,7 @@ export class RaceTrack {
       post.position.y = 2.8;
       const group = new THREE.Group();
       group.add(post, face);
-      group.position.copy(point.position).addScaledVector(point.right, sign.side * 10.8);
+      group.position.copy(point.position).addScaledVector(point.right, sign.side * 19);
       group.position.y = 0;
       group.rotation.y = Math.atan2(point.tangent.x, point.tangent.z) + Math.PI;
       this.group.add(group);
@@ -380,17 +499,17 @@ export class RaceTrack {
   }
 
   private makeDecor() {
-    for (let i = 0; i < 55; i++) {
-      const progress = i / 55;
+    for (let i = 0; i < 165; i++) {
+      const progress = i / 165;
       const sample = this.mainSamples[Math.floor(progress * this.mainSamples.length)];
       const side = i % 2 === 0 ? 1 : -1;
-      const offset = 22 + this.rng() * 11;
+      const offset = 31 + this.rng() * 11;
       const position = sample.position.clone().addScaledVector(sample.right, side * offset);
       if (progress < 0.33 || progress > 0.88) {
         const facing = sample.right.clone().multiplyScalar(-side);
         const yaw = Math.atan2(facing.x, facing.z);
         this.makeBuilding(position, 8 + this.rng() * 7, 8 + this.rng() * 10, 8 + this.rng() * 9, i, yaw);
-        if (i % 4 === 0) this.makeStall(sample.position.clone().addScaledVector(sample.right, side * 14.5), i, yaw);
+        if (i % 3 === 0) this.makeStall(sample.position.clone().addScaledVector(sample.right, side * 22), i, yaw);
       } else if (progress < 0.56) {
         if (i % 3 === 0) this.makeGardenWall(position);
         else this.makePalm(position, 7 + this.rng() * 3);
@@ -400,13 +519,15 @@ export class RaceTrack {
       }
     }
     this.makeFountain();
+    this.makeGarden();
     this.makeCave();
     this.makePalace();
+    this.makeMarketGate();
     for (let i = 0; i < 25; i++) {
       const p = this.roofSamples[20 + Math.floor(this.rng() * 50)];
       const pos = p.position.clone();
       pos.y = -0.05;
-      pos.addScaledVector(p.right, (i % 2 ? 1 : -1) * (11 + this.rng() * 13));
+      pos.addScaledVector(p.right, (i % 2 ? 1 : -1) * (23 + this.rng() * 13));
       const facing = p.right.clone().multiplyScalar(i % 2 ? -1 : 1);
       this.makeBuilding(pos, 9 + this.rng() * 7, 5 + this.rng() * 5, 9 + this.rng() * 7, i + 100, Math.atan2(facing.x, facing.z));
     }
@@ -417,6 +538,17 @@ export class RaceTrack {
       const dx = position.x - point.position.x;
       const dz = position.z - point.position.z;
       const clearance = point.width * 0.5 + radius + 1.5;
+      if (dx * dx + dz * dz < clearance * clearance) return false;
+    }
+    return true;
+  }
+
+  private clearOfOtherRoad(position: THREE.Vector3, radius: number, excludedRoute: RouteName) {
+    for (const point of this.samples) {
+      if (point.route === excludedRoute) continue;
+      const dx = position.x - point.position.x;
+      const dz = position.z - point.position.z;
+      const clearance = point.width * 0.5 + radius + 0.6;
       if (dx * dx + dz * dz < clearance * clearance) return false;
     }
     return true;
@@ -433,17 +565,38 @@ export class RaceTrack {
     const lip = box(width + 0.6, 0.65, depth + 0.6, stoneLight);
     lip.position.y = height + 0.1;
     group.add(lip);
+    const cornice = box(width + 0.35, 0.3, depth + 0.35, stoneDark);
+    cornice.position.y = height - 1.15;
+    group.add(cornice);
+    for (const side of [-1, 1]) {
+      const pilaster = box(0.48, height * 0.82, 0.42, stoneLight);
+      pilaster.position.set(side * (width / 2 - 0.36), height * 0.41, depth / 2 + 0.12);
+      group.add(pilaster);
+    }
     if (seed % 4 === 0) {
-      const dome = new THREE.Mesh(new THREE.SphereGeometry(Math.min(width, depth) * 0.36, 9, 5, 0, Math.PI * 2, 0, Math.PI / 2), roofMat);
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(Math.min(width, depth) * 0.36, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), roofMat);
       dome.position.y = height + 0.35;
       dome.castShadow = true;
       group.add(dome);
+      const finial = new THREE.Mesh(new THREE.ConeGeometry(0.23, 1.2, 8), stoneLight);
+      finial.position.y = height + Math.min(width, depth) * 0.37 + 0.65;
+      group.add(finial);
     }
     const windowCount = Math.max(1, Math.floor(width / 5));
     for (let i = 0; i < windowCount; i++) {
-      const window = box(1.15, 1.9, 0.08, glow);
-      window.position.set(-width / 2 + (i + 1) * width / (windowCount + 1), height * 0.61, depth / 2 + 0.06);
-      group.add(window);
+      const x = -width / 2 + (i + 1) * width / (windowCount + 1);
+      const frame = box(1.65, 2.35, 0.13, stoneDark);
+      frame.position.set(x, height * 0.64, depth / 2 + 0.06);
+      const window = box(1.06, 1.62, 0.09, glow);
+      window.position.set(x, height * 0.64, depth / 2 + 0.15);
+      const sill = box(1.86, 0.22, 0.55, stoneLight);
+      sill.position.set(x, height * 0.64 - 1.17, depth / 2 + 0.28);
+      group.add(frame, window, sill);
+      if (seed % 2 === 0) {
+        const halo = lanternHalo(2.7);
+        halo.position.set(x, height * 0.64, depth / 2 + 0.25);
+        group.add(halo);
+      }
     }
     const doorway = box(2.5, 3.6, 0.1, stoneDark);
     doorway.position.set(0, 1.8, depth / 2 + 0.1);
@@ -455,6 +608,37 @@ export class RaceTrack {
     const lintel = box(width * 0.7, 0.15, 0.22, roofMat);
     lintel.position.set(0, height * 0.78, depth / 2 + 0.12);
     group.add(lintel);
+    if (seed % 3 !== 1) {
+      const fabric = seed % 2 === 0 ? red : blue;
+      const awningWidth = width * 0.83;
+      const awningHeight = Math.min(height * 0.48, 6);
+      const roof = new THREE.BufferGeometry();
+      roof.setAttribute('position', new THREE.Float32BufferAttribute([
+        -awningWidth / 2, awningHeight + 0.65, depth / 2 + 0.05,
+        awningWidth / 2, awningHeight + 0.65, depth / 2 + 0.05,
+        -awningWidth / 2, awningHeight - 0.45, depth / 2 + 3.65,
+        awningWidth / 2, awningHeight - 0.45, depth / 2 + 3.65,
+      ], 3));
+      roof.setIndex([0, 2, 1, 1, 2, 3]);
+      roof.computeVertexNormals();
+      group.add(new THREE.Mesh(roof, fabric));
+      const valance = box(awningWidth, 0.36, 0.12, fabric);
+      valance.position.set(0, awningHeight - 0.59, depth / 2 + 3.7);
+      group.add(valance);
+      for (const side of [-1, 1]) {
+        const brace = box(0.14, awningHeight - 0.5, 0.14, wood);
+        brace.position.set(side * awningWidth * 0.48, (awningHeight - 0.5) / 2, depth / 2 + 3.5);
+        group.add(brace);
+      }
+    }
+    if (seed % 4 === 1) {
+      const porchLamp = box(0.62, 0.88, 0.62, glow);
+      porchLamp.position.set(width * 0.25, 3.7, depth / 2 + 0.48);
+      group.add(porchLamp);
+      const halo = lanternHalo(4);
+      halo.position.copy(porchLamp.position);
+      group.add(halo);
+    }
     group.position.copy(position);
     group.position.y = 0;
     group.rotation.y = yaw;
@@ -471,14 +655,28 @@ export class RaceTrack {
       const pole = box(0.2, 2.8, 0.2, wood);
       pole.position.set(x, 2.8, -1.3);
       group.add(pole);
+      const frontPole = box(0.2, 2.65, 0.2, wood);
+      frontPole.position.set(x, 2.5, 2.15);
+      group.add(frontPole);
     }
-    const canopy = box(6.5, 0.18, 4.7, seed % 2 === 0 ? red : blue);
-    canopy.position.y = 4.3;
-    canopy.rotation.z = seed % 2 ? -0.09 : 0.09;
+    const canopy = new THREE.Mesh(new THREE.PlaneGeometry(6.6, 5.1), seed % 2 === 0 ? red : blue);
+    canopy.rotation.x = -Math.PI / 2 + 0.13;
+    canopy.position.set(0, 4.23, 0.1);
     group.add(canopy);
+    const frontFlap = box(6.6, 0.42, 0.12, seed % 2 === 0 ? red : blue);
+    frontFlap.position.set(0, 3.8, 2.6);
+    group.add(frontFlap);
     const lantern = box(0.5, 0.8, 0.5, glow);
     lantern.position.set(0, 3.1, -1.45);
     group.add(lantern);
+    const halo = lanternHalo(4.5);
+    halo.position.copy(lantern.position);
+    group.add(halo);
+    for (let i = 0; i < 3; i++) {
+      const jar = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.49, 0.95, 8), i % 2 ? roofMat : blue);
+      jar.position.set((i - 1) * 1.35, 2.15, 0.15);
+      group.add(jar);
+    }
     group.position.copy(position);
     group.position.y = 0;
     group.rotation.y = yaw;
@@ -488,21 +686,136 @@ export class RaceTrack {
   private makePalm(position: THREE.Vector3, height: number) {
     if (!this.clearOfRoad(position, 2.5)) return;
     const group = new THREE.Group();
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.8, height, 6), wood);
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.39, 0.72, height, 9, 6), wood);
     trunk.position.y = height / 2;
+    trunk.rotation.z = 0.065;
     trunk.castShadow = true;
     group.add(trunk);
-    const leafGeo = new THREE.ConeGeometry(1, 5.3, 3);
-    for (let i = 0; i < 6; i++) {
-      const frond = new THREE.Mesh(leafGeo, leaf);
-      frond.position.set(Math.sin(i * Math.PI / 3) * 2.1, height + 0.2, Math.cos(i * Math.PI / 3) * 2.1);
-      frond.rotation.z = 0.65;
-      frond.rotation.y = i * Math.PI / 3;
-      group.add(frond);
+    for (let i = 0; i < 7; i++) {
+      const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.45 + i * 0.035, 0.46 + i * 0.035, 0.1, 9), stoneDark);
+      ring.position.set((height * 0.065) * (1 - i / 7), height * (0.14 + i * 0.11), 0);
+      group.add(ring);
     }
+    const crown = new THREE.Group();
+    crown.position.set(height * 0.065, height, 0);
+    for (let i = 0; i < 9; i++) {
+      const angle = i / 9 * Math.PI * 2;
+      const length = 4.4 + (i % 3) * 0.45;
+      const verts: number[] = [];
+      const uvs: number[] = [];
+      const index: number[] = [];
+      for (let j = 0; j <= 5; j++) {
+        const t = j / 5;
+        const reach = 0.55 + t * length;
+        const drop = 0.45 + Math.sin(t * Math.PI) * 0.55 - t * t * 2.65;
+        const spread = Math.sin(t * Math.PI) * (0.83 - t * 0.24) + 0.03;
+        for (const side of [-1, 1]) {
+          const sideways = side * spread;
+          verts.push(Math.sin(angle) * reach + Math.cos(angle) * sideways, drop, Math.cos(angle) * reach - Math.sin(angle) * sideways);
+          uvs.push(side < 0 ? 0 : 1, t);
+        }
+        if (j < 5) index.push(j * 2, j * 2 + 1, j * 2 + 2, j * 2 + 1, j * 2 + 3, j * 2 + 2);
+      }
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+      geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+      geometry.setIndex(index);
+      geometry.computeVertexNormals();
+      const frond = new THREE.Mesh(geometry, leaf);
+      frond.castShadow = true;
+      crown.add(frond);
+    }
+    group.add(crown);
     group.position.copy(position);
     group.position.y = 0;
     this.group.add(group);
+  }
+
+  private makeGarden() {
+    const green = new THREE.MeshStandardMaterial({ color: 0x397255, roughness: 0.9 });
+    const hedge = new THREE.MeshStandardMaterial({ color: 0x265942, roughness: 0.95 });
+    const flower = new THREE.MeshBasicMaterial({ color: 0xf2ae8a });
+    for (let i = 0; i < 33; i++) {
+      const progress = 0.34 + i * 0.0067;
+      const point = this.at(progress);
+      for (const side of [-1, 1]) {
+        const section = new THREE.Group();
+        const plinth = box(7.2, 1.2, 1.4, stoneLight);
+        plinth.position.y = 0.62;
+        section.add(plinth);
+        const trim = box(7.4, 0.24, 1.68, stoneDark);
+        trim.position.y = 1.31;
+        section.add(trim);
+        if (i % 3 === 0) {
+          const post = box(0.95, 2.8, 1.05, stoneLight);
+          post.position.y = 1.4;
+          section.add(post);
+          const postCap = box(1.2, 0.26, 1.32, stoneDark);
+          postCap.position.y = 2.89;
+          section.add(postCap);
+          const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.38, 10, 8), glow);
+          lamp.position.y = 3.44;
+          section.add(lamp);
+          const halo = lanternHalo(4.6);
+          halo.position.y = 3.44;
+          section.add(halo);
+        }
+        section.position.copy(point.position).addScaledVector(point.right, side * 16);
+        section.position.y = 0;
+        section.rotation.y = Math.atan2(point.tangent.x, point.tangent.z);
+        this.group.add(section);
+        if (i % 3 !== 0) {
+          const planter = new THREE.Group();
+          const pot = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 0.76, 1, 8), roofMat);
+          pot.position.y = 0.52;
+          planter.add(pot);
+          const rim = new THREE.Mesh(new THREE.CylinderGeometry(1.18, 1.16, 0.19, 8), gold);
+          rim.position.y = 1.02;
+          planter.add(rim);
+          const leaves = new THREE.Mesh(new THREE.IcosahedronGeometry(1.25, 1), i % 2 ? green : hedge);
+          leaves.position.y = 1.8;
+          planter.add(leaves);
+          for (let f = 0; f < 5; f++) {
+            const blossom = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 5), flower);
+            const angle = f / 5 * Math.PI * 2;
+            blossom.position.set(Math.sin(angle) * 0.84, 1.65 + (f % 2) * 0.4, Math.cos(angle) * 0.84);
+            planter.add(blossom);
+          }
+          planter.position.copy(point.position).addScaledVector(point.right, side * 19.5);
+          planter.position.y = 0;
+          this.group.add(planter);
+        }
+        if (i % 5 === 0) {
+          const palmPos = point.position.clone().addScaledVector(point.right, side * 26);
+          this.makePalm(palmPos, 9 + this.rng() * 2.5);
+        }
+      }
+    }
+    for (const progress of [0.375, 0.445, 0.515]) {
+      const point = this.at(progress);
+      const pavilion = new THREE.Group();
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(5.9, 6.2, 0.68, 12), stoneLight);
+      base.position.y = 0.35;
+      pavilion.add(base);
+      for (let j = 0; j < 8; j++) {
+        const angle = j / 8 * Math.PI * 2;
+        const column = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.59, 6, 10), stoneLight);
+        column.position.set(Math.sin(angle) * 4.5, 3.55, Math.cos(angle) * 4.5);
+        pavilion.add(column);
+        const light = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 6), glow);
+        light.position.set(Math.sin(angle) * 4.5, 5.05, Math.cos(angle) * 4.5);
+        pavilion.add(light);
+      }
+      const roof = new THREE.Mesh(new THREE.SphereGeometry(5.8, 20, 9, 0, Math.PI * 2, 0, Math.PI / 2), roofMat);
+      roof.position.y = 6.45;
+      pavilion.add(roof);
+      const finial = new THREE.Mesh(new THREE.ConeGeometry(0.48, 2.2, 12), gold);
+      finial.position.y = 12.6;
+      pavilion.add(finial);
+      pavilion.position.copy(point.position).addScaledVector(point.right, progress === 0.445 ? -38 : 38);
+      pavilion.position.y = 0;
+      if (this.clearOfRoad(pavilion.position, 7)) this.group.add(pavilion);
+    }
   }
 
   private makeRock(position: THREE.Vector3, radius: number) {
@@ -531,7 +844,7 @@ export class RaceTrack {
 
   private makeFountain() {
     const sample = this.mainSamples[Math.floor(0.44 * this.mainSamples.length)];
-    const position = sample.position.clone().addScaledVector(sample.right, -24);
+    const position = sample.position.clone().addScaledVector(sample.right, -34);
     const basin = new THREE.Mesh(new THREE.CylinderGeometry(8, 8.6, 1.2, 8), stoneLight);
     basin.position.copy(position);
     basin.position.y = 0.6;
@@ -551,21 +864,36 @@ export class RaceTrack {
   }
 
   private makeCave() {
-    for (let i = 0; i < 6; i++) {
-      const sample = this.mainSamples[Math.floor((0.68 + i * 0.012) * this.mainSamples.length)];
-      const group = new THREE.Group();
+    const rockGeometry = new THREE.IcosahedronGeometry(1, 1);
+    for (let i = 0; i < 12; i++) {
+      const sample = this.mainSamples[Math.floor((0.665 + i * 0.01) * this.mainSamples.length)];
       for (const side of [-1, 1]) {
-        const pillar = box(2.6, 9, 5, stoneDark);
-        pillar.position.set(side * 9.5, 4.5, 0);
-        pillar.castShadow = true;
-        group.add(pillar);
+        const size = 3.4 + this.rng() * 2.1;
+        const rock = new THREE.Mesh(rockGeometry, i % 3 === 0 ? stoneDark : stone);
+        rock.scale.set(size * 1.05, size * (1.15 + this.rng() * 0.65), size * 1.35);
+        rock.position.copy(sample.position).addScaledVector(sample.right, side * (20.3 + this.rng() * 3.2));
+        rock.position.y = rock.scale.y * 0.62 - 0.1;
+        rock.rotation.y = this.rng() * Math.PI;
+        rock.castShadow = true;
+        rock.receiveShadow = true;
+        this.group.add(rock);
       }
-      const top = box(19, 4, 5.5, stoneDark);
-      top.position.y = 10;
-      top.castShadow = true;
-      group.add(top);
-      group.position.copy(sample.position);
-      group.rotation.y = Math.atan2(sample.tangent.x, sample.tangent.z);
+    }
+    for (const progress of [0.668, 0.705, 0.742]) {
+      const sample = this.at(progress);
+      const group = new THREE.Group();
+      const sign = box(4.9, 2.6, 0.22, stoneDark);
+      sign.position.y = 3.7;
+      group.add(sign);
+      for (let i = 0; i < 2; i++) {
+        const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.62, 1.1, 3), glow);
+        arrow.rotation.z = -Math.PI / 2;
+        arrow.position.set(-0.8 + i * 1.4, 3.7, 0.17);
+        group.add(arrow);
+      }
+      group.position.copy(sample.position).addScaledVector(sample.right, 18.2);
+      group.position.y = 0;
+      group.rotation.y = Math.atan2(sample.tangent.x, sample.tangent.z) + Math.PI;
       this.group.add(group);
     }
   }
@@ -587,9 +915,43 @@ export class RaceTrack {
       palace.add(towerDome);
     }
     const sample = this.mainSamples[Math.floor(0.46 * this.mainSamples.length)];
-    palace.position.copy(sample.position).addScaledVector(sample.right, -55);
+    palace.position.copy(sample.position).addScaledVector(sample.right, -65);
     palace.position.y = 0;
     this.group.add(palace);
+  }
+
+  private makeMarketGate() {
+    const point = this.at(0.91);
+    const gate = new THREE.Group();
+    for (const side of [-1, 1]) {
+      const tower = box(4.2, 13.5, 4.2, stoneLight);
+      tower.position.set(side * 18, 6.75, 0);
+      tower.castShadow = true;
+      gate.add(tower);
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(2.65, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2), roofMat);
+      dome.position.set(side * 18, 13.7, 0);
+      gate.add(dome);
+      const lamp = box(0.72, 1.25, 0.7, glow);
+      lamp.position.set(side * 15.2, 6.8, 2.25);
+      gate.add(lamp);
+      const halo = lanternHalo(5);
+      halo.position.copy(lamp.position);
+      gate.add(halo);
+    }
+    const lintel = box(35.4, 2.3, 3.6, stoneLight);
+    lintel.position.y = 11.7;
+    lintel.castShadow = true;
+    gate.add(lintel);
+    const banner = box(6, 3.5, 0.13, red);
+    banner.position.set(0, 8.95, 1.88);
+    gate.add(banner);
+    const ornament = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.15, 7, 16), glow);
+    ornament.position.set(0, 9.1, 2.05);
+    gate.add(ornament);
+    gate.position.copy(point.position);
+    gate.position.y = 0;
+    gate.rotation.y = Math.atan2(point.tangent.x, point.tangent.z);
+    this.group.add(gate);
   }
 
   private addObstacle(kind: Obstacle['kind'], point: RoadPoint, lateral: number, phase = 0) {
@@ -605,22 +967,55 @@ export class RaceTrack {
         stripe.position.set(x, 1.6, 0);
         group.add(stripe);
       }
+      for (const z of [-1.65, 1.65]) {
+        for (const tilt of [-1, 1]) {
+          const brace = box(0.18, 3.9, 0.14, stoneDark);
+          brace.position.set(0, 1.6, z);
+          brace.rotation.z = tilt * 0.67;
+          group.add(brace);
+        }
+      }
+      const lid = box(3.5, 0.2, 3.5, stoneLight);
+      lid.position.y = 3.27;
+      group.add(lid);
       radius = 2.1;
     } else if (kind === 'boulder') {
-      const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(2.45, 0), stoneDark);
-      rock.position.y = 2.35;
+      const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(1.85, 1), stoneDark);
+      rock.position.y = 1.9;
       rock.castShadow = true;
       group.add(rock);
-      radius = 2.65;
+      const warning = new THREE.Mesh(new THREE.TorusGeometry(2.16, 0.13, 6, 32), new THREE.MeshBasicMaterial({ color: 0xffb65d }));
+      warning.rotation.x = Math.PI / 2;
+      warning.position.y = 0.13;
+      group.add(warning);
+      radius = 1.95;
     } else {
-      const body = box(4.3, 2.1, 2.6, wood);
-      body.position.y = 1.8;
-      body.castShadow = true;
-      group.add(body);
-      const awning = box(5, 0.18, 3.2, red);
-      awning.position.y = 3.5;
+      const platform = box(3.7, 0.42, 2.45, wood);
+      platform.position.y = 1.32;
+      platform.castShadow = true;
+      group.add(platform);
+      for (const x of [-1.7, 1.7]) {
+        const rail = box(0.22, 0.75, 2.4, stoneDark);
+        rail.position.set(x, 1.82, 0);
+        group.add(rail);
+        const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.66, 0.66, 0.35, 12), wood);
+        wheel.rotation.z = Math.PI / 2;
+        wheel.position.set(x * 1.2, 0.75, 0);
+        group.add(wheel);
+        const post = box(0.16, 2.1, 0.16, wood);
+        post.position.set(x, 2.72, -0.9);
+        group.add(post);
+      }
+      for (let i = 0; i < 3; i++) {
+        const goods = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.48, 0.9, 8), i % 2 ? roofMat : blue);
+        goods.position.set((i - 1) * 1.08, 1.98, 0.15);
+        group.add(goods);
+      }
+      const awning = box(4.7, 0.2, 3, red);
+      awning.position.y = 3.8;
+      awning.rotation.z = 0.07;
       group.add(awning);
-      radius = 2.8;
+      radius = 2.15;
     }
     group.position.copy(point.position).addScaledVector(point.right, lateral);
     group.position.y = point.position.y;
@@ -630,12 +1025,12 @@ export class RaceTrack {
   }
 
   private makeObstacles() {
-    this.addObstacle('cart', this.mainSamples[Math.floor(0.06 * 640)], 3.4);
+    this.addObstacle('cart', this.mainSamples[Math.floor(0.06 * 640)], 10);
     this.addObstacle('crate', this.alleySamples[25], 0);
     this.addObstacle('crate', this.alleySamples[55], -2.3);
-    this.addObstacle('crate', this.mainSamples[Math.floor(0.24 * 640)], -4.2);
-    this.addObstacle('boulder', this.mainSamples[Math.floor(0.705 * 640)], 0, 0);
-    this.addObstacle('boulder', this.mainSamples[Math.floor(0.735 * 640)], 0, Math.PI);
+    this.addObstacle('crate', this.mainSamples[Math.floor(0.24 * 640)], -8.5);
+    this.addObstacle('boulder', this.mainSamples[Math.floor(0.705 * 640)], 9.5, 0);
+    this.addObstacle('boulder', this.mainSamples[Math.floor(0.735 * 640)], -9.5, Math.PI);
   }
 
   private makePads() {
@@ -689,7 +1084,7 @@ export class RaceTrack {
       const dz = position.z - sample.position.z;
       const dy = position.y - sample.position.y;
       const horizontal = dx * dx + dz * dz;
-      let score = horizontal + dy * dy * 0.4;
+      let score = horizontal + dy * dy * 4;
       if (previousProgress !== undefined) {
         const diff = Math.abs(sample.progress - previousProgress);
         const circular = Math.min(diff, 1 - diff);
@@ -723,9 +1118,8 @@ export class RaceTrack {
         }
       }
       if (obstacle.moving && !obstacle.broken) {
-        const shift = Math.sin(time * 0.9 + obstacle.phase) * 3;
+        const shift = Math.sin(time * 0.9 + obstacle.phase) * 0.4;
         obstacle.mesh.position.copy(obstacle.basePosition).addScaledVector(obstacle.right, shift);
-        obstacle.mesh.rotation.x += dt * 0.5;
       }
     }
     const pulse = 0.88 + 0.12 * Math.sin(time * 3);

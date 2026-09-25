@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import './style.css';
 import { GameAudio } from './audio';
 import { KartVisual, makeProjectile } from './kart';
-import { RaceTrack, type RoadPoint, type RouteName } from './track';
+import { RaceTrack, type RoadHit, type RoadPoint, type RouteName } from './track';
 
 const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = el<HTMLCanvasElement>('game');
@@ -80,6 +80,7 @@ interface Pulse {
   mesh: THREE.Mesh;
   age: number;
   duration: number;
+  growth: number;
 }
 
 interface Particle {
@@ -169,8 +170,10 @@ class GenieRace {
   private gamepadAccel = 0;
   private gamepadBrake = 0;
   private driftSparksTimer = 0;
+  private lastMagicTrailTick = -1;
   private cameraLook = new THREE.Vector3();
-  private cameraDistance = 10.4;
+  private cameraDistance = 12.4;
+  private smoothedFps = 60;
   private lastFrame = performance.now();
 
   constructor() {
@@ -178,14 +181,14 @@ class GenieRace {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.38;
+    this.renderer.toneMappingExposure = 1.34;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.scene.background = new THREE.Color(0x192345);
-    this.scene.fog = new THREE.Fog(0x25284c, 185, 550);
-    const ambient = new THREE.HemisphereLight(0xa9b9fa, 0x875263, 1.7);
+    this.scene.background = new THREE.Color(0x1c2a59);
+    this.scene.fog = new THREE.Fog(0x3a3158, 260, 700);
+    const ambient = new THREE.HemisphereLight(0xa9b9fa, 0x875263, 1.25);
     this.scene.add(ambient);
-    const sunlight = new THREE.DirectionalLight(0xffc480, 2.45);
+    const sunlight = new THREE.DirectionalLight(0xffc480, 2.15);
     sunlight.position.set(-75, 130, -85);
     sunlight.castShadow = true;
     sunlight.shadow.mapSize.set(1024, 1024);
@@ -197,9 +200,10 @@ class GenieRace {
     sunlight.shadow.camera.far = 360;
     sunlight.shadow.bias = -0.0004;
     this.scene.add(sunlight);
-    const moon = new THREE.Mesh(new THREE.SphereGeometry(14, 16, 10), new THREE.MeshBasicMaterial({ color: 0xe7e6f8 }));
-    moon.position.set(-185, 125, 240);
-    this.scene.add(moon);
+    const moonFill = new THREE.DirectionalLight(0x809cff, 0.62);
+    moonFill.position.set(90, 80, 45);
+    this.scene.add(moonFill);
+    this.makeSky();
     this.makeStars();
     this.track = new RaceTrack(this.scene);
     this.sparks = new Sparks(this.scene);
@@ -239,6 +243,40 @@ class GenieRace {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
     this.scene.add(new THREE.Points(geometry, new THREE.PointsMaterial({ color: 0xd4defe, size: 1.15, sizeAttenuation: true })));
+  }
+
+  private makeSky() {
+    const geometry = new THREE.SphereGeometry(540, 36, 18);
+    const positions = geometry.getAttribute('position');
+    const colors: number[] = [];
+    const horizon = new THREE.Color(0x65436d);
+    const middle = new THREE.Color(0x2b3b7c);
+    const zenith = new THREE.Color(0x101b43);
+    for (let i = 0; i < positions.count; i++) {
+      const up = Math.max(0, positions.getY(i) / 540);
+      const color = up < 0.32 ? horizon.clone().lerp(middle, up / 0.32) : middle.clone().lerp(zenith, Math.min(1, (up - 0.32) / 0.68));
+      colors.push(color.r, color.g, color.b);
+    }
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    const sky = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, depthWrite: false, fog: false }));
+    sky.renderOrder = -100;
+    this.scene.add(sky);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 128;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#fff7ec';
+    ctx.beginPath();
+    ctx.arc(64, 64, 31, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.beginPath();
+    ctx.arc(77, 53, 30, 0, Math.PI * 2);
+    ctx.fill();
+    const moon = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true, depthWrite: false, fog: false }));
+    moon.position.set(-185, 122, 240);
+    moon.scale.set(37, 37, 1);
+    this.scene.add(moon);
   }
 
   private makeRacers() {
@@ -452,10 +490,12 @@ class GenieRace {
     if (racer.stunTime > 0) return;
     if (wish === 'boost') {
       racer.boostTime = Math.max(racer.boostTime, 1.8);
+      this.makePulse(racer.position, 0xffcc68, 0.55, 1.6);
       if (racer.id === 0) this.showBanner('WISH: BOOST', 0.9);
       this.audio.play('boost');
     } else if (wish === 'shield') {
       racer.shieldTime = Math.max(racer.shieldTime, 4);
+      this.makePulse(racer.position, 0x4ee1ff, 0.55, 1.6);
       if (racer.id === 0) this.showBanner('WISH: SHIELD', 0.9);
       this.audio.play('shield');
     } else {
@@ -478,24 +518,27 @@ class GenieRace {
     if (racer.speed > 5) racer.speed = Math.max(racer.speed, 34);
     racer.ultimateHit.clear();
     racer.visual.setUltimate(true);
-    this.makePulse(racer.position);
+    this.makePulse(racer.position, 0x5ce8ff, 0.9);
     if (racer.id === 0) this.showBanner('COSMIC SHOWSTOPPER!', 1.4);
     this.audio.play('ultimate');
   }
 
-  private makePulse(position: THREE.Vector3) {
-    const material = new THREE.MeshBasicMaterial({ color: 0x72ddf5, transparent: true, opacity: 0.7, depthWrite: false });
+  private makePulse(position: THREE.Vector3, color = 0x72ddf5, duration = 0.75, growth = 3.8) {
+    const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.7, depthWrite: false });
     const mesh = new THREE.Mesh(new THREE.TorusGeometry(2, 0.13, 5, 32), material);
     mesh.rotation.x = Math.PI / 2;
     mesh.position.copy(position);
     mesh.position.y += 0.5;
     this.scene.add(mesh);
-    this.pulses.push({ mesh, age: 0, duration: 0.75 });
+    this.pulses.push({ mesh, age: 0, duration, growth });
   }
 
   private frame(now: number) {
-    const dt = clamp((now - this.lastFrame) / 1000, 0, 0.033);
+    const frameMs = now - this.lastFrame;
+    const dt = clamp(frameMs / 1000, 0, 0.033);
     this.lastFrame = now;
+    if (frameMs > 0) this.smoothedFps += (Math.min(120, 1000 / frameMs) - this.smoothedFps) * 0.05;
+    hud.dataset.fps = String(Math.round(this.smoothedFps));
     if (this.mode !== 'paused') this.elapsed += dt;
     this.syncGamepad();
     if (this.mode === 'countdown') this.updateCountdown(dt);
@@ -555,6 +598,7 @@ class GenieRace {
     this.checkRacerCollisions();
     this.checkObstacleCollisions();
     this.updateProjectiles(dt);
+    this.emitMagicTrails();
     for (const racer of this.racers) {
       racer.visual.group.position.copy(racer.position);
       racer.visual.group.rotation.y = racer.yaw;
@@ -599,7 +643,7 @@ class GenieRace {
       this.releaseDrift(player);
     }
     const turnRate = (1.5 - Math.min(Math.abs(player.speed) / 50, 0.5)) * (player.drifting ? 1.25 : 1);
-    player.yaw += steer * turnRate * dt * Math.min(1, Math.abs(player.speed) / 6);
+    player.yaw -= steer * turnRate * dt * Math.min(1, Math.abs(player.speed) / 6);
     if (Math.abs(steer) < 0.12 && roadBefore.onRoad && !player.drifting && player.speed > 8) {
       const roadYaw = Math.atan2(roadBefore.point.tangent.x, roadBefore.point.tangent.z);
       player.yaw += clamp(angleDiff(roadYaw, player.yaw), -0.8 * dt, 0.8 * dt);
@@ -608,7 +652,7 @@ class GenieRace {
     player.position.x += Math.sin(player.moveYaw) * player.speed * dt;
     player.position.z += Math.cos(player.moveYaw) * player.speed * dt;
     this.followRoadHeight(player, dt);
-    const road = this.track.nearest(player.position, player.progress);
+    const road = this.keepOnCourse(player);
     this.updateProgress(player, road.point.progress);
     if (road.onRoad || player.jumpTime > 0) {
       player.offTrackTime = 0;
@@ -660,7 +704,7 @@ class GenieRace {
     racer.position.x += Math.sin(racer.moveYaw) * racer.speed * dt;
     racer.position.z += Math.cos(racer.moveYaw) * racer.speed * dt;
     this.followRoadHeight(racer, dt);
-    const road = this.track.nearest(racer.position, racer.progress);
+    const road = this.keepOnCourse(racer);
     this.updateProgress(racer, road.point.progress);
     if (!road.onRoad && racer.jumpTime <= 0) {
       racer.position.addScaledVector(road.point.position.clone().sub(racer.position), Math.min(1, dt * 2));
@@ -688,6 +732,25 @@ class GenieRace {
     }
     const targetHeight = road.point.position.y + jump + 0.12;
     racer.position.y += (targetHeight - racer.position.y) * Math.min(1, dt * 12);
+  }
+
+  private keepOnCourse(racer: Racer): RoadHit {
+    const road = this.track.nearest(racer.position, racer.progress);
+    if (road.distance > 28) {
+      this.respawn(racer);
+      return this.track.nearest(racer.position, racer.progress);
+    }
+    const limit = Math.max(1, road.point.width / 2 - 1.55);
+    const excess = Math.abs(road.lateral) - limit;
+    if (excess > 0) {
+      racer.position.addScaledVector(road.point.right, -Math.sign(road.lateral) * excess);
+      racer.speed *= Math.max(0.58, 1 - excess * 0.14);
+      if (racer.drifting && excess > 0.6) {
+        racer.drifting = false;
+        racer.driftCharge = 0;
+      }
+    }
+    return this.track.nearest(racer.position, racer.progress);
   }
 
   private startJump(racer: Racer, duration: number, power: number) {
@@ -719,6 +782,24 @@ class GenieRace {
         const velocity = back.clone().multiplyScalar(5 + Math.random() * 4).addScaledVector(right, side * (1 + Math.random() * 3));
         velocity.y = 2 + Math.random() * 3;
         this.sparks.spawn(origin, velocity, color, 0.25 + Math.random() * 0.2);
+      }
+    }
+  }
+
+  private emitMagicTrails() {
+    const tick = Math.floor(this.elapsed * 22);
+    if (tick === this.lastMagicTrailTick) return;
+    this.lastMagicTrailTick = tick;
+    for (const racer of this.racers) {
+      if (racer.boostTime <= 0 && racer.ultimateTime <= 0) continue;
+      const forward = new THREE.Vector3(Math.sin(racer.yaw), 0, Math.cos(racer.yaw));
+      const side = new THREE.Vector3(Math.cos(racer.yaw), 0, -Math.sin(racer.yaw));
+      for (const lateral of [-0.82, 0.82]) {
+        const position = racer.position.clone().addScaledVector(forward, -2.15).addScaledVector(side, lateral);
+        position.y += 0.62;
+        const velocity = forward.clone().multiplyScalar(-4 - Math.random() * 3).addScaledVector(side, lateral * 0.7);
+        velocity.y = 0.7 + Math.random() * 1.3;
+        this.sparks.spawn(position, velocity, racer.ultimateTime > 0 && tick % 3 === 0 ? 0xffdb70 : 0x51e7ff, 0.36);
       }
     }
   }
@@ -782,9 +863,9 @@ class GenieRace {
         const dx = b.position.x - a.position.x;
         const dz = b.position.z - a.position.z;
         const distance = Math.hypot(dx, dz);
-        if (distance >= 3.6 || distance < 0.01) continue;
+        if (distance >= 4.15 || distance < 0.01) continue;
         const normal = new THREE.Vector3(dx / distance, 0, dz / distance);
-        const separation = (3.6 - distance) * 0.5;
+        const separation = (4.15 - distance) * 0.5;
         a.position.addScaledVector(normal, -separation);
         b.position.addScaledVector(normal, separation);
         if (a.ultimateTime > 0 && !a.ultimateHit.has(b.id)) {
@@ -823,7 +904,7 @@ class GenieRace {
     }
     racer.stunTime = Math.max(racer.stunTime, duration);
     racer.speed = 0;
-    racer.hitCooldown = duration + 0.5;
+    racer.hitCooldown = Math.max(racer.hitCooldown, duration + 0.5);
     this.audio.play('stun');
   }
 
@@ -834,7 +915,14 @@ class GenieRace {
         if (obstacle.broken || Math.abs(racer.position.y - obstacle.position.y) > 3) continue;
         const distance = Math.hypot(racer.position.x - obstacle.position.x, racer.position.z - obstacle.position.z);
         if (distance >= obstacle.radius + 1.7) continue;
-        racer.hitCooldown = 0.65;
+        const forward = new THREE.Vector3(Math.sin(racer.yaw), 0, Math.cos(racer.yaw));
+        const normal = distance > 0.05
+          ? new THREE.Vector3((racer.position.x - obstacle.position.x) / distance, 0, (racer.position.z - obstacle.position.z) / distance)
+          : forward.clone().negate();
+        racer.position.addScaledVector(normal, obstacle.radius + 2.05 - distance);
+        racer.position.addScaledVector(forward, -0.75);
+        this.keepOnCourse(racer);
+        racer.hitCooldown = 1.45;
         if (obstacle.kind === 'crate') {
           obstacle.broken = true;
           obstacle.respawn = 12;
@@ -849,7 +937,7 @@ class GenieRace {
           if (racer.id === 0) this.showBanner('SHIELD BLOCK!', 0.8);
         } else {
           racer.speed *= obstacle.kind === 'boulder' ? 0.38 : 0.55;
-          if (obstacle.kind === 'boulder') this.stun(racer, 0.55);
+          if (obstacle.kind === 'boulder') this.stun(racer, 0.38);
           if (racer.id === 0) this.showBanner(obstacle.kind === 'boulder' ? 'BOULDER HIT!' : 'CART HIT!', 0.8);
         }
         this.audio.play('hit');
@@ -863,6 +951,10 @@ class GenieRace {
       projectile.life -= dt;
       projectile.mesh.position.addScaledVector(projectile.velocity, dt);
       projectile.mesh.rotation.z += dt * 8;
+      if (Math.random() < 0.55) {
+        const velocity = new THREE.Vector3((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3);
+        this.sparks.spawn(projectile.mesh.position, velocity, Math.random() < 0.5 ? 0xffdd76 : 0x68e6ff, 0.28);
+      }
       let remove = projectile.life <= 0;
       for (const racer of this.racers) {
         if (racer.id === projectile.owner || racer.stunTime > 0) continue;
@@ -914,7 +1006,7 @@ class GenieRace {
       const pulse = this.pulses[i];
       pulse.age += dt;
       const factor = pulse.age / pulse.duration;
-      pulse.mesh.scale.setScalar(1 + factor * 3.8);
+      pulse.mesh.scale.setScalar(1 + factor * pulse.growth);
       (pulse.mesh.material as THREE.MeshBasicMaterial).opacity = (1 - factor) * 0.7;
       if (pulse.age >= pulse.duration) {
         this.scene.remove(pulse.mesh);
@@ -934,23 +1026,33 @@ class GenieRace {
       this.cameraLook.lerp(target, Math.min(1, dt * 2));
     } else {
       const insideCave = player.progress > 0.665 && player.progress < 0.78;
-      const targetDistance = insideCave ? 6.3 : player.ultimateTime > 0 ? 11.8 : player.boostTime > 0 ? 11.2 : 10.4;
+      const targetDistance = insideCave ? 11.7 : player.ultimateTime > 0 ? 13.3 : player.boostTime > 0 ? 12.8 : 12.4;
       this.cameraDistance += (targetDistance - this.cameraDistance) * Math.min(1, dt * 4);
       const distance = this.cameraDistance;
-      const desired = player.position.clone().addScaledVector(forward, -distance).add(new THREE.Vector3(0, 4.35 + player.speed * 0.014, 0));
+      const desired = player.position.clone().addScaledVector(forward, -distance).add(new THREE.Vector3(0, 4.55 + player.speed * 0.012, 0));
       this.camera.position.copy(desired);
-      const target = player.position.clone().addScaledVector(forward, 9).add(new THREE.Vector3(0, 2.4, 0));
+      const target = player.position.clone().addScaledVector(forward, 12).add(new THREE.Vector3(0, 2.4, 0));
       this.cameraLook.copy(target);
-      const targetFov = player.ultimateTime > 0 ? 81 : player.boostTime > 0 ? 77 : 70 + Math.min(player.speed / 31, 1) * 2;
+      const targetFov = player.ultimateTime > 0 ? 77 : player.boostTime > 0 ? 72 : 67 + Math.min(player.speed / 31, 1) * 2;
       this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, dt * 2.3);
       this.camera.updateProjectionMatrix();
     }
     this.camera.lookAt(this.cameraLook);
+    if (this.mode === 'race') {
+      const player = this.racers[0];
+      const forward = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
+      const right = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
+      for (const rival of this.racers.slice(1)) {
+        const offset = rival.position.clone().sub(player.position);
+        const blocksChaseView = offset.dot(forward) < -0.45 && Math.abs(offset.dot(right)) < 3.5 && rival.position.distanceTo(this.camera.position) < 12;
+        rival.visual.group.visible = !blocksChaseView;
+      }
+    }
   }
 
   private updateHUD() {
     const player = this.racers[0];
-    hud.dataset.state = JSON.stringify(this.racers.map((racer) => ({ id: racer.id, lap: racer.lap, p: Number(racer.progress.toFixed(3)), speed: Math.round(racer.speed), stun: Number(racer.stunTime.toFixed(2)), ultimate: Number(racer.ultimateTime.toFixed(2)) })));
+    hud.dataset.state = JSON.stringify(this.racers.map((racer) => ({ id: racer.id, lap: racer.lap, p: Number(racer.progress.toFixed(3)), x: Number(racer.position.x.toFixed(2)), y: Number(racer.position.y.toFixed(2)), z: Number(racer.position.z.toFixed(2)), yaw: Number(racer.yaw.toFixed(3)), route: this.track.nearest(racer.position, racer.progress).point.route, speed: Math.round(racer.speed), stun: Number(racer.stunTime.toFixed(2)), hitGrace: Number(racer.hitCooldown.toFixed(2)), ultimate: Number(racer.ultimateTime.toFixed(2)) })));
     const standings = [...this.racers].sort((a, b) => (b.lap - 1 + b.progress) - (a.lap - 1 + a.progress));
     const rank = standings.findIndex((racer) => racer.id === 0) + 1;
     const suffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : 'rd';

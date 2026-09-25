@@ -53,33 +53,33 @@
         </div>
       </div>
 
-      <div id="menu" class="overlay menu">
-        <div class="menu-copy">
-          <div class="eyebrow">TEN RACERS · SEVEN RIVALS · THREE LAPS</div>
-          <h1><span>GENIE'S</span><br />MIDNIGHT RUN</h1>
-          <p>Choose the boost alley, rooftop ramp, or garden cut. Drift the sharp bends, hit the apex carpets, and weave through the market islands.</p>
-          <div class="roster-heading">CHOOSE YOUR RACER</div>
-          <div id="character-select" class="character-select" role="group" aria-label="Choose your racer"></div>
-          <div id="character-detail" class="character-detail"></div>
-          <div id="racer-showcase" class="racer-showcase" aria-label="Selected racer 3D preview">
-            <div class="showcase-kicker">YOUR RACER</div>
+      <div id="menu" class="overlay roster-screen">
+        <div class="roster-ambient" aria-hidden="true"></div>
+        <header class="roster-topbar">
+          <div class="roster-brand"><span class="brand-spark">✦</span><h1>GENIE'S <em>MIDNIGHT RUN</em></h1></div>
+          <div class="roster-page-title"><span>01 / RACE SETUP</span><strong>CHOOSE YOUR RACER</strong></div>
+          <div class="roster-event"><strong>AGRABAH CIRCUIT</strong><span>10 RACERS · 3 LAPS</span></div>
+        </header>
+        <main class="roster-content">
+          <div id="racer-showcase" class="spotlight-showcase" aria-label="Selected racer 3D preview">
+            <div class="spotlight-burst" aria-hidden="true"></div>
+            <div class="spotlight-kicker"><span>YOUR RACER</span><b id="showcase-index">01 / 10</b></div>
             <canvas id="showcase-canvas" aria-label="Rotating 3D selected racer and kart"></canvas>
-            <div class="showcase-identity"><strong id="showcase-name">Genie</strong><span id="showcase-role">Magic Trickster</span></div>
+            <div class="spotlight-identity"><span id="showcase-role">Wild Card Magic</span><strong id="showcase-name">Genie</strong></div>
+            <div class="spotlight-footnote">MIDNIGHT GRAND PRIX <span>✦</span> READY TO RACE</div>
           </div>
-          <button id="play" class="primary-button">START RACING <span>→</span></button>
-          <div class="menu-note">Signature powers recharge. Earn your Ultimate by racing well.</div>
-        </div>
-        <div class="controls-card">
-          <div class="card-heading">CONTROLS</div>
-          <div><span>Drive</span><strong>W A S D / ARROWS</strong></div>
-          <div><span>Drift boost</span><strong>HOLD SPACE + STEER · RELEASE</strong></div>
-          <div><span>Air trick</span><strong>F OVER BOOST CARPETS</strong></div>
-          <div><span>Signature power</span><strong>E · HOLD FOR GENIE / BUZZ</strong></div>
-          <div><span>Wonder Orb item</span><strong>COLLECT · PRESS R</strong></div>
-          <div><span>Ultimate</span><strong>Q WHEN CHARGED</strong></div>
-          <div><span>Pause</span><strong>ESC</strong></div>
-          <small>Tap Space to jump · Controller supported · Best on desktop</small>
-        </div>
+          <div class="roster-info">
+            <div class="roster-info-top"><span>CHARACTER PROFILE</span><span id="profile-index">01 / 10</span></div>
+            <div class="profile-heading"><span id="profile-icon">✦</span><div><strong id="profile-name">Genie</strong><small id="profile-role">Wild Card Magic</small></div></div>
+            <div id="character-detail" class="roster-abilities"></div>
+            <button id="play" class="primary-button roster-start">START RACING <span>→</span></button>
+            <div class="roster-control-hint"><span><b>WASD</b> DRIVE</span><span><b>SPACE</b> DRIFT</span><span><b>E</b> ABILITY</span><span><b>Q</b> ULTIMATE</span></div>
+          </div>
+        </main>
+        <section class="roster-dock" aria-label="All playable racers">
+          <div class="roster-dock-head"><strong>THE STARTING GRID</strong><span>ALL 10 RACERS · PICK ANYONE</span></div>
+          <div id="character-select" class="roster-grid" role="group" aria-label="Choose your racer"></div>
+        </section>
       </div>
 
       <div id="pause" class="overlay pause hidden">

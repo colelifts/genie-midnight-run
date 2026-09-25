@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import './style.css';
+import './roster.css';
 import { GameAudio } from './audio';
 import { CharacterKartVisual, type RaceVisual } from './characterKart';
 import { CHARACTERS, CHARACTER_BY_ID, type CharacterId } from './characters';
@@ -494,17 +495,25 @@ class GenieRace {
   }
 
   private makeCharacterSelect() {
-    for (const character of CHARACTERS) {
+    for (const [index, character] of CHARACTERS.entries()) {
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = 'character-choice';
+      button.className = 'character-choice roster-card';
       button.dataset.character = character.id;
       button.style.setProperty('--racer-accent', `#${character.accent.toString(16).padStart(6, '0')}`);
-      button.innerHTML = `<span class="character-icon">${character.icon}</span><span class="character-name">${character.name}</span>`;
+      button.style.setProperty('--racer-color', `#${character.color.toString(16).padStart(6, '0')}`);
+      button.innerHTML = `<span class="roster-card-art"><span class="roster-card-symbol">${character.icon}</span><img class="roster-card-portrait" alt="" /></span><span class="roster-card-number">${String(index + 1).padStart(2, '0')}</span><span class="roster-card-meta"><strong>${character.name}</strong><small>${character.title}</small></span>`;
       button.setAttribute('aria-label', `Select ${character.name}`);
       button.addEventListener('click', () => this.selectCharacter(character.id));
       characterSelect.appendChild(button);
     }
+    try {
+      const portraits = this.showcase.renderPortraits(CHARACTERS.map((character) => character.id));
+      characterSelect.querySelectorAll<HTMLButtonElement>('.roster-card').forEach((button) => {
+        const portrait = portraits.get(button.dataset.character as CharacterId);
+        if (portrait) button.querySelector<HTMLImageElement>('.roster-card-portrait')!.src = portrait;
+      });
+    } catch (error) { console.warn('Racer portraits unavailable; using selection symbols.', error); }
     this.refreshCharacterSelect();
   }
 
@@ -531,14 +540,23 @@ class GenieRace {
 
   private refreshCharacterSelect() {
     const character = CHARACTER_BY_ID[this.selectedCharacter];
+    const index = CHARACTERS.findIndex((entry) => entry.id === character.id) + 1;
+    const indexText = `${String(index).padStart(2, '0')} / ${String(CHARACTERS.length).padStart(2, '0')}`;
+    menu.style.setProperty('--selected-accent', `#${character.accent.toString(16).padStart(6, '0')}`);
+    menu.style.setProperty('--selected-color', `#${character.color.toString(16).padStart(6, '0')}`);
     characterSelect.querySelectorAll<HTMLButtonElement>('.character-choice').forEach((button) => {
       const selected = button.dataset.character === character.id;
       button.classList.toggle('selected', selected);
       button.setAttribute('aria-pressed', String(selected));
     });
-    characterDetail.innerHTML = `<strong>${character.name}</strong><span class="character-role">${character.title}</span><div class="power-line"><b>Passive · ${character.passiveName}:</b> ${character.passive}</div><div class="power-line"><b>E · ${character.signatureName}:</b> ${character.signature}</div><div class="power-line"><b>Q · ${character.ultimateName}:</b> ${character.ultimate}</div>`;
+    characterDetail.innerHTML = `<div class="roster-ability"><span class="ability-key">PASSIVE</span><div><strong>${character.passiveName}</strong><p>${character.passive}</p></div></div><div class="roster-ability"><span class="ability-key">E</span><div><strong>${character.signatureName}</strong><p>${character.signature}</p></div></div><div class="roster-ability"><span class="ability-key">Q</span><div><strong>${character.ultimateName}</strong><p>${character.ultimate}</p></div></div>`;
     el<HTMLElement>('showcase-name').textContent = character.name;
     el<HTMLElement>('showcase-role').textContent = character.title;
+    el<HTMLElement>('showcase-index').textContent = indexText;
+    el<HTMLElement>('profile-index').textContent = indexText;
+    el<HTMLElement>('profile-icon').textContent = character.icon;
+    el<HTMLElement>('profile-name').textContent = character.name;
+    el<HTMLElement>('profile-role').textContent = character.title;
     el<HTMLElement>('racer-showcase').style.setProperty('--showcase-accent', `#${character.accent.toString(16).padStart(6, '0')}`);
   }
 
@@ -1575,10 +1593,6 @@ class GenieRace {
     const boostHandling = player.padBoostTime > 0 ? 1.7 : player.ultimateTime > 0 ? 1.35 : 1;
     const turnRate = (1.5 - Math.min(Math.abs(player.speed) / 50, 0.5)) * (player.drifting ? 1.25 : 1) * boostHandling * stats.handling * (player.wobbleTime > 0 ? 0.62 : 1);
     player.yaw -= (steer + (player.wobbleTime > 0 ? Math.sin(this.elapsed * 19) * 0.22 : 0)) * turnRate * dt * Math.min(1, Math.abs(player.speed) / 6);
-    if (Math.abs(steer) < 0.12 && roadBefore.onRoad && !player.drifting && player.speed > 8) {
-      const roadYaw = Math.atan2(roadBefore.point.tangent.x, roadBefore.point.tangent.z);
-      player.yaw += clamp(angleDiff(roadYaw, player.yaw), -0.8 * dt, 0.8 * dt);
-    }
     player.moveYaw += angleDiff(player.yaw, player.moveYaw) * Math.min(1, dt * (player.drifting ? 3.6 : 7.5));
     player.position.x += Math.sin(player.moveYaw) * player.speed * dt;
     player.position.z += Math.cos(player.moveYaw) * player.speed * dt;

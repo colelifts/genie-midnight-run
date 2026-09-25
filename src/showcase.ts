@@ -20,7 +20,7 @@ export class RacerShowcase {
   private height = 0;
 
   constructor(private readonly canvas: HTMLCanvasElement, character: CharacterId) {
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'low-power' });
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true, powerPreference: 'low-power' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -81,6 +81,63 @@ export class RacerShowcase {
     this.accentLight.color.setHex(color);
     this.rimLight.color.setHex(color);
     this.renderTime = 0;
+  }
+
+  renderPortraits(characters: CharacterId[]) {
+    const portraits = new Map<CharacterId, string>();
+    const previousPosition = this.camera.position.clone();
+    const previousRotation = this.camera.quaternion.clone();
+    const previousAspect = this.camera.aspect;
+    const previousFov = this.camera.fov;
+    const selectedAccent = CHARACTER_BY_ID[this.activeCharacter ?? 'genie'].accent;
+    this.turntable.visible = false;
+    this.renderer.setSize(176, 192, false);
+    this.camera.aspect = 176 / 192;
+    this.camera.fov = 35;
+    this.camera.position.set(0, 1.9, 7.1);
+    this.camera.lookAt(0, 1.75, 0);
+    this.camera.updateProjectionMatrix();
+    try {
+      for (const character of characters) {
+        const visual: RaceVisual = character === 'genie' ? new KartVisual('gold') : new CharacterKartVisual(character);
+        const driver = visual.driver;
+        const originalParent = driver.parent;
+        const originalPosition = driver.position.clone();
+        const originalScale = driver.scale.clone();
+        const originalRotation = driver.rotation.clone();
+        try {
+          driver.removeFromParent();
+          driver.position.set(0, 0, 0);
+          driver.scale.setScalar(1.13);
+          driver.rotation.set(0, 0, 0);
+          this.scene.add(driver);
+          const accent = CHARACTER_BY_ID[character].accent;
+          this.rimLight.color.setHex(accent);
+          this.accentLight.color.setHex(accent);
+          this.renderer.render(this.scene, this.camera);
+          portraits.set(character, this.canvas.toDataURL('image/png'));
+        } finally {
+          driver.removeFromParent();
+          if (originalParent) originalParent.add(driver);
+          driver.position.copy(originalPosition);
+          driver.scale.copy(originalScale);
+          driver.rotation.copy(originalRotation);
+          visual.dispose();
+        }
+      }
+    } finally {
+      this.turntable.visible = true;
+      this.rimLight.color.setHex(selectedAccent);
+      this.accentLight.color.setHex(selectedAccent);
+      this.camera.position.copy(previousPosition);
+      this.camera.quaternion.copy(previousRotation);
+      this.camera.aspect = previousAspect;
+      this.camera.fov = previousFov;
+      this.camera.updateProjectionMatrix();
+      this.renderer.setSize(this.width, this.height, false);
+      this.renderer.render(this.scene, this.camera);
+    }
+    return portraits;
   }
 
   resize() {

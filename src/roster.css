@@ -1,0 +1,212 @@
+.roster-screen {
+  --selected-accent: #ffd779;
+  --selected-color: #ffbd53;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(10px, 1.1vw, 18px);
+  padding: clamp(16px, 2.2vw, 34px);
+  overflow-y: auto;
+  isolation: isolate;
+  background:
+    linear-gradient(115deg, rgba(7, 11, 32, .96), rgba(10, 20, 44, .87) 53%, rgba(8, 12, 35, .91)),
+    radial-gradient(circle at 23% 40%, var(--selected-accent), transparent 38%);
+}
+
+.roster-screen::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: .52;
+  background:
+    linear-gradient(126deg, transparent 19%, color-mix(in srgb, var(--selected-color) 22%, transparent) 19.2%, transparent 40%),
+    linear-gradient(151deg, transparent 61%, #57d4ff20 61.2%, transparent 73%),
+    repeating-linear-gradient(0deg, transparent 0 67px, #ffffff06 68px 69px);
+}
+
+.roster-ambient {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(ellipse 47% 67% at 22% 36%, color-mix(in srgb, var(--selected-accent) 25%, transparent), transparent 76%);
+  filter: blur(24px);
+  transition: background .3s ease;
+}
+
+.roster-topbar {
+  display: grid;
+  grid-template-columns: 1fr 1.1fr 1fr;
+  align-items: center;
+  gap: 16px;
+  min-height: 58px;
+  flex: none;
+  border-bottom: 1px solid #ffffff32;
+  padding-bottom: 13px;
+}
+
+.roster-brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand-spark { color: var(--selected-accent); font-size: 29px; filter: drop-shadow(0 0 12px var(--selected-accent)); }
+.roster-brand h1 { margin: 0; font: 800 clamp(19px, 2vw, 30px)/.89 'Barlow Condensed', Impact, sans-serif; letter-spacing: .025em; color: #fff; }
+.roster-brand h1 em { display: block; margin-top: 4px; font-style: normal; color: var(--selected-accent); }
+.roster-page-title { text-align: center; }
+.roster-page-title span, .roster-event span { display: block; color: #a8bad1; font-size: 10px; font-weight: 800; letter-spacing: .2em; }
+.roster-page-title strong { display: block; margin-top: 4px; font: 800 clamp(23px, 2.6vw, 39px)/1 'Barlow Condensed', Impact, sans-serif; letter-spacing: .04em; }
+.roster-event { text-align: right; }
+.roster-event strong { display: block; margin-bottom: 4px; color: var(--selected-accent); font: 800 18px/1 'Barlow Condensed', Impact, sans-serif; letter-spacing: .13em; }
+
+.roster-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1.18fr) minmax(340px, .82fr);
+  gap: clamp(10px, 1.2vw, 20px);
+  flex: 1 1 auto;
+  min-height: 370px;
+}
+
+.spotlight-showcase, .roster-info, .roster-dock {
+  border: 1px solid color-mix(in srgb, var(--selected-accent) 45%, #495473);
+  box-shadow: 0 18px 48px #020817a8, inset 0 0 34px #ffffff08;
+}
+
+.spotlight-showcase {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 55% 48% at 52% 55%, color-mix(in srgb, var(--selected-accent) 27%, #182850) 0%, transparent 83%),
+    linear-gradient(135deg, color-mix(in srgb, var(--selected-color) 24%, #152444), #0b1635 63%);
+  clip-path: polygon(0 0, 92% 0, 100% 12%, 100% 100%, 0 100%);
+}
+
+.spotlight-showcase::before {
+  content: '';
+  position: absolute;
+  inset: 12px;
+  z-index: 2;
+  border: 1px solid #ffffff25;
+  clip-path: polygon(0 0, 91% 0, 100% 12%, 100% 100%, 0 100%);
+  pointer-events: none;
+}
+
+.spotlight-showcase::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0;
+  height: 42%;
+  z-index: 1;
+  background: linear-gradient(transparent, #07112add 82%);
+  pointer-events: none;
+}
+
+.spotlight-burst {
+  position: absolute;
+  inset: 0;
+  opacity: .64;
+  pointer-events: none;
+  background:
+    conic-gradient(from 30deg at 52% 53%, transparent 0 31deg, #ffffff0d 32deg 36deg, transparent 37deg 81deg, #ffffff0a 82deg 84deg, transparent 85deg 180deg, #ffffff0a 181deg 183deg, transparent 184deg),
+    radial-gradient(circle at 52% 53%, transparent 0 35%, color-mix(in srgb, var(--selected-accent) 30%, transparent) 36% 36.2%, transparent 36.4%);
+}
+
+#showcase-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; z-index: 1; }
+.spotlight-kicker { position: absolute; z-index: 3; top: clamp(22px, 2.3vw, 36px); left: clamp(24px, 2.6vw, 43px); display: flex; align-items: center; gap: 15px; font-size: 11px; font-weight: 900; letter-spacing: .19em; color: var(--selected-accent); text-shadow: 0 2px 8px #000; }
+.spotlight-kicker b { color: #fff; border-left: 1px solid #ffffff72; padding-left: 15px; font-size: 10px; }
+.spotlight-identity { position: absolute; z-index: 3; bottom: clamp(34px, 4vw, 65px); left: clamp(24px, 2.6vw, 43px); right: 20px; text-shadow: 0 4px 16px #010616; pointer-events: none; }
+.spotlight-identity span { display: block; color: var(--selected-accent); font-size: 11px; font-weight: 900; letter-spacing: .24em; text-transform: uppercase; }
+.spotlight-identity strong { display: block; font: 800 clamp(67px, 8.2vw, 142px)/.82 'Barlow Condensed', Impact, sans-serif; letter-spacing: -.025em; color: white; text-transform: uppercase; white-space: nowrap; }
+.spotlight-footnote { position: absolute; z-index: 3; bottom: 17px; left: clamp(24px, 2.6vw, 43px); right: 30px; border-top: 1px solid #ffffff57; padding-top: 9px; font-size: 9px; letter-spacing: .2em; font-weight: 800; color: #c4d8e8; }
+.spotlight-footnote span { color: var(--selected-accent); padding: 0 5px; }
+
+.roster-info {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(8px, 1vw, 15px);
+  min-width: 0;
+  padding: clamp(17px, 1.8vw, 28px);
+  background: linear-gradient(155deg, #101d3be9, #071126ed 80%);
+  overflow: hidden;
+}
+
+.roster-info-top, .roster-dock-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 10px; font-weight: 900; letter-spacing: .21em; color: var(--selected-accent); }
+.roster-info-top span:last-child { color: #a7bad5; }
+.profile-heading { display: flex; align-items: center; gap: 14px; padding-bottom: 12px; border-bottom: 1px solid #ffffff27; }
+#profile-icon { width: 52px; height: 52px; flex: none; display: grid; place-items: center; font-size: 30px; color: var(--selected-accent); background: color-mix(in srgb, var(--selected-accent) 12%, #1c2945); border: 1px solid var(--selected-accent); box-shadow: 0 0 22px color-mix(in srgb, var(--selected-accent) 22%, transparent); }
+.profile-heading strong { display: block; font: 800 clamp(28px, 3vw, 46px)/.95 'Barlow Condensed', Impact, sans-serif; text-transform: uppercase; }
+.profile-heading small { display: block; margin-top: 4px; color: var(--selected-accent); font-size: 10px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+.roster-abilities { display: flex; flex-direction: column; justify-content: center; gap: clamp(6px, .75vw, 11px); flex: 1 1 auto; min-height: 0; }
+.roster-ability { display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: start; gap: 11px; padding: clamp(9px, 1vw, 15px); border: 1px solid #ffffff24; border-left: 3px solid var(--selected-accent); background: linear-gradient(90deg, color-mix(in srgb, var(--selected-accent) 11%, #13233d), #15233c94); }
+.ability-key { display: inline-grid; place-items: center; min-height: 26px; padding: 4px 6px; background: color-mix(in srgb, var(--selected-accent) 16%, #13233d); color: var(--selected-accent); border: 1px solid color-mix(in srgb, var(--selected-accent) 55%, transparent); font-size: 9px; font-weight: 900; letter-spacing: .09em; }
+.roster-ability strong { display: block; color: #fff; font: 800 clamp(17px, 1.6vw, 24px)/1 'Barlow Condensed', Impact, sans-serif; text-transform: uppercase; letter-spacing: .04em; }
+.roster-ability p { margin: 5px 0 0; color: #d5e1eb; font-size: clamp(10px, .83vw, 13px); line-height: 1.38; }
+.roster-start { width: 100%; flex: none; border-radius: 4px; padding: 13px 19px; min-width: 0; font: 900 clamp(21px, 2vw, 29px)/1 'Barlow Condensed', Impact, sans-serif; letter-spacing: .12em; color: #0f1931; background: var(--selected-accent); box-shadow: 0 5px 0 color-mix(in srgb, var(--selected-accent) 58%, #44394c), 0 13px 24px #0008; }
+.roster-start:hover { box-shadow: 0 8px 0 color-mix(in srgb, var(--selected-accent) 58%, #44394c), 0 18px 28px #000a; }
+.roster-start:active { box-shadow: 0 2px 0 color-mix(in srgb, var(--selected-accent) 58%, #44394c); }
+.roster-control-hint { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 5px 10px; font-size: 9px; font-weight: 800; letter-spacing: .07em; color: #aabbd1; }
+.roster-control-hint b { color: var(--selected-accent); }
+
+.roster-dock { display: flex; flex-direction: column; gap: 9px; flex: 0 0 clamp(160px, 20vh, 228px); min-height: 0; padding: 12px 14px 14px; background: linear-gradient(180deg, #111d37ed, #0a132bec); }
+.roster-dock-head span { color: #acbdd1; font-size: 9px; }
+.roster-grid { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: clamp(5px, .65vw, 10px); flex: 1 1 auto; min-height: 0; }
+.roster-grid .roster-card { position: relative; display: block; width: 100%; height: 100%; min-height: 0; overflow: hidden; padding: 0; border-radius: 3px; border: 1px solid color-mix(in srgb, var(--racer-accent) 52%, #64718c); background: linear-gradient(145deg, color-mix(in srgb, var(--racer-color) 46%, #1c2e50), #131e3b 78%); color: white; text-align: left; transform: none; box-shadow: inset 0 0 20px #ffffff0a; }
+.roster-grid .roster-card:hover { transform: translateY(-5px); border-color: var(--racer-accent); box-shadow: 0 8px 20px #0008, 0 0 20px color-mix(in srgb, var(--racer-accent) 35%, transparent); }
+.roster-grid .roster-card.selected { transform: translateY(-5px); border: 2px solid var(--racer-accent); background: linear-gradient(145deg, color-mix(in srgb, var(--racer-color) 46%, #1c2e50), #131e3b 78%); box-shadow: 0 9px 0 -4px var(--racer-accent), 0 0 24px color-mix(in srgb, var(--racer-accent) 55%, transparent); }
+.roster-grid .roster-card:focus-visible, .roster-start:focus-visible { outline: 3px solid white; outline-offset: 3px; }
+.roster-card-art { position: absolute; inset: 0; overflow: hidden; background: radial-gradient(ellipse 80% 67% at 50% 42%, color-mix(in srgb, var(--racer-accent) 48%, transparent), transparent 82%); }
+.roster-card-art::after { content: ''; position: absolute; inset: 0; background: linear-gradient(0deg, #071020 0%, transparent 44%), repeating-linear-gradient(145deg, transparent 0 11px, #ffffff07 12px 13px); }
+.roster-card-symbol { position: absolute; right: 3px; top: -18px; font-size: 85px; line-height: 1; color: var(--racer-accent); opacity: .13; }
+.roster-card-portrait { position: absolute; z-index: 1; left: 50%; bottom: 10px; width: 115%; height: 110%; object-fit: contain; object-position: center bottom; transform: translateX(-50%); filter: drop-shadow(0 5px 3px #050a20a0); }
+.roster-card-portrait:not([src]) { display: none; }
+.roster-card-number { position: absolute; z-index: 2; top: 7px; left: 8px; color: #ffffffc7; font: 800 11px/1 'Barlow Condensed', Impact, sans-serif; letter-spacing: .1em; text-shadow: 0 1px 5px #000; }
+.roster-card-meta { position: absolute; z-index: 2; bottom: 0; left: 0; right: 0; min-height: 43px; padding: 12px 6px 5px; background: linear-gradient(transparent, #07101deb 42%); text-align: center; }
+.roster-card-meta strong { display: block; font: 800 clamp(12px, 1.1vw, 17px)/.96 'Barlow Condensed', Impact, sans-serif; color: white; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.roster-card-meta small { display: block; margin-top: 3px; color: var(--racer-accent); font-size: 8px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+@media (max-width: 1100px) {
+  .roster-screen { overflow-y: auto; }
+  .roster-content { grid-template-columns: minmax(0, 1fr) minmax(310px, .96fr); }
+  .roster-dock { flex-basis: 238px; }
+  .roster-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+  .roster-card-portrait { height: 125%; bottom: 1px; }
+  .roster-card-meta { min-height: 32px; padding-top: 8px; }
+  .roster-card-meta strong { white-space: normal; line-height: .9; }
+  .roster-card-meta small { display: none; }
+}
+
+@media (max-width: 700px) {
+  .roster-screen { padding: 12px; gap: 11px; }
+  .roster-topbar { grid-template-columns: 1fr auto; min-height: 47px; gap: 8px; padding-bottom: 9px; }
+  .roster-brand h1 { font-size: 19px; }
+  .brand-spark { font-size: 23px; }
+  .roster-page-title { text-align: right; }
+  .roster-page-title strong { font-size: 20px; }
+  .roster-page-title span, .roster-event { display: none; }
+  .roster-content { order: 3; display: flex; flex-direction: column; flex: none; min-height: 0; }
+  .spotlight-showcase { height: 330px; flex: none; }
+  .spotlight-identity strong { font-size: clamp(62px, 16vw, 95px); }
+  .roster-info { gap: 10px; overflow: visible; }
+  .roster-dock { order: 2; flex: none; height: 255px; padding: 10px; }
+  .roster-grid { gap: 5px; }
+  .roster-card-meta strong { font-size: 13px; }
+  .roster-card-number { font-size: 9px; top: 4px; left: 5px; }
+  .roster-ability { grid-template-columns: 64px minmax(0, 1fr); padding: 10px; }
+  .roster-ability p { font-size: 11px; }
+}
+
+@media (max-height: 760px) and (min-width: 701px) {
+  .roster-screen { padding: 12px 20px; gap: 8px; }
+  .roster-topbar { min-height: 50px; padding-bottom: 7px; }
+  .roster-content { min-height: 345px; }
+  .roster-dock { flex-basis: 158px; padding: 8px 10px 10px; gap: 6px; }
+  .roster-info { gap: 6px; padding: 13px 17px; }
+  .profile-heading { padding-bottom: 6px; }
+  #profile-icon { width: 41px; height: 41px; font-size: 23px; }
+  .roster-abilities { gap: 5px; }
+  .roster-ability { padding: 7px 9px; grid-template-columns: 66px minmax(0, 1fr); }
+  .roster-ability p { margin-top: 2px; line-height: 1.25; }
+  .roster-start { padding: 10px 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .roster-grid .roster-card, .roster-ambient { transition: none; }
+}

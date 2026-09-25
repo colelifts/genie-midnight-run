@@ -284,6 +284,7 @@ class GenieRace {
   readonly debugDrive = window.location.hostname === '127.0.0.1' ? new URLSearchParams(window.location.search).get('debugDrive') : null;
   readonly debugPowers = window.location.hostname === '127.0.0.1' && new URLSearchParams(window.location.search).has('debugPowers');
   readonly debugBrake = this.debugPowers && new URLSearchParams(window.location.search).has('debugBrake');
+  readonly debugCollision = window.location.hostname === '127.0.0.1' && new URLSearchParams(window.location.search).has('debugCollision');
   mode: GameMode = 'menu';
   private elapsed = 0;
   private countdownElapsed = 0;
@@ -309,6 +310,7 @@ class GenieRace {
   private lapClock = 0;
   private raceClock = 0;
   private finishCount = 0;
+  private collisionAudit = { frames: 0, roadFrames: 0, obstacleFrames: 0, maxRoad: 0, maxObstacle: 0, examples: [] as string[] };
   private bestLap = Infinity;
   private cameraLook = new THREE.Vector3();
   private cameraYaw = 0;
@@ -693,6 +695,7 @@ class GenieRace {
     delete hud.dataset.handlingStart;
     delete hud.dataset.handlingEnd;
     this.finishCount = 0;
+    this.collisionAudit = { frames: 0, roadFrames: 0, obstacleFrames: 0, maxRoad: 0, maxObstacle: 0, examples: [] };
     const rivals = CHARACTERS.map((character) => character.id).filter((id) => id !== this.selectedCharacter);
     for (let i = rivals.length - 1; i > 0; i--) { const pick = Math.floor(Math.random() * (i + 1)); [rivals[i], rivals[pick]] = [rivals[pick], rivals[i]]; }
     for (let i = 1; i < RACER_COUNT; i++) this.replaceVisual(this.racers[i], rivals[i - 1]);
@@ -1589,7 +1592,10 @@ class GenieRace {
     this.updatePowerFields(dt);
     this.checkRacerCollisions();
     this.checkObstacleCollisions();
-    this.updateProjectiles(dt);
+    const projectileKnockback = this.updateProjectiles(dt);
+    // Racer bumps and powers can move karts after their individual road checks.
+    for (const racer of this.racers) this.keepOnCourse(racer);
+    if (projectileKnockback) this.checkObstacleCollisions();
     this.emitMagicTrails();
     for (const racer of this.racers) {
       racer.visual.group.position.copy(racer.position);
@@ -2282,6 +2288,7 @@ class GenieRace {
   }
 
   private updateProjectiles(dt: number) {
+    let displacedRacer = false;
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const projectile = this.projectiles[i];
       const previousProjectile = projectile.mesh.position.clone();
@@ -2360,6 +2367,7 @@ class GenieRace {
         } else if (projectile.kind === 'tornado') {
           const side = racer.position.clone().sub(projectile.mesh.position).setY(0).normalize();
           racer.position.addScaledVector(side, 5.5);
+          displacedRacer = true;
           racer.speed *= 0.52;
           racer.wobbleTime = Math.max(racer.wobbleTime, 1.25);
           racer.hitCooldown = Math.max(racer.hitCooldown, 0.75);
@@ -2367,6 +2375,7 @@ class GenieRace {
           const side = new THREE.Vector3(projectile.velocity.z, 0, -projectile.velocity.x).normalize();
           const sign = Math.sign(racer.position.clone().sub(projectile.mesh.position).dot(side)) || 1;
           racer.position.addScaledVector(side, sign * 3.1);
+          displacedRacer = true;
           racer.speed *= 0.62;
           racer.wobbleTime = Math.max(racer.wobbleTime, 0.9);
           racer.hitCooldown = Math.max(racer.hitCooldown, 0.65);
@@ -2393,6 +2402,7 @@ class GenieRace {
         this.projectiles.splice(i, 1);
       }
     }
+    return displacedRacer;
   }
 
   private updatePickups(dt: number) {
@@ -2510,6 +2520,33 @@ class GenieRace {
 
   private updateHUD() {
     const player = this.racers[0];
+    if (this.debugCollision) {
+      let roadExcess = 0;
+      let obstaclePenetration = 0;
+      let example = '';
+      for (const racer of this.racers) {
+        const road = this.track.nearest(racer.position, racer.progress);
+        roadExcess = Math.max(roadExcess, Math.abs(road.lateral) - Math.max(1, road.point.width / 2 - 1.55));
+        for (const obstacle of this.track.obstacles) {
+          if (obstacle.broken || Math.abs(racer.position.y - obstacle.position.y) > 3) continue;
+          const penetration = obstacle.radius + 1.7 - Math.hypot(racer.position.x - obstacle.position.x, racer.position.z - obstacle.position.z);
+          if (penetration > obstaclePenetration) {
+            obstaclePenetration = penetration;
+            example = `${racer.id}:${obstacle.kind}@${obstacle.progress.toFixed(3)}`;
+          }
+        }
+      }
+      const audit = this.collisionAudit;
+      audit.frames++;
+      if (roadExcess > 0.15) audit.roadFrames++;
+      if (obstaclePenetration > 0.15) {
+        audit.obstacleFrames++;
+        if (audit.examples.length < 5) audit.examples.push(example);
+      }
+      audit.maxRoad = Math.max(audit.maxRoad, roadExcess);
+      audit.maxObstacle = Math.max(audit.maxObstacle, obstaclePenetration);
+      hud.dataset.collisionAudit = JSON.stringify(audit);
+    }
     if (this.debugDrive) {
       const road = this.track.nearest(player.position, player.progress);
       const trace = JSON.stringify({ clock: Number(this.raceClock.toFixed(2)), progress: Number(player.progress.toFixed(3)),

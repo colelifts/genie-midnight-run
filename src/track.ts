@@ -114,6 +114,7 @@ function makePavingTexture() {
 }
 
 export class RaceTrack {
+  readonly mainWidth = 50;
   readonly group = new THREE.Group();
   readonly mainCurve: THREE.CatmullRomCurve3;
   readonly samples: RoadPoint[] = [];
@@ -171,10 +172,10 @@ export class RaceTrack {
       position.y = 0.06;
       const tangent = this.mainCurve.getTangentAt(progress).normalize();
       const right = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
-      this.mainSamples.push({ position, tangent, right, progress, width: 26, route: 'main' });
+      this.mainSamples.push({ position, tangent, right, progress, width: this.mainWidth, route: 'main' });
     }
-    this.alleySamples.push(...this.makeBranch('alley', 0.045, 0.16, -35, 0, 17));
-    this.roofSamples.push(...this.makeBranch('roof', 0.19, 0.33, -40, 5.4, 18));
+    this.alleySamples.push(...this.makeBranch('alley', 0.045, 0.16, -56, 0, 24));
+    this.roofSamples.push(...this.makeBranch('roof', 0.19, 0.33, -62, 5.4, 26));
     this.samples.push(...this.mainSamples, ...this.alleySamples, ...this.roofSamples);
   }
 
@@ -242,7 +243,7 @@ export class RaceTrack {
       const left = point.position.clone().addScaledVector(point.right, -half);
       const right = point.position.clone().addScaledVector(point.right, half);
       positions.push(left.x, left.y, left.z, right.x, right.y, right.z);
-      uvs.push(0, pathDistance / 12, 1, pathDistance / 12);
+      uvs.push(0, pathDistance / 12, point.width / 18, pathDistance / 12);
     }
     const segments = closed ? count : count - 1;
     for (let i = 0; i < segments; i++) {
@@ -391,7 +392,7 @@ export class RaceTrack {
       this.group.add(dash);
     }
     const start = this.mainSamples[0];
-    for (let i = -11; i < 11; i++) {
+    for (let i = -21; i <= 21; i++) {
       for (let j = -1; j <= 1; j++) {
         const tile = box(1.15, 0.04, 1.15, (i + j) % 2 === 0 ? stoneLight : stoneDark);
         tile.position.copy(start.position).addScaledVector(start.right, i * 1.12).addScaledVector(start.tangent, j * 1.1);
@@ -423,36 +424,70 @@ export class RaceTrack {
       group.add(halo);
       const pool = new THREE.Mesh(new THREE.PlaneGeometry(8, 10), new THREE.MeshBasicMaterial({ map: lanternHaloTexture, color: 0xffb65d, transparent: true, opacity: 0.27, blending: THREE.AdditiveBlending, depthWrite: false }));
       pool.rotation.x = -Math.PI / 2;
-      pool.position.copy(point.position).addScaledVector(point.right, side * 11.6);
+      pool.position.copy(point.position).addScaledVector(point.right, side * (point.width / 2 - 1.4));
       pool.position.y += 0.09;
       this.group.add(pool);
       const cap = new THREE.Mesh(new THREE.ConeGeometry(0.68, 0.7, 4), stoneDark);
       cap.position.y = 5.6;
       cap.rotation.y = Math.PI / 4;
       group.add(cap);
-      group.position.copy(point.position).addScaledVector(point.right, side * 17.3);
+      group.position.copy(point.position).addScaledVector(point.right, side * (point.width / 2 + 3.8));
       group.position.y = 0;
       this.group.add(group);
     }
   }
 
   private makeMarketBanners() {
-    for (const progress of [0.025, 0.08, 0.125, 0.17, 0.235, 0.29, 0.89, 0.93, 0.97]) {
+    const spans = [0.025, 0.08, 0.125, 0.17, 0.235, 0.29, 0.89, 0.93, 0.97];
+    for (let span = 0; span < spans.length; span++) {
+      const progress = spans[span];
       const point = this.at(progress);
       const group = new THREE.Group();
-      const rope = box(31, 0.1, 0.1, wood);
+      const spanWidth = point.width + 6;
+      const rope = box(spanWidth, 0.1, 0.1, wood);
       rope.position.y = 7.5;
       group.add(rope);
       for (const side of [-1, 1]) {
         const pole = box(0.25, 8, 0.25, wood);
-        pole.position.set(side * 15.5, 4, 0);
+        pole.position.set(side * spanWidth / 2, 4, 0);
         group.add(pole);
       }
-      for (let i = 0; i < 11; i++) {
-        const flag = new THREE.Mesh(new THREE.ConeGeometry(0.88, 1.55, 3), i % 2 === 0 ? red : blue);
-        flag.position.set(-12.5 + i * 2.5, 6.75, 0);
+      for (let i = 0; i < 19; i++) {
+        const flag = new THREE.Mesh(new THREE.ConeGeometry(0.68, 1.12, 3), i % 2 === 0 ? red : blue);
+        flag.position.set(-22.5 + i * 2.5, 6.98, 0);
         flag.rotation.z = Math.PI;
         group.add(flag);
+      }
+      for (const x of [-20, -10, 0, 10, 20]) {
+        const hook = box(0.055, 0.48, 0.055, wood);
+        hook.position.set(x, 7.15, 0.2);
+        group.add(hook);
+        const lantern = box(0.43, 0.62, 0.4, glow);
+        lantern.position.set(x, 6.65, 0.2);
+        group.add(lantern);
+        const roof = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.28, 4), stoneDark);
+        roof.position.set(x, 7.12, 0.2);
+        roof.rotation.y = Math.PI / 4;
+        group.add(roof);
+        const halo = lanternHalo(4.1);
+        halo.position.set(x, 6.65, 0.2);
+        group.add(halo);
+      }
+      if (span % 3 === 1) {
+        const cloth = new THREE.BufferGeometry();
+        const vertices: number[] = [];
+        const indices: number[] = [];
+        for (let i = 0; i <= 12; i++) {
+          const t = i / 12;
+          const x = -spanWidth / 2 + t * spanWidth;
+          const sag = Math.sin(t * Math.PI) * 1.1;
+          vertices.push(x, 7.6 - sag, 1.4, x, 6.75 - sag, 1.4);
+          if (i > 0) indices.push((i - 1) * 2, i * 2, (i - 1) * 2 + 1, (i - 1) * 2 + 1, i * 2, i * 2 + 1);
+        }
+        cloth.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        cloth.setIndex(indices);
+        cloth.computeVertexNormals();
+        group.add(new THREE.Mesh(cloth, span % 2 ? red : blue));
       }
       group.position.copy(point.position);
       group.position.y = 0;
@@ -491,7 +526,7 @@ export class RaceTrack {
       post.position.y = 2.8;
       const group = new THREE.Group();
       group.add(post, face);
-      group.position.copy(point.position).addScaledVector(point.right, sign.side * 19);
+      group.position.copy(point.position).addScaledVector(point.right, sign.side * (point.width / 2 + 6));
       group.position.y = 0;
       group.rotation.y = Math.atan2(point.tangent.x, point.tangent.z) + Math.PI;
       this.group.add(group);
@@ -503,13 +538,13 @@ export class RaceTrack {
       const progress = i / 165;
       const sample = this.mainSamples[Math.floor(progress * this.mainSamples.length)];
       const side = i % 2 === 0 ? 1 : -1;
-      const offset = 31 + this.rng() * 11;
+      const offset = sample.width / 2 + 19 + this.rng() * 13;
       const position = sample.position.clone().addScaledVector(sample.right, side * offset);
       if (progress < 0.33 || progress > 0.88) {
         const facing = sample.right.clone().multiplyScalar(-side);
         const yaw = Math.atan2(facing.x, facing.z);
         this.makeBuilding(position, 8 + this.rng() * 7, 8 + this.rng() * 10, 8 + this.rng() * 9, i, yaw);
-        if (i % 3 === 0) this.makeStall(sample.position.clone().addScaledVector(sample.right, side * 22), i, yaw);
+        if (i % 3 === 0) this.makeStall(sample.position.clone().addScaledVector(sample.right, side * (sample.width / 2 + 9)), i, yaw);
       } else if (progress < 0.56) {
         if (i % 3 === 0) this.makeGardenWall(position);
         else this.makePalm(position, 7 + this.rng() * 3);
@@ -527,7 +562,7 @@ export class RaceTrack {
       const p = this.roofSamples[20 + Math.floor(this.rng() * 50)];
       const pos = p.position.clone();
       pos.y = -0.05;
-      pos.addScaledVector(p.right, (i % 2 ? 1 : -1) * (23 + this.rng() * 13));
+      pos.addScaledVector(p.right, (i % 2 ? 1 : -1) * (p.width / 2 + 17 + this.rng() * 13));
       const facing = p.right.clone().multiplyScalar(i % 2 ? -1 : 1);
       this.makeBuilding(pos, 9 + this.rng() * 7, 5 + this.rng() * 5, 9 + this.rng() * 7, i + 100, Math.atan2(facing.x, facing.z));
     }
@@ -672,10 +707,26 @@ export class RaceTrack {
     const halo = lanternHalo(4.5);
     halo.position.copy(lantern.position);
     group.add(halo);
+    const frontLantern = box(0.4, 0.62, 0.4, glow);
+    frontLantern.position.set(seed % 2 === 0 ? -2 : 2, 3.1, 2.7);
+    group.add(frontLantern);
+    const frontHalo = lanternHalo(3.8);
+    frontHalo.position.copy(frontLantern.position);
+    group.add(frontHalo);
     for (let i = 0; i < 3; i++) {
       const jar = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.49, 0.95, 8), i % 2 ? roofMat : blue);
       jar.position.set((i - 1) * 1.35, 2.15, 0.15);
       group.add(jar);
+    }
+    for (const x of [-1.8, 1.8]) {
+      const basket = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.48, 0.6, 8), wood);
+      basket.position.set(x, 2.02, 1.45);
+      group.add(basket);
+      for (let i = 0; i < 3; i++) {
+        const fruit = new THREE.Mesh(new THREE.IcosahedronGeometry(0.28, 0), i % 2 ? red : stoneLight);
+        fruit.position.set(x + (i - 1) * 0.24, 2.42, 1.45);
+        group.add(fruit);
+      }
     }
     group.position.copy(position);
     group.position.y = 0;
@@ -760,7 +811,7 @@ export class RaceTrack {
           halo.position.y = 3.44;
           section.add(halo);
         }
-        section.position.copy(point.position).addScaledVector(point.right, side * 16);
+        section.position.copy(point.position).addScaledVector(point.right, side * (point.width / 2 + 1.2));
         section.position.y = 0;
         section.rotation.y = Math.atan2(point.tangent.x, point.tangent.z);
         this.group.add(section);
@@ -781,12 +832,12 @@ export class RaceTrack {
             blossom.position.set(Math.sin(angle) * 0.84, 1.65 + (f % 2) * 0.4, Math.cos(angle) * 0.84);
             planter.add(blossom);
           }
-          planter.position.copy(point.position).addScaledVector(point.right, side * 19.5);
+          planter.position.copy(point.position).addScaledVector(point.right, side * (point.width / 2 + 4.7));
           planter.position.y = 0;
           this.group.add(planter);
         }
         if (i % 5 === 0) {
-          const palmPos = point.position.clone().addScaledVector(point.right, side * 26);
+          const palmPos = point.position.clone().addScaledVector(point.right, side * (point.width / 2 + 12));
           this.makePalm(palmPos, 9 + this.rng() * 2.5);
         }
       }
@@ -812,7 +863,7 @@ export class RaceTrack {
       const finial = new THREE.Mesh(new THREE.ConeGeometry(0.48, 2.2, 12), gold);
       finial.position.y = 12.6;
       pavilion.add(finial);
-      pavilion.position.copy(point.position).addScaledVector(point.right, progress === 0.445 ? -38 : 38);
+      pavilion.position.copy(point.position).addScaledVector(point.right, (progress === 0.445 ? -1 : 1) * (point.width / 2 + 25));
       pavilion.position.y = 0;
       if (this.clearOfRoad(pavilion.position, 7)) this.group.add(pavilion);
     }
@@ -844,7 +895,7 @@ export class RaceTrack {
 
   private makeFountain() {
     const sample = this.mainSamples[Math.floor(0.44 * this.mainSamples.length)];
-    const position = sample.position.clone().addScaledVector(sample.right, -34);
+    const position = sample.position.clone().addScaledVector(sample.right, -(sample.width / 2 + 22));
     const basin = new THREE.Mesh(new THREE.CylinderGeometry(8, 8.6, 1.2, 8), stoneLight);
     basin.position.copy(position);
     basin.position.y = 0.6;
@@ -871,7 +922,7 @@ export class RaceTrack {
         const size = 3.4 + this.rng() * 2.1;
         const rock = new THREE.Mesh(rockGeometry, i % 3 === 0 ? stoneDark : stone);
         rock.scale.set(size * 1.05, size * (1.15 + this.rng() * 0.65), size * 1.35);
-        rock.position.copy(sample.position).addScaledVector(sample.right, side * (20.3 + this.rng() * 3.2));
+        rock.position.copy(sample.position).addScaledVector(sample.right, side * (sample.width / 2 + 6.5 + this.rng() * 3.2));
         rock.position.y = rock.scale.y * 0.62 - 0.1;
         rock.rotation.y = this.rng() * Math.PI;
         rock.castShadow = true;
@@ -891,7 +942,7 @@ export class RaceTrack {
         arrow.position.set(-0.8 + i * 1.4, 3.7, 0.17);
         group.add(arrow);
       }
-      group.position.copy(sample.position).addScaledVector(sample.right, 18.2);
+      group.position.copy(sample.position).addScaledVector(sample.right, sample.width / 2 + 4.6);
       group.position.y = 0;
       group.rotation.y = Math.atan2(sample.tangent.x, sample.tangent.z) + Math.PI;
       this.group.add(group);
@@ -915,7 +966,7 @@ export class RaceTrack {
       palace.add(towerDome);
     }
     const sample = this.mainSamples[Math.floor(0.46 * this.mainSamples.length)];
-    palace.position.copy(sample.position).addScaledVector(sample.right, -65);
+    palace.position.copy(sample.position).addScaledVector(sample.right, -(sample.width / 2 + 53));
     palace.position.y = 0;
     this.group.add(palace);
   }
@@ -925,20 +976,20 @@ export class RaceTrack {
     const gate = new THREE.Group();
     for (const side of [-1, 1]) {
       const tower = box(4.2, 13.5, 4.2, stoneLight);
-      tower.position.set(side * 18, 6.75, 0);
+      tower.position.set(side * (point.width / 2 + 3), 6.75, 0);
       tower.castShadow = true;
       gate.add(tower);
       const dome = new THREE.Mesh(new THREE.SphereGeometry(2.65, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2), roofMat);
-      dome.position.set(side * 18, 13.7, 0);
+      dome.position.set(side * (point.width / 2 + 3), 13.7, 0);
       gate.add(dome);
       const lamp = box(0.72, 1.25, 0.7, glow);
-      lamp.position.set(side * 15.2, 6.8, 2.25);
+      lamp.position.set(side * (point.width / 2 + 0.2), 6.8, 2.25);
       gate.add(lamp);
       const halo = lanternHalo(5);
       halo.position.copy(lamp.position);
       gate.add(halo);
     }
-    const lintel = box(35.4, 2.3, 3.6, stoneLight);
+    const lintel = box(point.width + 6.4, 2.3, 3.6, stoneLight);
     lintel.position.y = 11.7;
     lintel.castShadow = true;
     gate.add(lintel);

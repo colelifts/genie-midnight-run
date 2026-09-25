@@ -158,6 +158,7 @@ const sand = new THREE.MeshStandardMaterial({ color: 0xb77b5c, roughness: 1, fla
 const stone = new THREE.MeshStandardMaterial({ color: 0xc48b66, roughness: 0.92 });
 const stoneLight = new THREE.MeshStandardMaterial({ color: 0xd7a476, roughness: 0.9 });
 const stoneDark = new THREE.MeshStandardMaterial({ color: 0x865e59, roughness: 0.97, flatShading: true });
+const rockSmooth = new THREE.MeshStandardMaterial({ color: 0x806779, roughness: 0.98, emissive: 0x15192d, emissiveIntensity: 0.2 });
 const roofMat = new THREE.MeshStandardMaterial({ color: 0x9d6577, roughness: 0.84, flatShading: true });
 const roadMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.96, side: THREE.DoubleSide });
 const gardenRoadMat = new THREE.MeshStandardMaterial({ color: 0xe6d5ba, roughness: 0.96, side: THREE.DoubleSide });
@@ -187,6 +188,23 @@ function pointedDoorGeometry(width: number, height: number) {
 
 const doorFrameGeometry = pointedDoorGeometry(3, 4.1);
 const doorInsetGeometry = pointedDoorGeometry(2.42, 3.72);
+
+function makeOrganicRockGeometry() {
+  const geometry = new THREE.SphereGeometry(1, 20, 14);
+  const positions = geometry.getAttribute('position');
+  for (let i = 0; i < positions.count; i++) {
+    const x = positions.getX(i);
+    const y = positions.getY(i);
+    const z = positions.getZ(i);
+    const irregularity = 1 + 0.11 * Math.sin(8 * x + 3 * y) * Math.cos(7 * z - 2 * y)
+      + 0.055 * Math.sin(13 * y + 5 * z) + 0.035 * Math.cos(17 * x - 11 * z);
+    positions.setXYZ(i, x * irregularity, y * irregularity, z * irregularity);
+  }
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+const organicRockGeometry = makeOrganicRockGeometry();
 
 let lanternHaloTexture: THREE.CanvasTexture | undefined;
 function lanternHalo(size: number, color = 0xffba58) {
@@ -419,9 +437,11 @@ export class RaceTrack {
   private readonly fireflies: Array<{ sprite: THREE.Sprite; base: THREE.Vector3; phase: number }> = [];
   private readonly fountainRipples: Array<{ mesh: THREE.Mesh; material: THREE.MeshBasicMaterial; phase: number }> = [];
   private caveCrystalMaterial: THREE.MeshBasicMaterial | null = null;
+  private readonly caveBeams: Array<{ material: THREE.MeshBasicMaterial; phase: number }> = [];
   private readonly birds: Array<{ group: THREE.Group; leftWing: THREE.Group; rightWing: THREE.Group; base: THREE.Vector3; phase: number; launchTime: number; direction: THREE.Vector3 }> = [];
   private readonly skyBirds: Array<{ group: THREE.Group; leftWing: THREE.Group; rightWing: THREE.Group; center: THREE.Vector3; phase: number; radius: number }> = [];
   private marketCart: Obstacle | null = null;
+  private readonly marketCartWheels: THREE.Mesh[] = [];
   private readonly marketCrossingCenter = new THREE.Vector3();
   private readonly marketCrossingSignals: Array<{ bulb: THREE.MeshBasicMaterial; halo: THREE.Sprite }> = [];
 
@@ -788,11 +808,11 @@ export class RaceTrack {
   }
 
   private makeRouteSigns() {
-    const signs: Array<{ progress: number; side: number; text: string; color: string }> = [
-      { progress: 0.04, side: -1, text: 'BOOST ALLEY', color: '#eac76b' },
-      { progress: 0.186, side: -1, text: 'ROOF RAMP', color: '#8fe1f4' },
+    const signs: Array<{ progress: number; side: number; text: string; color: string; arrow?: 'left' | 'right' }> = [
+      { progress: 0.04, side: -1, text: 'BOOST ALLEY', color: '#eac76b', arrow: 'left' },
+      { progress: 0.186, side: -1, text: 'ROOF RAMP', color: '#8fe1f4', arrow: 'left' },
       { progress: 0.345, side: 1, text: 'PALACE GARDEN', color: '#eac76b' },
-      { progress: 0.36, side: -1, text: 'GARDEN CUT', color: '#a9e5a5' },
+      { progress: 0.36, side: -1, text: 'GARDEN CUT', color: '#a9e5a5', arrow: 'right' },
       { progress: 0.665, side: 1, text: 'CAVE ROUTE', color: '#8fe1f4' },
     ];
     for (const sign of signs) {
@@ -807,11 +827,28 @@ export class RaceTrack {
       ctx.lineWidth = 8;
       ctx.strokeRect(5, 5, 502, 118);
       ctx.fillStyle = '#fff7e8';
-      ctx.font = '900 49px Arial';
+      ctx.font = sign.arrow ? '900 43px Arial' : '900 49px Arial';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(sign.text, 256, 68);
-      const material = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(canvas), side: THREE.DoubleSide });
+      ctx.fillText(sign.text, 256, 68, sign.arrow ? 335 : 490);
+      if (sign.arrow) {
+        const direction = sign.arrow === 'right' ? 1 : -1;
+        const x = direction === 1 ? 438 : 74;
+        ctx.strokeStyle = sign.color;
+        ctx.lineWidth = 14;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        ctx.moveTo(x - direction * 28, 64);
+        ctx.lineTo(x + direction * 18, 64);
+        ctx.lineTo(x - direction * 2, 44);
+        ctx.moveTo(x + direction * 18, 64);
+        ctx.lineTo(x - direction * 2, 84);
+        ctx.stroke();
+      }
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide });
       const face = new THREE.Mesh(new THREE.PlaneGeometry(7, 1.75), material);
       face.position.y = 6.4;
       const post = box(0.35, 5.6, 0.35, stoneDark);
@@ -1353,10 +1390,10 @@ export class RaceTrack {
         const sectionPosition = point.position.clone().addScaledVector(point.right, side * (point.width / 2 + 1.2));
         if (branchCoversMainEdge([this.gardenSamples], sectionPosition)) continue;
         const section = new THREE.Group();
-        const plinth = box(7.2, 1.2, 1.4, stoneLight);
+        const plinth = box(1.4, 1.2, 7.2, stoneLight);
         plinth.position.y = 0.62;
         section.add(plinth);
-        const trim = box(7.4, 0.24, 1.68, stoneDark);
+        const trim = box(1.68, 0.24, 7.4, stoneDark);
         trim.position.y = 1.31;
         section.add(trim);
         if (i % 3 === 0) {
@@ -1434,8 +1471,8 @@ export class RaceTrack {
 
   private makeRock(position: THREE.Vector3, radius: number) {
     if (!this.clearOfRoad(position, radius + 1.2)) return;
-    const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(radius, 0), stoneDark);
-    rock.scale.y = 0.65;
+    const rock = new THREE.Mesh(organicRockGeometry, rockSmooth);
+    rock.scale.set(radius, radius * 0.65, radius);
     rock.position.copy(position);
     rock.position.y = radius * 0.45;
     rock.castShadow = true;
@@ -1498,9 +1535,9 @@ export class RaceTrack {
   }
 
   private makeCave() {
-    const rockGeometry = new THREE.IcosahedronGeometry(1, 2);
-    const caveStone = new THREE.MeshStandardMaterial({ color: 0x66596c, roughness: 0.97, flatShading: true, emissive: 0x18213a, emissiveIntensity: 0.3 });
-    const caveStoneLight = new THREE.MeshStandardMaterial({ color: 0x786679, roughness: 0.98, flatShading: true, emissive: 0x18213a, emissiveIntensity: 0.28 });
+    const rockGeometry = organicRockGeometry;
+    const caveStone = new THREE.MeshStandardMaterial({ color: 0x66596c, roughness: 0.97, emissive: 0x18213a, emissiveIntensity: 0.3 });
+    const caveStoneLight = new THREE.MeshStandardMaterial({ color: 0x786679, roughness: 0.98, emissive: 0x18213a, emissiveIntensity: 0.28 });
     const crystal = new THREE.MeshBasicMaterial({ color: 0x67dbed, toneMapped: false });
     this.caveCrystalMaterial = crystal;
     for (let i = 0; i < 18; i++) {
@@ -1554,7 +1591,7 @@ export class RaceTrack {
         const size = 3.4 + this.rng() * 2.1;
         const rock = new THREE.Mesh(rockGeometry, i % 3 === 0 ? caveStoneLight : caveStone);
         rock.scale.set(size * 1.05, size * (1.15 + this.rng() * 0.65), size * 1.35);
-        rock.position.copy(sample.position).addScaledVector(sample.right, side * (sample.width / 2 + 6.5 + this.rng() * 3.2));
+        rock.position.copy(sample.position).addScaledVector(sample.right, side * (sample.width / 2 + 9.5 + this.rng() * 3.2));
         rock.position.y = rock.scale.y * 0.62 - 0.1;
         rock.rotation.y = this.rng() * Math.PI;
         rock.castShadow = true;
@@ -1595,6 +1632,15 @@ export class RaceTrack {
       const crystalGlow = lanternHalo(8, 0x68eaff);
       crystalGlow.position.copy(hangingCrystal.position);
       arch.add(crystalGlow);
+      const beamMaterial = new THREE.MeshBasicMaterial({ color: 0x6addf2, transparent: true, opacity: 0.06, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+      const beam = new THREE.Mesh(new THREE.ConeGeometry(5.2, 10.5, 20, 1, true), beamMaterial);
+      beam.position.y = 6.35;
+      arch.add(beam);
+      this.caveBeams.push({ material: beamMaterial, phase: progress * 27 });
+      const lightPool = new THREE.Mesh(new THREE.PlaneGeometry(11, 11), new THREE.MeshBasicMaterial({ map: lanternHaloTexture, color: 0x52cbe9, transparent: true, opacity: 0.19, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+      lightPool.rotation.x = -Math.PI / 2;
+      lightPool.position.y = 0.13;
+      arch.add(lightPool);
       arch.position.copy(sample.position);
       arch.position.y = 0;
       arch.rotation.y = Math.atan2(sample.tangent.x, sample.tangent.z);
@@ -1710,8 +1756,9 @@ export class RaceTrack {
       group.add(lid);
       radius = 2.1;
     } else if (kind === 'boulder') {
-      const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(2.6, 2), stoneDark);
-      rock.position.y = 2.55;
+      const rock = new THREE.Mesh(organicRockGeometry, rockSmooth);
+      rock.scale.setScalar(2.6);
+      rock.position.y = 2.95;
       rock.castShadow = true;
       group.add(rock);
       const warning = new THREE.Mesh(new THREE.TorusGeometry(3.05, 0.16, 6, 40), new THREE.MeshBasicMaterial({ color: 0xffc76e, toneMapped: false }));
@@ -1753,6 +1800,7 @@ export class RaceTrack {
         const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.66, 0.66, 0.35, 12), wood);
         wheel.rotation.z = Math.PI / 2;
         wheel.position.set(x * 1.2, 0.75, 0);
+        wheel.userData.marketWheel = true;
         group.add(wheel);
         const post = box(0.16, 2.1, 0.16, wood);
         post.position.set(x, 2.72, -0.9);
@@ -1763,7 +1811,7 @@ export class RaceTrack {
         goods.position.set((i - 1) * 1.08, 1.98, 0.15);
         group.add(goods);
       }
-      const awning = box(4.7, 0.2, 3, red);
+      const awning = box(4.7, 0.2, 3, redFabric);
       awning.position.y = 3.8;
       awning.rotation.z = 0.07;
       group.add(awning);
@@ -1787,6 +1835,7 @@ export class RaceTrack {
     const point = this.at(MARKET_CROSSING_PROGRESS);
     this.marketCrossingCenter.copy(point.position);
     this.marketCart = this.addObstacle('cart', point, MARKET_CROSSING_TRAVEL);
+    for (const child of this.marketCart.mesh.children) if (child instanceof THREE.Mesh && child.userData.marketWheel) this.marketCartWheels.push(child);
     for (const side of [-1, 1]) {
       const signal = new THREE.Group();
       const post = box(0.48, 3.7, 0.48, stoneDark);
@@ -1989,6 +2038,7 @@ export class RaceTrack {
       this.marketCart.mesh.position.copy(this.marketCrossingCenter).addScaledVector(this.marketCart.right, crossing.lateral * MARKET_CROSSING_TRAVEL);
       const forward = this.marketCart.right.clone().multiplyScalar(crossing.direction);
       this.marketCart.mesh.rotation.y = Math.atan2(forward.x, forward.z);
+      if (crossing.crossing) for (const wheel of this.marketCartWheels) wheel.rotateY(dt * MARKET_CROSSING_TRAVEL / 1.32);
       const bright = crossing.warning && Math.sin(time * 12) > 0;
       for (const signal of this.marketCrossingSignals) {
         signal.bulb.color.setHex(bright ? 0xffd884 : 0x9d6743);
@@ -2011,6 +2061,7 @@ export class RaceTrack {
       const glimmer = 0.9 + 0.1 * Math.sin(time * 2.2);
       this.caveCrystalMaterial.color.setRGB(0.43 * glimmer, 0.9 * glimmer, 0.99 * glimmer);
     }
+    for (const beam of this.caveBeams) beam.material.opacity = 0.055 + 0.025 * Math.sin(time * 1.8 + beam.phase);
     for (const flag of this.marketFlags) flag.mesh.rotation.z = Math.PI + Math.sin(time * 1.4 + flag.phase) * 0.08;
     for (const bird of this.birds) {
       const nearest = racers.find((racer) => racer.distanceTo(bird.base) < 21);

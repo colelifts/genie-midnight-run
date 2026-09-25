@@ -889,7 +889,7 @@ class GenieRace {
     const route = this.track.nearest(racer.position, racer.progress).point.route;
     for (const pad of this.track.boostPads) {
       if (touchesBoostPad(pad, racer.position, route)) {
-        racer.boostTime = Math.max(racer.boostTime, 2.0);
+        racer.boostTime = Math.max(racer.boostTime, pad.boostSeconds);
         racer.lastPad = 2.2;
         this.startJump(racer, 0.75, 1.5);
         if (racer.id === 0) { this.showBanner('MAGIC CARPET BOOST', 1.1); this.audio.play('boost'); }

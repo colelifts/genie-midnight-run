@@ -30,6 +30,6 @@ Wishes have no cooldown in this test build. The Ultimate can be used again immed
 
 ## Course
 
-The Agrabah circuit has a market alley, an optional rooftop route with a magic-carpet boost pad, palace-garden curves, and a desert cave. Market carts, breakable crates, and moving boulders are the current obstacles. Gold wish sparks provide a small boost, with a 12% chance for Genie's passive to upgrade it into a longer boost and brief shield.
+The Agrabah circuit has a market alley and an optional rooftop route with magic-carpet boosts, palace-garden curves, and a desert cave. Market carts, breakable crates, and moving boulders are the current obstacles. Gold wish sparks provide a small boost, with a 12% chance for Genie's passive to upgrade it into a longer boost and brief shield.
 
 Append `?demo=1` to the URL to watch an automatic drive around the course for inspection.

@@ -38,6 +38,7 @@ export interface BoostPad {
   right: THREE.Vector3;
   halfWidth: number;
   halfLength: number;
+  boostSeconds: number;
   route: RouteName;
   mesh: THREE.Group;
 }
@@ -372,7 +373,7 @@ export class RaceTrack {
       const vertices: number[] = [];
       const colors: number[] = [];
       const indices: number[] = [];
-      const coveredByMain: boolean[] = [];
+      const coveredAtJunction: boolean[] = [];
       const count = points.length;
       for (let i = 0; i < count; i++) {
         const point = points[i];
@@ -381,13 +382,15 @@ export class RaceTrack {
         inner.y += 0.035;
         outer.y += 0.035;
         vertices.push(inner.x, inner.y, inner.z, outer.x, outer.y, outer.z);
-        coveredByMain.push(!closed && (overMainPavement(this.mainSamples, inner, 1) || overMainPavement(this.mainSamples, outer, 1)));
+        coveredAtJunction.push(closed
+          ? branchCoversMainEdge([this.alleySamples, this.roofSamples], inner) || branchCoversMainEdge([this.alleySamples, this.roofSamples], outer)
+          : overMainPavement(this.mainSamples, inner, 1) || overMainPavement(this.mainSamples, outer, 1));
         const color = Math.floor(i / 6) % 2 === 0 ? new THREE.Color(0xe8dcce) : new THREE.Color(0xc85d65);
         colors.push(color.r, color.g, color.b, color.r, color.g, color.b);
       }
       for (let i = 0; i < (closed ? count : count - 1); i++) {
         const j = (i + 1) % count;
-        if (coveredByMain[i] || coveredByMain[j]) continue;
+        if (coveredAtJunction[i] || coveredAtJunction[j]) continue;
         indices.push(i * 2, i * 2 + 1, j * 2, i * 2 + 1, j * 2 + 1, j * 2);
       }
       const geometry = new THREE.BufferGeometry();
@@ -606,7 +609,7 @@ export class RaceTrack {
 
   private makeRouteSigns() {
     const signs: Array<{ progress: number; side: number; text: string; color: string }> = [
-      { progress: 0.04, side: -1, text: 'ALLEY CUT', color: '#eac76b' },
+      { progress: 0.04, side: -1, text: 'BOOST ALLEY', color: '#eac76b' },
       { progress: 0.186, side: -1, text: 'ROOF RAMP', color: '#8fe1f4' },
       { progress: 0.345, side: 1, text: 'PALACE GARDEN', color: '#eac76b' },
       { progress: 0.665, side: 1, text: 'CAVE ROUTE', color: '#8fe1f4' },
@@ -1312,8 +1315,17 @@ export class RaceTrack {
   }
 
   private makePads() {
-    const points = [this.at(0.105), this.roofSamples[59], this.at(0.54), this.at(0.805)];
-    for (const point of points) {
+    const pads = [
+      { point: this.at(0.105), boostSeconds: 2 },
+      { point: this.alleySamples[27], boostSeconds: 5 },
+      { point: this.alleySamples[65], boostSeconds: 5 },
+      { point: this.roofSamples[19], boostSeconds: 5 },
+      { point: this.roofSamples[49], boostSeconds: 5 },
+      { point: this.roofSamples[78], boostSeconds: 5 },
+      { point: this.at(0.54), boostSeconds: 2 },
+      { point: this.at(0.805), boostSeconds: 2 },
+    ];
+    for (const { point, boostSeconds } of pads) {
       const group = new THREE.Group();
       const base = box(point.width * 0.78, 0.045, 5.3, new THREE.MeshBasicMaterial({ color: 0x6a3c99 }));
       base.position.y = 0.03;
@@ -1334,7 +1346,7 @@ export class RaceTrack {
       group.position.y += 0.08;
       group.rotation.y = Math.atan2(point.tangent.x, point.tangent.z);
       this.group.add(group);
-      this.boostPads.push({ position: group.position, tangent: point.tangent.clone(), right: point.right.clone(), halfWidth: point.width * 0.39, halfLength: 2.65, route: point.route, mesh: group });
+      this.boostPads.push({ position: group.position, tangent: point.tangent.clone(), right: point.right.clone(), halfWidth: point.width * 0.39, halfLength: 2.65, boostSeconds, route: point.route, mesh: group });
     }
   }
 

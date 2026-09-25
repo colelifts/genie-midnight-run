@@ -40,15 +40,16 @@ export function advanceChaseYaw(cameraYaw: number, moveYaw: number, drifting: bo
   return cameraYaw + angleDiff(moveYaw, cameraYaw) * (1 - Math.exp(-dt * (drifting ? 16 : 12)));
 }
 
-/** When a kart drives into a rail, keep its motion along the rail instead of repeatedly pushing it into the wall. */
+/** Ease a kart into a rail slide without instantly replacing the driver's heading. */
 export function slideHeadingAlongRail(
   state: HeadingState,
   speed: number,
   lateral: number,
   right: { x: number; z: number },
   tangent: { x: number; z: number },
+  dt: number,
 ): HeadingState {
-  if (Math.abs(speed) < 0.01 || Math.abs(lateral) < 0.01) return state;
+  if (dt <= 0 || Math.abs(speed) < 0.01 || Math.abs(lateral) < 0.01) return state;
   const travelSign = Math.sign(speed);
   const travelX = Math.sin(state.moveYaw) * travelSign;
   const travelZ = Math.cos(state.moveYaw) * travelSign;
@@ -56,6 +57,13 @@ export function slideHeadingAlongRail(
   if (outward <= 0) return state;
   const along = travelX * tangent.x + travelZ * tangent.z;
   const railDirection = (along < -0.01 ? -1 : 1) * travelSign;
-  const yaw = Math.atan2(tangent.x * railDirection, tangent.z * railDirection);
-  return { yaw, moveYaw: yaw, yawRate: 0 };
+  const railYaw = Math.atan2(tangent.x * railDirection, tangent.z * railDirection);
+  const yawCorrection = Math.max(-4 * dt, Math.min(4 * dt, angleDiff(railYaw, state.yaw)));
+  const travelCorrection = Math.max(-6 * dt, Math.min(6 * dt, angleDiff(railYaw, state.moveYaw)));
+  return { yaw: state.yaw + yawCorrection, moveYaw: state.moveYaw + travelCorrection, yawRate: state.yawRate * Math.exp(-dt * 12) };
+}
+
+/** Wall contact should cost some speed, but never compound into a near-stop each frame. */
+export function railScrapeSpeed(speed: number, excess: number, dt: number) {
+  return speed * Math.exp(-dt * (0.35 + Math.min(excess, 4) * 0.25));
 }

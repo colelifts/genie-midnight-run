@@ -3,7 +3,7 @@ import './style.css';
 import './roster.css';
 import { GameAudio } from './audio';
 import { sweptSphereHit } from './collision';
-import { advanceChaseYaw, advanceHeading, raceSpeed, slideHeadingAlongRail } from './handling';
+import { advanceChaseYaw, advanceHeading, raceSpeed, railScrapeSpeed, slideHeadingAlongRail } from './handling';
 import { CharacterKartVisual, type RaceVisual } from './characterKart';
 import { CHARACTERS, CHARACTER_BY_ID, type CharacterId } from './characters';
 import { KartVisual, makeProjectile } from './kart';
@@ -1661,7 +1661,7 @@ class GenieRace {
     player.position.x += Math.sin(player.moveYaw) * player.speed * dt;
     player.position.z += Math.cos(player.moveYaw) * player.speed * dt;
     this.followRoadHeight(player, dt);
-    const road = this.keepOnCourse(player);
+    const road = this.keepOnCourse(player, dt);
     this.updateProgress(player, road.point.progress);
     if (road.onRoad || player.jumpTime > 0) {
       player.offTrackTime = 0;
@@ -1758,7 +1758,7 @@ class GenieRace {
     racer.position.x += Math.sin(racer.moveYaw) * racer.speed * dt;
     racer.position.z += Math.cos(racer.moveYaw) * racer.speed * dt;
     this.followRoadHeight(racer, dt);
-    const road = this.keepOnCourse(racer);
+    const road = this.keepOnCourse(racer, dt);
     this.updateProgress(racer, road.point.progress);
     if (!road.onRoad && racer.jumpTime <= 0) {
       racer.position.addScaledVector(road.point.position.clone().sub(racer.position), Math.min(1, dt * 2));
@@ -1804,7 +1804,7 @@ class GenieRace {
     racer.position.y += (targetHeight - racer.position.y) * Math.min(1, dt * 12);
   }
 
-  private keepOnCourse(racer: Racer): RoadHit {
+  private keepOnCourse(racer: Racer, dt = 0): RoadHit {
     const road = this.track.nearest(racer.position, racer.progress);
     if (road.distance > Math.max(28, road.point.width / 2 + 7)) {
       this.respawn(racer);
@@ -1814,14 +1814,14 @@ class GenieRace {
     const excess = Math.abs(road.lateral) - limit;
     if (excess > 0) {
       racer.position.addScaledVector(road.point.right, -Math.sign(road.lateral) * excess);
-      racer.speed *= Math.max(0.58, 1 - excess * 0.14);
-      const heading = slideHeadingAlongRail(racer, racer.speed, road.lateral, road.point.right, road.point.tangent);
+      racer.speed = railScrapeSpeed(racer.speed, excess, dt);
+      const heading = slideHeadingAlongRail(racer, racer.speed, road.lateral, road.point.right, road.point.tangent, dt);
       if (heading !== racer) {
         racer.yaw = heading.yaw;
         racer.moveYaw = heading.moveYaw;
         racer.yawRate = heading.yawRate;
       }
-      if (racer.drifting && (excess > 0.6 || heading !== racer)) {
+      if (racer.drifting && excess > 0.8) {
         racer.drifting = false;
         racer.driftCharge = 0;
       }

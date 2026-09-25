@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { advanceChaseYaw, advanceHeading, raceSpeed, slideHeadingAlongRail } from '../src/handling.ts';
+import { advanceChaseYaw, advanceHeading, raceSpeed, railScrapeSpeed, slideHeadingAlongRail } from '../src/handling.ts';
 
 const angle = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
 
@@ -44,8 +44,15 @@ assert.deepEqual(idle, { yaw: 0, moveYaw: 0, yawRate: 0 }, 'No steering input mu
 const straight = { yaw: Math.PI / 4, moveYaw: Math.PI / 4, yawRate: 0.7 };
 const railRight = { x: 1, z: 0 };
 const railTangent = { x: 0, z: 1 };
-const sliding = slideHeadingAlongRail(straight, raceSpeed(31), 16, railRight, railTangent);
-assert.deepEqual(sliding, { yaw: 0, moveYaw: 0, yawRate: 0 }, 'Outward rail contact must slide forward along the road');
-assert.equal(slideHeadingAlongRail(straight, raceSpeed(31), -16, railRight, railTangent), straight, 'Inward movement must retain player heading');
-assert.equal(slideHeadingAlongRail(straight, raceSpeed(31), 0, railRight, railTangent), straight, 'No rail contact must not auto steer');
+const sliding = slideHeadingAlongRail(straight, raceSpeed(31), 16, railRight, railTangent, 1 / 60);
+assert.ok(sliding.yaw > 0 && sliding.yaw < straight.yaw, 'Rail contact must guide heading gradually, without snapping');
+assert.ok(sliding.moveYaw > 0 && sliding.moveYaw < straight.moveYaw, 'Rail contact must slide travel gradually');
+assert.ok(angle(sliding.yaw, straight.yaw) < 0.08, 'One frame of rail contact must not jerk the kart');
+assert.equal(slideHeadingAlongRail(straight, raceSpeed(31), -16, railRight, railTangent, 1 / 60), straight, 'Inward movement must retain player heading');
+assert.equal(slideHeadingAlongRail(straight, raceSpeed(31), 0, railRight, railTangent, 1 / 60), straight, 'No rail contact must not auto steer');
+assert.equal(slideHeadingAlongRail(straight, raceSpeed(31), 16, railRight, railTangent, 0), straight, 'Collision correction outside movement must not steer');
+const oneSecond60 = Array.from({ length: 60 }).reduce((speed) => railScrapeSpeed(speed, 1, 1 / 60), raceSpeed(31));
+const oneSecond30 = Array.from({ length: 30 }).reduce((speed) => railScrapeSpeed(speed, 1, 1 / 30), raceSpeed(31));
+assert.ok(Math.abs(oneSecond60 - oneSecond30) < 1e-10, 'Rail drag must be frame-rate independent');
+assert.ok(oneSecond60 > raceSpeed(31) * 0.5, 'A short wall scrape must not stop the kart');
 console.log(`Handling: drift turns ${(drift.turnAtRelease / normal.turnAtRelease).toFixed(2)}× normal; ${(drift.maxSlip * 180 / Math.PI).toFixed(1)}° max slip; ${(drift.maxCameraAngle * 180 / Math.PI).toFixed(1)}° max camera angle; 30/60 fps stable`);

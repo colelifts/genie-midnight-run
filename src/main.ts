@@ -3,7 +3,7 @@ import './style.css';
 import './roster.css';
 import { GameAudio } from './audio';
 import { sweptSphereHit } from './collision';
-import { advanceChaseYaw, advanceHeading, raceSpeed } from './handling';
+import { advanceChaseYaw, advanceHeading, raceSpeed, slideHeadingAlongRail } from './handling';
 import { CharacterKartVisual, type RaceVisual } from './characterKart';
 import { CHARACTERS, CHARACTER_BY_ID, type CharacterId } from './characters';
 import { KartVisual, makeProjectile } from './kart';
@@ -1811,7 +1811,13 @@ class GenieRace {
     if (excess > 0) {
       racer.position.addScaledVector(road.point.right, -Math.sign(road.lateral) * excess);
       racer.speed *= Math.max(0.58, 1 - excess * 0.14);
-      if (racer.drifting && excess > 0.6) {
+      const heading = slideHeadingAlongRail(racer, racer.speed, road.lateral, road.point.right, road.point.tangent);
+      if (heading !== racer) {
+        racer.yaw = heading.yaw;
+        racer.moveYaw = heading.moveYaw;
+        racer.yawRate = heading.yawRate;
+      }
+      if (racer.drifting && (excess > 0.6 || heading !== racer)) {
         racer.drifting = false;
         racer.driftCharge = 0;
       }

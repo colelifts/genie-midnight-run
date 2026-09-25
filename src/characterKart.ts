@@ -216,9 +216,15 @@ function ultimateApparition(id: CharacterId) {
   if (id === 'mickey' || id === 'stitch') {
     const character = figure(id);
     character.scale.setScalar(id === 'stitch' ? 1.14 : 1.02);
+    const discarded = new Set<THREE.Material>();
     character.traverse((object) => {
-      if (object instanceof THREE.Mesh) { object.material = spirit; object.castShadow = false; }
+      if (object instanceof THREE.Mesh) {
+        for (const material of Array.isArray(object.material) ? object.material : [object.material]) if (material !== dark && material !== cream && material !== white && material !== eye) discarded.add(material);
+        object.material = spirit;
+        object.castShadow = false;
+      }
     });
+    discarded.forEach((material) => material.dispose());
     group.add(character);
   } else if (id === 'mulan' || id === 'maleficent') {
     const dragonPath = new THREE.CatmullRomCurve3([
@@ -293,6 +299,7 @@ export interface RaceVisual {
   setStunned(active: boolean): void;
   setGroundOffset(offset: number): void;
   update(dt: number, speed: number, steer: number, drifting: boolean, boosting: boolean, stunned: boolean): void;
+  dispose(): void;
 }
 
 export class CharacterKartVisual implements RaceVisual {
@@ -406,5 +413,19 @@ export class CharacterKartVisual implements RaceVisual {
       flame.scale.y = 0.8 + Math.sin(this.elapsed * 21) * 0.18;
     }
     this.body.rotation.y = stunned ? Math.sin(this.elapsed * 12) * 0.22 : this.body.rotation.y * Math.max(0, 1 - dt * 8);
+  }
+
+  dispose() {
+    const shared = new Set<THREE.Material>([dark, cream, white, eye]);
+    const geometries = new Set<THREE.BufferGeometry>();
+    const materials = new Set<THREE.Material>();
+    this.group.traverse((part) => {
+      if (part instanceof THREE.Mesh) geometries.add(part.geometry);
+      if (part instanceof THREE.Mesh || part instanceof THREE.Sprite) {
+        for (const material of Array.isArray(part.material) ? part.material : [part.material]) if (!shared.has(material)) materials.add(material);
+      }
+    });
+    geometries.forEach((geometry) => geometry.dispose());
+    materials.forEach((material) => material.dispose());
   }
 }

@@ -522,6 +522,20 @@ export class KartVisual {
     if (stunned) this.body.rotation.y = Math.sin(this.elapsed * 12) * 0.25;
     else this.body.rotation.y *= Math.max(0, 1 - dt * 8);
   }
+
+  dispose() {
+    const shared = new Set<THREE.Material>([blueSkin, lightBlue, darkHair, eyeWhite, pupil, smile, gold, goldLight, tire, purple, cyanGlow, innerLamp]);
+    const geometries = new Set<THREE.BufferGeometry>();
+    const materials = new Set<THREE.Material>();
+    this.group.traverse((part) => {
+      if (part instanceof THREE.Mesh) geometries.add(part.geometry);
+      if (part instanceof THREE.Mesh || part instanceof THREE.Sprite) {
+        for (const material of Array.isArray(part.material) ? part.material : [part.material]) if (!shared.has(material)) materials.add(material);
+      }
+    });
+    geometries.forEach((geometry) => geometry.dispose());
+    materials.forEach((material) => material.dispose());
+  }
 }
 
 export function makeProjectile(): THREE.Group {

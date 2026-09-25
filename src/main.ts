@@ -38,6 +38,8 @@ const clamp = (value: number, min: number, max: number) => Math.max(min, Math.mi
 const wrap = (value: number) => ((value % 1) + 1) % 1;
 const angleDiff = (target: number, current: number) => Math.atan2(Math.sin(target - current), Math.cos(target - current));
 const formatLapTime = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${(seconds % 60).toFixed(2).padStart(5, '0')}`;
+const RACER_COUNT = 8;
+const START_LANES = [0, -4, 4, -4, 4, -4, 4, 0];
 
 type GameMode = 'menu' | 'countdown' | 'race' | 'paused' | 'finished';
 type Wish = 'boost' | 'shield' | 'shot';
@@ -87,6 +89,7 @@ interface Racer {
   lastSafe: THREE.Vector3;
   lastSafeProgress: number;
   aiRoute: RouteName;
+  aiLane: number;
   aiAbilityTimer: number;
   aiUltimateTimer: number;
   ultimateHit: Set<number>;
@@ -411,27 +414,29 @@ class GenieRace {
   private raceStarts() {
     const requestedStart = new URLSearchParams(window.location.search).get('demoStart');
     const demoStart = requestedStart === null ? NaN : Number(requestedStart);
-    return this.demoMode && Number.isFinite(demoStart) && demoStart >= 0 && demoStart < 1
-      ? [demoStart, wrap(demoStart + 0.015), wrap(demoStart + 0.031)] : [0.006, 0.021, 0.037];
+    const base = this.demoMode && Number.isFinite(demoStart) && demoStart >= 0 && demoStart < 1 ? demoStart : 0.006;
+    return Array.from({ length: RACER_COUNT }, (_, i) => wrap(base + (i === 0 ? 0 : Math.ceil(i / 2) * 0.006)));
   }
 
   private makeRacers() {
     const starts = this.raceStarts();
     const demoRoute = new URLSearchParams(window.location.search).get('demoRoute');
-    for (let i = 0; i < 3; i++) {
+    const candidates = CHARACTERS.map((character) => character.id).filter((id) => id !== this.selectedCharacter);
+    for (let i = 0; i < RACER_COUNT; i++) {
       const start = this.track.at(starts[i]);
+      const gridPosition = start.position.clone().addScaledVector(start.right, START_LANES[i]);
       const yaw = Math.atan2(start.tangent.x, start.tangent.z);
-      const character: CharacterId = i === 0 ? this.selectedCharacter : i === 1 ? 'mickey' : 'stitch';
+      const character: CharacterId = i === 0 ? this.selectedCharacter : candidates[i - 1];
       const visual = this.makeVisual(character);
-      visual.group.position.copy(start.position);
+      visual.group.position.copy(gridPosition);
       visual.group.rotation.y = yaw;
       this.scene.add(visual.group);
       const racer: Racer = {
-        id: i, character, visual, position: start.position.clone(), yaw, moveYaw: yaw, speed: 0, progress: starts[i], lap: 1, finishPlace: 0,
+        id: i, character, visual, position: gridPosition.clone(), yaw, moveYaw: yaw, speed: 0, progress: starts[i], lap: 1, finishPlace: 0,
         boostTime: 0, padBoostTime: 0, shieldTime: 0, ultimateTime: 0, ultimateMeter: 0, signatureCooldown: 0, itemCharges: 1, wishUpgrade: false, curseTime: 0, wobbleTime: 0, hotHeadTime: 0, laserReadyTime: 0, powerTick: 0, stunTime: 0, hitCooldown: 0, offTrackTime: 0, lastPad: 0,
         drifting: false, driftCharge: 0, jumpTime: 0, jumpDuration: 0, jumpPower: 0, trickReady: false, trickBoost: false, trickAnim: 0, slipCharge: 0, slipCooldown: 0, tricksLanded: 0, draftBoosts: 0, compassTime: 0, compassTarget: null,
-        lastSafe: start.position.clone(), lastSafeProgress: starts[i], aiRoute: i === 0 && this.demoMode && (demoRoute === 'alley' || demoRoute === 'roof' || demoRoute === 'garden') ? demoRoute : i === 1 ? 'alley' : i === 2 ? 'roof' : 'main',
-        aiAbilityTimer: 10 + i * 5, aiUltimateTimer: 48 + i * 13, ultimateHit: new Set<number>(), steerVisual: 0,
+        lastSafe: gridPosition.clone(), lastSafeProgress: starts[i], aiRoute: i === 0 && this.demoMode && (demoRoute === 'alley' || demoRoute === 'roof' || demoRoute === 'garden') ? demoRoute : i % 3 === 1 ? 'alley' : i % 3 === 2 ? 'roof' : 'garden', aiLane: START_LANES[i],
+        aiAbilityTimer: 7 + i * 1.2, aiUltimateTimer: 40 + i * 3, ultimateHit: new Set<number>(), steerVisual: 0,
       };
       this.racers.push(racer);
     }
@@ -468,6 +473,7 @@ class GenieRace {
   private replaceVisual(racer: Racer, character: CharacterId) {
     if (racer.character === character) return;
     this.scene.remove(racer.visual.group);
+    racer.visual.dispose();
     racer.character = character;
     racer.visual = this.makeVisual(character);
     racer.visual.group.position.copy(racer.position);
@@ -585,13 +591,13 @@ class GenieRace {
     this.lapClock = 0;
     this.raceClock = 0;
     this.finishCount = 0;
-    const rivals = CHARACTERS.map((character) => character.id).filter((id) => id !== this.selectedCharacter).sort(() => Math.random() - 0.5);
-    this.replaceVisual(this.racers[1], rivals[0]);
-    this.replaceVisual(this.racers[2], rivals[1]);
+    const rivals = CHARACTERS.map((character) => character.id).filter((id) => id !== this.selectedCharacter);
+    for (let i = rivals.length - 1; i > 0; i--) { const pick = Math.floor(Math.random() * (i + 1)); [rivals[i], rivals[pick]] = [rivals[pick], rivals[i]]; }
+    for (let i = 1; i < RACER_COUNT; i++) this.replaceVisual(this.racers[i], rivals[i - 1]);
     const starts = this.raceStarts();
     this.racers.forEach((racer, i) => {
       const point = this.track.at(starts[i]);
-      racer.position.copy(point.position);
+      racer.position.copy(point.position).addScaledVector(point.right, racer.aiLane);
       racer.yaw = Math.atan2(point.tangent.x, point.tangent.z);
       racer.moveYaw = racer.yaw;
       racer.speed = 0;
@@ -612,10 +618,10 @@ class GenieRace {
       racer.tricksLanded = racer.draftBoosts = 0;
       racer.compassTime = 0;
       racer.compassTarget = null;
-      racer.lastSafe.copy(point.position);
+      racer.lastSafe.copy(racer.position);
       racer.lastSafeProgress = starts[i];
-      racer.aiAbilityTimer = 10 + i * 5;
-      racer.aiUltimateTimer = 48 + i * 13;
+      racer.aiAbilityTimer = 7 + i * 1.2;
+      racer.aiUltimateTimer = 40 + i * 3;
       racer.ultimateHit.clear();
       racer.visual.group.position.copy(racer.position);
       racer.visual.group.rotation.y = racer.yaw;
@@ -1199,13 +1205,13 @@ class GenieRace {
     } else if (racer.drifting) {
       this.releaseDrift(racer);
     }
-    const direction = target.position.clone().sub(racer.position);
+    const direction = target.position.clone().addScaledVector(target.right, racer.aiLane).sub(racer.position);
     let targetYaw = Math.atan2(direction.x, direction.z);
     for (const obstacle of this.track.obstacles) {
       if (obstacle.broken) continue;
       const distance = racer.position.distanceTo(obstacle.position);
       if (distance < 13 && distance > 3 && Math.abs(angleDiff(Math.atan2(obstacle.position.x - racer.position.x, obstacle.position.z - racer.position.z), racer.yaw)) < 0.5) {
-        targetYaw += racer.id === 1 ? 0.35 : -0.35;
+        targetYaw += racer.id % 2 ? 0.35 : -0.35;
       }
     }
     const error = angleDiff(targetYaw, racer.yaw);
@@ -1213,7 +1219,7 @@ class GenieRace {
     racer.steerVisual = steer;
     racer.yaw += (steer + (racer.wobbleTime > 0 ? Math.sin(this.elapsed * 17) * 0.2 : 0)) * (1.2 - Math.min(racer.speed / 100, 0.25)) * (racer.drifting ? 1.25 : 1) * (racer.padBoostTime > 0 ? 1.3 : 1) * CHARACTER_BY_ID[racer.character].handling * dt;
     racer.moveYaw += angleDiff(racer.yaw, racer.moveYaw) * Math.min(1, dt * 5);
-    let targetSpeed = 27 + racer.id * 0.6 + Math.sin(this.elapsed * 0.5 + racer.id) * 1.4;
+    let targetSpeed = 27.7 + Math.sin(racer.id * 1.7) * 1.8 + Math.sin(this.elapsed * 0.5 + racer.id) * 1.1;
     if (Math.abs(error) > 0.5) targetSpeed = 22;
     if (racer.boostTime > 0) targetSpeed = racer.ultimateTime > 0 ? 41 : 37;
     if (racer.padBoostTime > 0) targetSpeed = 49;
@@ -1489,8 +1495,8 @@ class GenieRace {
     this.wishHolding = false;
     wishPicker.classList.add('hidden');
     results.classList.remove('hidden');
-    el<HTMLElement>('results-place').textContent = rank === 1 ? 'FIRST PLACE!' : rank === 2 ? 'SECOND PLACE!' : 'THIRD PLACE!';
-    el<HTMLElement>('results-summary').textContent = `${CHARACTER_BY_ID[player.character].name} finished Agrabah Circuit · ${player.tricksLanded} trick boosts · ${player.draftBoosts} slipstreams.`;
+    el<HTMLElement>('results-place').textContent = rank === 1 ? 'FIRST PLACE!' : rank === 2 ? 'SECOND PLACE!' : rank === 3 ? 'THIRD PLACE!' : `${rank}TH PLACE!`;
+    el<HTMLElement>('results-summary').textContent = `${CHARACTER_BY_ID[player.character].name} finished Agrabah Circuit · ${player.tricksLanded} trick boost${player.tricksLanded === 1 ? '' : 's'} · ${player.draftBoosts} slipstream${player.draftBoosts === 1 ? '' : 's'}.`;
     el<HTMLElement>('results-time').textContent = formatLapTime(this.raceClock);
     this.audio.play('lap');
   }
@@ -1793,8 +1799,8 @@ class GenieRace {
     hud.dataset.state = JSON.stringify(this.racers.map((racer) => ({ id: racer.id, character: racer.character, lap: racer.lap, p: Number(racer.progress.toFixed(3)), x: Number(racer.position.x.toFixed(2)), y: Number(racer.position.y.toFixed(2)), z: Number(racer.position.z.toFixed(2)), yaw: Number(racer.yaw.toFixed(3)), route: this.track.nearest(racer.position, racer.progress).point.route, speed: Math.round(racer.speed), drift: Number(racer.driftCharge.toFixed(2)), jump: Number(racer.jumpTime.toFixed(2)), trickReady: racer.trickReady, trickBoost: racer.trickBoost, tricks: racer.tricksLanded, drafts: racer.draftBoosts, slip: Number(racer.slipCharge.toFixed(2)), padBoost: Number(racer.padBoostTime.toFixed(2)), stun: Number(racer.stunTime.toFixed(2)), hitGrace: Number(racer.hitCooldown.toFixed(2)), ultimate: Number(racer.ultimateTime.toFixed(2)), meter: Math.round(racer.ultimateMeter), signatureCooldown: Number(racer.signatureCooldown.toFixed(1)), items: racer.itemCharges })));
     const standings = [...this.racers].sort((a, b) => (b.lap - 1 + b.progress) - (a.lap - 1 + a.progress));
     const rank = standings.findIndex((racer) => racer.id === 0) + 1;
-    const suffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : 'rd';
-    positionText.innerHTML = `${rank}<span>${suffix}</span><em> / 3</em>`;
+    const suffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th';
+    positionText.innerHTML = `${rank}<span>${suffix}</span><em> / ${RACER_COUNT}</em>`;
     lapText.textContent = `LAP ${Math.min(3, player.lap)} / 3`;
     zoneText.textContent = this.track.zone(player.progress);
     lapTimeText.textContent = `${formatLapTime(this.lapClock)} · BEST ${Number.isFinite(this.bestLap) ? formatLapTime(this.bestLap) : '--:--.--'}`;
@@ -1862,7 +1868,7 @@ class GenieRace {
       const screen = mapPoint(racer.position);
       ctx.beginPath();
       ctx.arc(screen.x, screen.y, racer.id === 0 ? 6 : 4.5, 0, Math.PI * 2);
-      ctx.fillStyle = racer.id === 0 ? '#56dafa' : racer.id === 1 ? '#ffc56d' : '#c396f9';
+      ctx.fillStyle = racer.id === 0 ? '#56dafa' : `#${CHARACTER_BY_ID[racer.character].accent.toString(16).padStart(6, '0')}`;
       ctx.fill();
       ctx.strokeStyle = '#172341';
       ctx.lineWidth = 2;

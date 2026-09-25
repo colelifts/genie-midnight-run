@@ -20,7 +20,7 @@ export interface RoadHit {
 }
 
 export interface Obstacle {
-  kind: 'crate' | 'boulder' | 'cart' | 'urn';
+  kind: 'crate' | 'boulder' | 'cart' | 'urn' | 'marketIsland';
   route: RouteName;
   progress: number;
   mesh: THREE.Group;
@@ -82,7 +82,7 @@ export function branchCoversMainEdge(branches: RoadPoint[][], position: THREE.Ve
 
 export const MARKET_BANNER_SPANS = [0.025, 0.08, 0.17, 0.235, 0.29, 0.89, 0.93, 0.97];
 export const MARKET_GATE_SPANS = [0.175, 0.91];
-export const TURN_SIGN_SPANS = [0.235, 0.28, 0.315, 0.345, 0.435, 0.475, 0.535, 0.595, 0.65, 0.722, 0.785, 0.865, 0.91, 0.935];
+export const TURN_SIGN_SPANS = [0.035, 0.09, 0.12, 0.15, 0.235, 0.265, 0.315, 0.345, 0.435, 0.475, 0.535, 0.595, 0.65, 0.722, 0.785, 0.865, 0.91, 0.935];
 export const CAVE_ARCH_SPANS = [0.684, 0.721, 0.758];
 export const CAVE_ARCH_SHAPE = { pillarOutset: 8, pillarHalfWidth: 7.4, crystalOutset: 5.5, crystalRadius: 1.7, ceilingY: 16.5, ceilingHalfHeight: 4.8 };
 export const CAVE_TUNNEL_SHAPE = { wallOutset: 20, wallRadius: 14, roofCenterY: 19, roofEdgeY: 9 };
@@ -94,15 +94,15 @@ export function mainRoadWidth(progress: number) {
     return clamped * clamped * (3 - 2 * clamped);
   };
   const corner = (start: number, end: number) => smooth((progress - start) / 0.012) * smooth((end - progress) / 0.012);
-  return MAIN_ROAD_WIDTH - 3 * Math.max(corner(0.527, 0.638), corner(0.695, 0.815), corner(0.855, 0.963));
+  return MAIN_ROAD_WIDTH - 3 * Math.max(corner(0.018, 0.066), corner(0.083, 0.17), corner(0.527, 0.638), corner(0.695, 0.815), corner(0.855, 0.963));
 }
 export const ALLEY_ROAD_WIDTH = 26;
 export const ROOF_ROAD_WIDTH = 26;
-export const ALLEY_OFFSET = -56;
+export const ALLEY_OFFSET = -40;
 export const ROOF_OFFSET = -60;
 export const GARDEN_OFFSET = 20;
 export const GARDEN_ROAD_WIDTH = 22;
-export const GARDEN_ROUTE_END = 0.504;
+export const GARDEN_ROUTE_END = 0.498;
 export const MARKET_CROSSING_PROGRESS = 0.842;
 export const MARKET_CROSSING_TRAVEL = MAIN_ROAD_WIDTH / 2 + 5;
 export const BOOST_PAD_LENGTH = 10;
@@ -145,9 +145,8 @@ export const PICKUP_LAYOUT: Array<{ route: RouteName; progress: number; lateral:
   { route: 'main', progress: 0.94, lateral: 0 },
 ];
 export const OBSTACLE_LAYOUT: Array<{ kind: Obstacle['kind']; route: RouteName; progress: number; lateral: number; phase?: number }> = [
-  { kind: 'cart', route: 'main', progress: 0.025, lateral: 8 },
-  { kind: 'crate', route: 'main', progress: 0.115, lateral: -7 },
-  { kind: 'crate', route: 'main', progress: 0.115, lateral: 7 },
+  { kind: 'marketIsland', route: 'main', progress: 0.03, lateral: 6 },
+  { kind: 'marketIsland', route: 'main', progress: 0.10, lateral: -6, phase: 1 },
   { kind: 'crate', route: 'main', progress: 0.245, lateral: -8 },
   { kind: 'urn', route: 'main', progress: 0.415, lateral: -8 },
   { kind: 'urn', route: 'main', progress: 0.445, lateral: -10 },
@@ -268,9 +267,11 @@ function seededRandom(seed: number) {
 export function makeMainCurve() {
   return new THREE.CatmullRomCurve3([
     new THREE.Vector3(-95, 0, -96),
-    new THREE.Vector3(-44, 0, -112),
-    new THREE.Vector3(7, 0, -94),
-    new THREE.Vector3(55, 0, -91),
+    new THREE.Vector3(-49.1, 0, -108.4),
+    new THREE.Vector3(-19.3, 0, -104.6),
+    new THREE.Vector3(9.1, 0, -102.9),
+    new THREE.Vector3(26.5, 0, -93.1),
+    new THREE.Vector3(58.2, 0, -86.4),
     new THREE.Vector3(88, 0, -59),
     new THREE.Vector3(109, 0, -38),
     new THREE.Vector3(112, 0, 5),
@@ -310,7 +311,7 @@ export function makeBranchSamples(mainCurve: THREE.CatmullRomCurve3, route: Rout
     const chord = startPoint.clone().lerp(endPoint, f);
     const cut = Math.pow(Math.sin(Math.PI * f), 1.2) * 0.42;
     const shortcutSlalom = route === 'alley' ? 4.5 * Math.sin(4 * Math.PI * f) * Math.sin(Math.PI * f) ** 2
-      : route === 'roof' ? -9 * Math.sin(4 * Math.PI * f) * Math.sin(Math.PI * f) ** 2
+      : route === 'roof' ? -7 * Math.sin(4 * Math.PI * f) * Math.sin(Math.PI * f) ** 2
       : route === 'garden' ? 3.5 * Math.sin(4 * Math.PI * f) * Math.sin(Math.PI * f) ** 2 : 0;
     const position = mainPoint.clone().lerp(chord, cut).addScaledVector(right, maxOffset * Math.sin(Math.PI * f) ** 2 + shortcutSlalom);
     position.y = 0.07 + maxHeight * Math.pow(Math.sin(Math.PI * f), 2);
@@ -1907,6 +1908,40 @@ export class RaceTrack {
       lid.position.y = 3.27;
       group.add(lid);
       radius = 2.1;
+    } else if (kind === 'marketIsland') {
+      const platform = new THREE.Mesh(new THREE.CylinderGeometry(8.2, 8.2, 0.5, 32), stoneDark);
+      platform.position.y = 0.25;
+      platform.castShadow = platform.receiveShadow = true;
+      group.add(platform);
+      const curb = new THREE.Mesh(new THREE.TorusGeometry(8.05, 0.28, 8, 48), gold);
+      curb.rotation.x = Math.PI / 2;
+      curb.position.y = 0.54;
+      group.add(curb);
+      const stall = box(8, 2.2, 5.8, wood);
+      stall.position.y = 1.63;
+      stall.castShadow = true;
+      group.add(stall);
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(5.6, 2.7, 8), phase % 2 ? blueFabric : redFabric);
+      roof.position.y = 4.5;
+      roof.rotation.y = Math.PI / 8;
+      roof.castShadow = true;
+      group.add(roof);
+      for (let i = 0; i < 4; i++) {
+        const angle = i * Math.PI / 2 + Math.PI / 4;
+        const crate = box(2.2, 1.8, 2.2, i % 2 ? blue : red);
+        crate.position.set(Math.cos(angle) * 5.1, 1.4, Math.sin(angle) * 5.1);
+        crate.rotation.y = angle;
+        crate.castShadow = true;
+        group.add(crate);
+        const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.52, 10, 8), glow);
+        lantern.position.set(Math.cos(angle) * 7, 2.35, Math.sin(angle) * 7);
+        group.add(lantern);
+      }
+      const warning = new THREE.Mesh(new THREE.TorusGeometry(8.25, 0.14, 6, 48), new THREE.MeshBasicMaterial({ color: 0xffc86d, toneMapped: false }));
+      warning.rotation.x = Math.PI / 2;
+      warning.position.y = 0.09;
+      group.add(warning);
+      radius = 8.2;
     } else if (kind === 'boulder') {
       const rock = new THREE.Mesh(organicRockGeometry, rockSmooth);
       rock.scale.setScalar(2.6);

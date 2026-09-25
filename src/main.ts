@@ -1933,7 +1933,7 @@ class GenieRace {
           racer.speed *= racer.character === 'stitch' ? 0.78 : obstacle.kind === 'boulder' ? 0.38 : 0.55;
           if (racer.character === 'hades') racer.hotHeadTime = Math.max(racer.hotHeadTime, 2.2);
           if (obstacle.kind === 'boulder') this.stun(racer, 0.38);
-          if (racer.id === 0) this.showBanner(obstacle.kind === 'boulder' ? 'BOULDER HIT!' : obstacle.kind === 'urn' ? 'PALACE URN HIT!' : 'CART HIT!', 0.8);
+          if (racer.id === 0) this.showBanner(obstacle.kind === 'boulder' ? 'BOULDER HIT!' : obstacle.kind === 'urn' ? 'PALACE URN HIT!' : obstacle.kind === 'marketIsland' ? 'MARKET ISLAND HIT!' : 'CART HIT!', 0.8);
         }
         this.audio.play('hit');
       }

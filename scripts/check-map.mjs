@@ -30,14 +30,13 @@ function crosses(a, b, c, d) {
 }
 
 let smallestMainRadius = Infinity;
-let tightestTurnProgress = 0;
 let closestSeparateRoad = Infinity;
 for (let i = 0; i < count; i++) {
   const radius = turnRadius(positions[(i + count - 1) % count], positions[i], positions[(i + 1) % count]);
   if (radius < smallestMainRadius) {
     smallestMainRadius = radius;
-    tightestTurnProgress = i / count;
   }
+  assert.ok(radius > mainSamples[i].width / 2 + 4, `Main road folds at ${(i / count).toFixed(3)}: ${radius.toFixed(1)}m radius`);
   for (let j = i + 1; j < count; j++) {
     const gap = Math.min(j - i, count - j + i);
     if (gap < 32) continue;
@@ -51,7 +50,6 @@ assert.ok(MAIN_ROAD_WIDTH >= 34 && MAIN_ROAD_WIDTH <= 40, 'The main road should 
 assert.ok(mainRoadWidth(0.60) >= 32 && mainRoadWidth(0.60) < MAIN_ROAD_WIDTH, 'Drift corners should narrow without crowding the karts');
 assert.equal(mainRoadWidth(0.2), MAIN_ROAD_WIDTH, 'Straight sections should keep the full racing width');
 assert.ok(curve.getLength() >= 1500 && curve.getLength() <= 1950, 'The lap is outside the intended course length');
-assert.ok(smallestMainRadius > MAIN_ROAD_WIDTH / 2 + 4, `Main road folds at ${tightestTurnProgress.toFixed(3)}: ${smallestMainRadius.toFixed(1)}m radius`);
 assert.ok(closestSeparateRoad > MAIN_ROAD_WIDTH + 4, `Separate ${MAIN_ROAD_WIDTH}m road sections overlap: ${closestSeparateRoad.toFixed(1)}m between centers`);
 const turnDirections = [];
 for (let i = 0; i < 200; i++) {
@@ -63,14 +61,14 @@ for (let i = 0; i < 200; i++) {
   if (turnDirections.at(-1) !== direction) turnDirections.push(direction);
 }
 if (turnDirections[0] === turnDirections.at(-1)) turnDirections.pop();
-assert.ok(turnDirections.length >= 20, `Course needs at least 20 alternating drift turns; found ${turnDirections.length}`);
+assert.ok(turnDirections.length >= 22, `Course needs at least 22 alternating drift turns; found ${turnDirections.length}`);
 let pronouncedBends = 0;
 for (let i = 0; i < 40; i++) {
   const entry = curve.getTangentAt(i / 40).normalize();
   const exit = curve.getTangentAt((i + 1) / 40).normalize();
   if (entry.angleTo(exit) > Math.PI / 6) pronouncedBends++;
 }
-assert.ok(pronouncedBends >= 16, `Course needs more pronounced corners for drifting; found ${pronouncedBends}`);
+assert.ok(pronouncedBends >= 18, `Course needs more pronounced corners for drifting; found ${pronouncedBends}`);
 
 const branches = [];
 for (const [route, start, end, offset, height, width] of [
@@ -158,12 +156,21 @@ const pointFor = ({ route, progress }) => {
 assert.ok(OBSTACLE_LAYOUT.length >= 20, 'The course is too empty of hazards');
 const obstacles = OBSTACLE_LAYOUT.map((item) => {
   const point = pointFor(item);
-  const radius = item.kind === 'boulder' ? 2.65 : item.kind === 'urn' ? 2.25 : item.kind === 'cart' ? 2.15 : 2.1;
+  const radius = item.kind === 'marketIsland' ? 8.2 : item.kind === 'boulder' ? 2.65 : item.kind === 'urn' ? 2.25 : item.kind === 'cart' ? 2.15 : 2.1;
   assert.ok(Math.abs(item.lateral) + radius + 1.7 + (item.kind === 'boulder' ? 2.2 : 0) < point.width / 2, `${item.kind} at ${item.progress} crowds the road edge`);
   const position = point.position.clone().addScaledVector(point.right, item.lateral);
   assert.ok(clearOfOtherRoutes(routeSamples, position, radius + 1.7, item.route), `${item.kind} at ${item.progress} obstructs another route`);
   return { ...item, position, radius };
 });
+const chicanes = obstacles.filter((obstacle) => obstacle.kind === 'marketIsland');
+assert.equal(chicanes.length, 2, 'Opening market needs two visible chicane islands');
+assert.deepEqual(chicanes.map((obstacle) => Math.sign(obstacle.lateral)), [1, -1], 'Chicane gaps should alternate across the road');
+for (const obstacle of chicanes) {
+  const road = pointFor(obstacle);
+  const passingLane = -Math.sign(obstacle.lateral) * 9;
+  assert.ok(Math.abs(passingLane) + 2 < road.width / 2, `Chicane at ${obstacle.progress} leaves no safe outer lane`);
+  assert.ok(Math.abs(passingLane - obstacle.lateral) > obstacle.radius + 2, `Chicane at ${obstacle.progress} blocks its intended lane`);
+}
 const crossingPoint = pointFor({ route: 'main', progress: MARKET_CROSSING_PROGRESS });
 for (let step = 0; step <= 20; step++) {
   const lateral = -MARKET_CROSSING_TRAVEL + step / 20 * MARKET_CROSSING_TRAVEL * 2;

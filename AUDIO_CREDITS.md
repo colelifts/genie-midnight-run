@@ -15,5 +15,6 @@ The shipped audio is edited and compressed for the browser game. All music and e
 | `laser-shot.mp3` | [Theremin Laser SFX](https://opengameart.org/content/theremin-laser-sfx) | Zane Little Music | CC0 | Used Short/Sharp 1; filtered, loudness balanced, faded, and encoded to MP3. |
 | `fire-blast.mp3` | [Fire Staff Sound Effects](https://opengameart.org/content/fire-staff-sound-effects) | LEGIT Audio | CC0 | Used Fire Staff 20; trimmed silence, loudness balanced, faded, and encoded to MP3. |
 | `cannon-blast.mp3` | [Battle at sea](https://opengameart.org/content/battle-at-sea) | Thimras | CC0 | Used cannon_fire_1; trimmed, filtered, loudness balanced, faded, and encoded to MP3. |
+| `ice-crackle.mp3` | [Ice spells](https://opengameart.org/content/ice-spells) | bart | CC0 | Used coldsnap; trimmed silence, filtered, loudness balanced, faded, and encoded to MP3. |
 
 The game layers, pitch shifts, fades, and mixes these recordings at runtime. Wind and fountain ambience are generated with filtered broadband noise.

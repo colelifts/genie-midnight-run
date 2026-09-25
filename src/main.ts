@@ -1369,6 +1369,7 @@ class GenieRace {
         if (field.kind === 'ice') {
           racer.wobbleTime = Math.max(racer.wobbleTime, racer.character === 'elsa' ? 0.3 : 1.6);
           racer.speed *= 0.82;
+          if (racer.id === 0 || field.owner === 0) this.racerSound('ice', racer);
         } else if (field.kind === 'soul') {
           racer.wobbleTime = Math.max(racer.wobbleTime, 1.25);
           racer.hauntedTime = Math.max(racer.hauntedTime, 1.8);

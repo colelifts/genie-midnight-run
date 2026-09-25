@@ -47,7 +47,7 @@ export const CHARACTERS: CharacterDefinition[] = [
     id: 'elsa', name: 'Elsa', title: 'Technical Control', icon: '❄', color: 0x95eaff, accent: 0xe4fbff, kartColor: 0x9adceb,
     speed: 0.99, acceleration: 1, handling: 1.08, weight: 0.94,
     passiveName: 'Frozen Grip', passive: 'Ice has less effect on Elsa’s handling.',
-    signatureName: 'Frost Trail', signature: 'Leave a slick ice ribbon that slides rivals outward.', signatureCooldown: 11,
+    signatureName: 'Frost Trail', signature: 'Leave slick ice that slides rivals outward and gives Elsa a small speed lift while she rides it.', signatureCooldown: 11,
     ultimateName: 'Into the Storm', ultimate: 'Ride a fast snowstorm that chills nearby rivals and paints the road with ice.',
   },
   {

@@ -73,6 +73,7 @@ interface Racer {
   mirrorTime: number;
   wishUpgrade: boolean;
   curseTime: number;
+  iceSpeedTime: number;
   wobbleTime: number;
   hotHeadTime: number;
   laserReadyTime: number;
@@ -465,7 +466,7 @@ class GenieRace {
       this.scene.add(itemOrbit);
       const racer: Racer = {
         id: i, character, visual, itemOrbit, position: gridPosition.clone(), yaw, moveYaw: yaw, speed: 0, progress: starts[i], lap: 1, finishPlace: 0,
-        boostTime: 0, padBoostTime: 0, shieldTime: 0, oceanBarrierTime: 0, ultimateTime: 0, ultimateMeter: 0, signatureCooldown: 0, item: null, tripleSparks: 0, fogTime: 0, featherTime: 0, mirrorTime: 0, wishUpgrade: false, curseTime: 0, wobbleTime: 0, hotHeadTime: 0, laserReadyTime: 0, powerTick: 0, stunTime: 0, hitCooldown: 0, offTrackTime: 0, lastPad: 0,
+        boostTime: 0, padBoostTime: 0, shieldTime: 0, oceanBarrierTime: 0, ultimateTime: 0, ultimateMeter: 0, signatureCooldown: 0, item: null, tripleSparks: 0, fogTime: 0, featherTime: 0, mirrorTime: 0, wishUpgrade: false, curseTime: 0, iceSpeedTime: 0, wobbleTime: 0, hotHeadTime: 0, laserReadyTime: 0, powerTick: 0, stunTime: 0, hitCooldown: 0, offTrackTime: 0, lastPad: 0,
         drifting: false, driftCharge: 0, jumpTime: 0, jumpDuration: 0, jumpPower: 0, trickReady: false, trickBoost: false, trickAnim: 0, slipCharge: 0, slipCooldown: 0, tricksLanded: 0, draftBoosts: 0, compassTime: 0, compassTarget: null, compassShortcut: null,
         lastSafe: gridPosition.clone(), lastSafeProgress: starts[i], aiRoute: this.aiRouteForLap(i, 1), aiLane: START_LANES[i], aiLine: START_LANES[i],
         aiAbilityTimer: 7 + i * 1.2, aiUltimateTimer: 40 + i * 3, ultimateHit: new Set<number>(), steerVisual: 0,
@@ -646,7 +647,7 @@ class GenieRace {
       racer.finishPlace = 0;
       racer.boostTime = racer.padBoostTime = racer.shieldTime = racer.oceanBarrierTime = racer.ultimateTime = racer.stunTime = 0;
       racer.ultimateMeter = this.debugPowers ? 100 : 0;
-      racer.signatureCooldown = racer.curseTime = racer.wobbleTime = racer.hotHeadTime = racer.laserReadyTime = racer.powerTick = 0;
+      racer.signatureCooldown = racer.curseTime = racer.iceSpeedTime = racer.wobbleTime = racer.hotHeadTime = racer.laserReadyTime = racer.powerTick = 0;
       const requestedItem = new URLSearchParams(window.location.search).get('debugItem');
       racer.item = this.debugPowers && i === 0 ? requestedItem && requestedItem in ITEMS ? requestedItem as ItemId : 'spark' : null;
       racer.tripleSparks = racer.fogTime = racer.featherTime = racer.mirrorTime = 0;
@@ -1140,7 +1141,36 @@ class GenieRace {
     disk.rotation.x = -Math.PI / 2;
     const ring = new THREE.Mesh(new THREE.TorusGeometry(radius * 0.82, 0.14, 6, 32), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthWrite: false }));
     ring.rotation.x = Math.PI / 2;
-    mesh.add(disk, ring);
+    if (kind === 'ice') {
+      const width = radius * 0.82;
+      const length = radius * 0.64;
+      const outline = [
+        new THREE.Vector2(-width * 0.84, -length), new THREE.Vector2(-width, -length * 0.42),
+        new THREE.Vector2(-width * 0.91, length * 0.62), new THREE.Vector2(-width * 0.69, length),
+        new THREE.Vector2(width * 0.79, length), new THREE.Vector2(width, length * 0.34),
+        new THREE.Vector2(width * 0.88, -length * 0.72), new THREE.Vector2(width * 0.61, -length),
+      ];
+      const frostShape = new THREE.Shape(outline);
+      const frost = new THREE.Mesh(new THREE.ShapeGeometry(frostShape), new THREE.MeshBasicMaterial({ color: 0x9deaff, transparent: true, opacity: 0.27, depthWrite: false, side: THREE.DoubleSide }));
+      frost.rotation.x = -Math.PI / 2;
+      mesh.add(frost);
+      const edgePoints = outline.map((point) => new THREE.Vector3(point.x, 0.035, -point.y));
+      const edge = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(edgePoints), new THREE.LineBasicMaterial({ color: 0xc6f5ff, transparent: true, opacity: 0.52, depthWrite: false }));
+      mesh.add(edge);
+      for (let glint = 0; glint < 5; glint++) {
+        const streak = new THREE.Mesh(new THREE.PlaneGeometry(0.045, 0.8 + glint % 3 * 0.3), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.48, depthWrite: false, side: THREE.DoubleSide }));
+        streak.rotation.x = -Math.PI / 2;
+        streak.rotation.z = -0.3;
+        streak.position.set((glint - 2) * width * 0.37, 0.045, (glint % 2 ? -1 : 1) * length * 0.36);
+        mesh.add(streak);
+      }
+      for (const side of [-1, 1]) for (const along of [-0.56, 0.56]) {
+        const crystal = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.52 + (along > 0 ? 0.13 : 0), 5), new THREE.MeshBasicMaterial({ color: 0xd4f8ff, transparent: true, opacity: 0.82, depthWrite: false }));
+        crystal.position.set(side * width * 0.91, 0.27, along * length);
+        crystal.rotation.z = -side * 0.18;
+        mesh.add(crystal);
+      }
+    } else mesh.add(disk, ring);
     if (kind === 'anchor') {
       disk.material.opacity = 0.55;
       const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.34, 2.7, 10), new THREE.MeshStandardMaterial({ color: 0xa9bbca, metalness: 0.7, roughness: 0.32 }));
@@ -1168,15 +1198,16 @@ class GenieRace {
       const core = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }));
       core.position.set(0, 1.45, 0.25);
       mesh.add(core);
-    } else for (let shard = 0; shard < (kind === 'ice' ? 6 : 5); shard++) {
-      const angle = shard * Math.PI * 2 / (kind === 'ice' ? 6 : 5);
-      const spike = new THREE.Mesh(new THREE.ConeGeometry(kind === 'ice' ? 0.34 : 0.48, kind === 'ice' ? 1.2 : 1.5, kind === 'ice' ? 5 : 7), new THREE.MeshBasicMaterial({ color: shard % 2 ? color : 0xffffff, transparent: true, opacity: kind === 'ice' ? 0.67 : 0.52, depthWrite: false, side: THREE.DoubleSide }));
-      spike.position.set(Math.cos(angle) * radius * 0.62, kind === 'ice' ? 0.5 : 0.64, Math.sin(angle) * radius * 0.62);
+    } else if (kind !== 'ice') for (let shard = 0; shard < 5; shard++) {
+      const angle = shard * Math.PI * 2 / 5;
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.48, 1.5, 7), new THREE.MeshBasicMaterial({ color: shard % 2 ? color : 0xffffff, transparent: true, opacity: 0.52, depthWrite: false, side: THREE.DoubleSide }));
+      spike.position.set(Math.cos(angle) * radius * 0.62, 0.64, Math.sin(angle) * radius * 0.62);
       spike.rotation.z = Math.sin(angle) * 0.24;
       mesh.add(spike);
     }
     mesh.position.set(position.x, ground + 0.18, position.z);
     if (kind === 'star') mesh.rotation.y = racer.yaw + Math.PI;
+    if (kind === 'ice') mesh.rotation.y = racer.yaw;
     this.scene.add(mesh);
     this.powerFields.push({ owner: racer.id, kind, mesh, life, radius, victims: new Set() });
     if (this.powerFields.length > 90) {
@@ -1208,9 +1239,15 @@ class GenieRace {
     for (let i = this.powerFields.length - 1; i >= 0; i--) {
       const field = this.powerFields[i];
       field.life -= dt;
-      field.mesh.rotation.y += dt * (field.kind === 'ice' || field.kind === 'anchor' ? 0.2 : field.kind === 'star' ? 0.7 : 1.3);
+      if (field.kind !== 'ice') field.mesh.rotation.y += dt * (field.kind === 'anchor' ? 0.2 : field.kind === 'star' ? 0.7 : 1.3);
       field.mesh.scale.setScalar(0.9 + Math.sin(this.elapsed * 5 + i) * 0.06);
       for (const racer of this.racers) {
+        if (racer.id === field.owner && field.kind === 'ice' && racer.character === 'elsa') {
+          if (Math.abs(racer.position.y - field.mesh.position.y) <= 3 && Math.hypot(racer.position.x - field.mesh.position.x, racer.position.z - field.mesh.position.z) <= field.radius + 1) {
+            racer.iceSpeedTime = Math.max(racer.iceSpeedTime, 0.45);
+          }
+          continue;
+        }
         if (racer.id === field.owner || racer.ultimateTime > 0 || racer.hitCooldown > 0 || field.victims.has(racer.id)) continue;
         if (Math.abs(racer.position.y - field.mesh.position.y) > 3) continue;
         if (Math.hypot(racer.position.x - field.mesh.position.x, racer.position.z - field.mesh.position.z) > field.radius + 1) continue;
@@ -1395,8 +1432,9 @@ class GenieRace {
     const roadBefore = this.track.nearest(player.position, player.progress);
     const offRoad = !roadBefore.onRoad && player.jumpTime <= 0;
     const stats = CHARACTER_BY_ID[player.character];
-    const maxSpeed = (player.padBoostTime > 0 ? 53 : player.ultimateTime > 0 ? 43 : player.boostTime > 0 ? 40 : offRoad && player.featherTime <= 0 ? 20 : 31) * stats.speed;
-    if (accel > 0) player.speed += (player.padBoostTime > 0 ? 32 : player.ultimateTime > 0 ? 28 : 19) * (player.curseTime > 0 ? 0.52 : 1) * (player.hotHeadTime > 0 ? 1.45 : 1) * stats.acceleration * accel * dt;
+    const iceGrip = player.iceSpeedTime > 0 && !offRoad;
+    const maxSpeed = (player.padBoostTime > 0 ? 53 : player.ultimateTime > 0 ? 43 : player.boostTime > 0 ? 40 : offRoad && player.featherTime <= 0 ? 20 : iceGrip ? 34 : 31) * stats.speed;
+    if (accel > 0) player.speed += (player.padBoostTime > 0 ? 32 : player.ultimateTime > 0 ? 28 : iceGrip ? 22 : 19) * (player.curseTime > 0 ? 0.52 : 1) * (player.hotHeadTime > 0 ? 1.45 : 1) * stats.acceleration * accel * dt;
     else player.speed += player.speed > 0 ? -Math.min(player.speed, 5.3 * dt) : Math.min(-player.speed, 5.3 * dt);
     if (brake > 0) player.speed -= 29 * brake * dt;
     if (player.boostTime > 0) player.speed += 11 * dt;
@@ -1511,6 +1549,7 @@ class GenieRace {
     if (racer.boostTime > 0) targetSpeed = racer.ultimateTime > 0 ? 41 : 37;
     if (racer.padBoostTime > 0) targetSpeed = 49;
     if (racer.ultimateTime > 0) targetSpeed = 41;
+    if (racer.iceSpeedTime > 0 && racer.boostTime <= 0 && racer.padBoostTime <= 0 && racer.ultimateTime <= 0) targetSpeed += 3;
     targetSpeed *= CHARACTER_BY_ID[racer.character].speed;
     racer.speed += (targetSpeed - racer.speed) * Math.min(1, dt * (targetSpeed > racer.speed ? (racer.curseTime > 0 ? 0.55 : 1.2) * CHARACTER_BY_ID[racer.character].acceleration : 2.2));
     racer.position.x += Math.sin(racer.moveYaw) * racer.speed * dt;
@@ -1671,9 +1710,16 @@ class GenieRace {
     if (tick === this.lastMagicTrailTick) return;
     this.lastMagicTrailTick = tick;
     for (const racer of this.racers) {
-      if (racer.boostTime <= 0 && racer.ultimateTime <= 0 && racer.fogTime <= 0 && racer.featherTime <= 0 && racer.tripleSparks <= 0 && racer.curseTime <= 0) continue;
+      if (racer.boostTime <= 0 && racer.ultimateTime <= 0 && racer.fogTime <= 0 && racer.featherTime <= 0 && racer.tripleSparks <= 0 && racer.curseTime <= 0 && racer.iceSpeedTime <= 0) continue;
       const forward = new THREE.Vector3(Math.sin(racer.yaw), 0, Math.cos(racer.yaw));
       const side = new THREE.Vector3(Math.cos(racer.yaw), 0, -Math.sin(racer.yaw));
+      if (racer.iceSpeedTime > 0 && tick % 2 === 0) {
+        for (const lateral of [-1.12, 1.12]) {
+          const position = racer.position.clone().addScaledVector(forward, -1.6).addScaledVector(side, lateral);
+          position.y += 0.42;
+          this.sparks.spawn(position, new THREE.Vector3(-forward.x * 1.8, 0.55 + Math.random() * 0.7, -forward.z * 1.8), tick % 4 ? 0x9ceaff : 0xffffff, 0.38);
+        }
+      }
       if (racer.curseTime > 0) {
         for (const lateral of [-1.43, 1.43]) {
           const tireFlame = racer.position.clone().addScaledVector(forward, -1.18).addScaledVector(side, lateral);
@@ -1743,6 +1789,7 @@ class GenieRace {
     racer.ultimateTime = Math.max(0, racer.ultimateTime - dt);
     racer.signatureCooldown = Math.max(0, racer.signatureCooldown - dt);
     racer.curseTime = Math.max(0, racer.curseTime - dt);
+    racer.iceSpeedTime = Math.max(0, racer.iceSpeedTime - dt);
     racer.wobbleTime = Math.max(0, racer.wobbleTime - dt);
     racer.hotHeadTime = Math.max(0, racer.hotHeadTime - dt);
     racer.laserReadyTime = Math.max(0, racer.laserReadyTime - dt);
@@ -2201,7 +2248,7 @@ class GenieRace {
 
   private updateHUD() {
     const player = this.racers[0];
-    hud.dataset.state = JSON.stringify(this.racers.map((racer) => ({ id: racer.id, character: racer.character, lap: racer.lap, p: Number(racer.progress.toFixed(3)), x: Number(racer.position.x.toFixed(2)), y: Number(racer.position.y.toFixed(2)), z: Number(racer.position.z.toFixed(2)), yaw: Number(racer.yaw.toFixed(3)), route: this.track.nearest(racer.position, racer.progress).point.route, aiRoute: racer.aiRoute, aiLine: Number(racer.aiLine.toFixed(1)), speed: Math.round(racer.speed), drift: Number(racer.driftCharge.toFixed(2)), jump: Number(racer.jumpTime.toFixed(2)), trickReady: racer.trickReady, trickBoost: racer.trickBoost, tricks: racer.tricksLanded, drafts: racer.draftBoosts, slip: Number(racer.slipCharge.toFixed(2)), padBoost: Number(racer.padBoostTime.toFixed(2)), stun: Number(racer.stunTime.toFixed(2)), hitGrace: Number(racer.hitCooldown.toFixed(2)), ultimate: Number(racer.ultimateTime.toFixed(2)), meter: Math.round(racer.ultimateMeter), signatureCooldown: Number(racer.signatureCooldown.toFixed(1)), item: racer.item, tripleSparks: racer.tripleSparks })));
+    hud.dataset.state = JSON.stringify(this.racers.map((racer) => ({ id: racer.id, character: racer.character, lap: racer.lap, p: Number(racer.progress.toFixed(3)), x: Number(racer.position.x.toFixed(2)), y: Number(racer.position.y.toFixed(2)), z: Number(racer.position.z.toFixed(2)), yaw: Number(racer.yaw.toFixed(3)), route: this.track.nearest(racer.position, racer.progress).point.route, aiRoute: racer.aiRoute, aiLine: Number(racer.aiLine.toFixed(1)), speed: Math.round(racer.speed), drift: Number(racer.driftCharge.toFixed(2)), jump: Number(racer.jumpTime.toFixed(2)), trickReady: racer.trickReady, trickBoost: racer.trickBoost, tricks: racer.tricksLanded, drafts: racer.draftBoosts, slip: Number(racer.slipCharge.toFixed(2)), padBoost: Number(racer.padBoostTime.toFixed(2)), iceSpeed: Number(racer.iceSpeedTime.toFixed(2)), stun: Number(racer.stunTime.toFixed(2)), hitGrace: Number(racer.hitCooldown.toFixed(2)), ultimate: Number(racer.ultimateTime.toFixed(2)), meter: Math.round(racer.ultimateMeter), signatureCooldown: Number(racer.signatureCooldown.toFixed(1)), item: racer.item, tripleSparks: racer.tripleSparks })));
     if (this.debugPowers) hud.dataset.effects = JSON.stringify({ projectiles: this.projectiles.map((projectile) => projectile.kind), fields: this.powerFields.map((field) => field.kind) });
     const standings = [...this.racers].sort((a, b) => (b.lap - 1 + b.progress) - (a.lap - 1 + a.progress));
     const rank = standings.findIndex((racer) => racer.id === 0) + 1;
@@ -2218,7 +2265,7 @@ class GenieRace {
       boostFill.style.width = `${clamp(charge / 1.9, 0, 1) * 100}%`;
       boostFill.style.background = charge >= 1.9 ? '#d799ff' : charge >= 1.18 ? '#ffd075' : '#65dbf9';
     } else {
-      surfaceText.textContent = player.slipCharge > 0.1 ? `DRAFTING · ${Math.round(player.slipCharge / 1.2 * 100)}%` : player.compassTime > 0 && player.compassShortcut ? `COMPASS → ${player.compassShortcut.route.toUpperCase()} SHORTCUT` : player.compassTime > 0 && player.compassTarget ? `COMPASS → ${player.compassTarget.route.toUpperCase()} SPARK` : road.onRoad ? road.point.route === 'main' ? 'ROAD' : `${road.point.route.toUpperCase()} ROUTE` : 'OFF ROAD';
+      surfaceText.textContent = player.slipCharge > 0.1 ? `DRAFTING · ${Math.round(player.slipCharge / 1.2 * 100)}%` : player.compassTime > 0 && player.compassShortcut ? `COMPASS → ${player.compassShortcut.route.toUpperCase()} SHORTCUT` : player.compassTime > 0 && player.compassTarget ? `COMPASS → ${player.compassTarget.route.toUpperCase()} SPARK` : player.iceSpeedTime > 0 ? 'FROZEN GRIP · ICE SPEED' : road.onRoad ? road.point.route === 'main' ? 'ROAD' : `${road.point.route.toUpperCase()} ROUTE` : 'OFF ROAD';
       boostFill.style.width = `${clamp(Math.max(player.boostTime / 3, player.slipCharge / 1.2), 0, 1) * 100}%`;
       boostFill.style.background = '';
     }

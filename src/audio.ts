@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import type { CharacterId } from './characters';
 
-type SoundName = 'count' | 'go' | 'drift' | 'boost' | 'pad' | 'wish' | 'shield' | 'shot' | 'fire' | 'hit' | 'stun' | 'lap' | 'final-lap' | 'ultimate' | 'trick' | 'draft' | 'pickup' | 'cart-warning' | 'birds';
+type SoundName = 'count' | 'go' | 'drift' | 'boost' | 'pad' | 'wish' | 'shield' | 'shot' | 'laser' | 'water' | 'cannon' | 'fire' | 'hit' | 'stun' | 'lap' | 'final-lap' | 'ultimate' | 'trick' | 'draft' | 'pickup' | 'cart-warning' | 'birds';
 
 // Sources, licenses, and processing notes are documented in AUDIO_CREDITS.md.
 const ASSETS = {
@@ -9,8 +9,9 @@ const ASSETS = {
   spark: 'spell-spark.mp3', surge: 'spell-surge.mp3', grand: 'spell-grand.mp3',
   whoosh: 'boost-whoosh.mp3', time: 'time-whoosh.mp3',
   light: 'impact-light.mp3', mid: 'impact-mid.mp3', heavy: 'impact-heavy.mp3', birds: 'birds.mp3',
+  water: 'water-splash.mp3', laser: 'laser-shot.mp3', fire: 'fire-blast.mp3', cannon: 'cannon-blast.mp3',
 } as const;
-const AUDIO_REVISION = '2';
+const AUDIO_REVISION = '3';
 type AssetName = keyof typeof ASSETS;
 type Loop = { source: AudioBufferSourceNode; gain: GainNode };
 const level = (key: string, fallback: number) => {
@@ -267,7 +268,10 @@ export class GameAudio {
       case 'wish': this.sample('spark', 0.25, 1.04); break;
       case 'shield': this.sample('surge', 0.35, 1.13); this.sample('light', 0.15, 1.08); break;
       case 'shot': this.sample('time', 0.32, 1.24); this.sample('spark', 0.13, 1.7, 0.06); break;
-      case 'fire': this.sample('surge', 0.33, 0.78); this.sample('whoosh', 0.29, 0.72); break;
+      case 'laser': this.sample('laser', 0.38, 1); this.sample('whoosh', 0.13, 1.3); break;
+      case 'water': this.sample('water', 0.39, 1); this.sample('whoosh', 0.15, 0.9); break;
+      case 'cannon': this.sample('cannon', 0.44, 1, 0, 1.5); this.sample('heavy', 0.13, 0.8); break;
+      case 'fire': this.sample('fire', 0.4, 1, 0, 1.3); this.sample('whoosh', 0.16, 0.8); break;
       case 'hit': this.sample(Math.random() < 0.4 ? 'heavy' : 'mid', 0.6, 0.93 + Math.random() * 0.15); if (this.eventScale > 0.45) this.duckUntil = this.context.currentTime + 0.36; break;
       case 'stun': this.sample('heavy', 0.41, 0.75); this.sample('spark', 0.16, 1.48, 0.1); break;
       case 'lap': this.sample('grand', 0.38, 1.15); break;
@@ -303,6 +307,10 @@ export class GameAudio {
     this.sample('whoosh', 0.48, quick ? 1.24 : dark ? 0.68 : 0.92);
     this.sample('grand', 0.53, dark ? 0.71 : quick ? 1.28 : 1, 0.06);
     this.sample('heavy', 0.32, 0.82, 0.12);
+    if (character === 'moana') this.sample('water', 0.28, 0.85, 0.08);
+    if (character === 'buzz') this.sample('laser', 0.32, 0.8, 0.12);
+    if (character === 'hades' || character === 'maleficent') this.sample('fire', 0.26, dark ? 0.83 : 1, 0.12, 1.3);
+    if (character === 'jack') this.sample('cannon', 0.32, 0.9, 0.12, 1.5);
     if (this.context) this.duckUntil = this.context.currentTime + 0.65;
   }
 }

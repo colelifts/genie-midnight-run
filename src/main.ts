@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import './style.css';
 import './roster.css';
 import { GameAudio } from './audio';
+import { sweptSphereHit } from './collision';
 import { CharacterKartVisual, type RaceVisual } from './characterKart';
 import { CHARACTERS, CHARACTER_BY_ID, type CharacterId } from './characters';
 import { KartVisual, makeProjectile } from './kart';
@@ -44,6 +45,7 @@ const angleDiff = (target: number, current: number) => Math.atan2(Math.sin(targe
 const formatLapTime = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${(seconds % 60).toFixed(2).padStart(5, '0')}`;
 const RACE_SPEED_SCALE = 1.3;
 const raceSpeed = (speed: number) => speed * RACE_SPEED_SCALE;
+const KART_HITBOX_HEIGHT = 1.45;
 const RACER_COUNT = 8;
 const START_LANES = [0, -4, 4, -4, 4, -4, 4, 0];
 
@@ -56,6 +58,7 @@ interface Racer {
   visual: RaceVisual;
   itemOrbit: THREE.Group;
   position: THREE.Vector3;
+  previousPosition: THREE.Vector3;
   yaw: number;
   moveYaw: number;
   yawRate: number;
@@ -485,7 +488,7 @@ class GenieRace {
       itemOrbit.visible = false;
       this.scene.add(itemOrbit);
       const racer: Racer = {
-        id: i, character, visual, itemOrbit, position: gridPosition.clone(), yaw, moveYaw: yaw, yawRate: 0, speed: 0, progress: starts[i], lap: 1, finishPlace: 0,
+        id: i, character, visual, itemOrbit, position: gridPosition.clone(), previousPosition: gridPosition.clone(), yaw, moveYaw: yaw, yawRate: 0, speed: 0, progress: starts[i], lap: 1, finishPlace: 0,
         boostTime: 0, padBoostTime: 0, shieldTime: 0, oceanBarrierTime: 0, ultimateTime: 0, ultimateMeter: 0, signatureCooldown: 0, item: null, tripleSparks: 0, fogTime: 0, featherTime: 0, mirrorTime: 0, wishUpgrade: false, curseTime: 0, iceSpeedTime: 0, luckyEscapeCooldown: 0, wobbleTime: 0, hauntedTime: 0, hotHeadTime: 0, laserReadyTime: 0, powerTick: 0, stunTime: 0, hitCooldown: 0, offTrackTime: 0, lastPad: 0,
         drifting: false, driftCharge: 0, jumpTime: 0, jumpDuration: 0, jumpPower: 0, trickReady: false, trickBoost: false, trickAnim: 0, slipCharge: 0, slipCooldown: 0, tricksLanded: 0, draftBoosts: 0, compassTime: 0, compassTarget: null, compassShortcut: null,
         lastSafe: gridPosition.clone(), lastSafeProgress: starts[i], aiRoute: this.aiRouteForLap(i, 1), aiLane: START_LANES[i], aiLine: START_LANES[i],
@@ -694,6 +697,7 @@ class GenieRace {
     this.racers.forEach((racer, i) => {
       const point = this.track.at(starts[i]);
       racer.position.copy(point.position).addScaledVector(point.right, racer.aiLane);
+      racer.previousPosition.copy(racer.position);
       racer.yaw = Math.atan2(point.tangent.x, point.tangent.z);
       racer.moveYaw = racer.yaw;
       racer.yawRate = 0;
@@ -1233,7 +1237,13 @@ class GenieRace {
     this.scene.add(mesh);
     this.projectiles.push({ owner: racer.id, mesh, velocity: direction.multiplyScalar(speed).addScaledVector(right, side * 10), life, kind, color, bounces: kind === 'star' ? 2 : kind === 'plasma' ? 1 : 0, target });
     if (kind !== 'dragonfire') this.makePulse(mesh.position, color, 0.35, 1.6);
-    if (playSound) this.racerSound(kind === 'dragonfire' ? 'fire' : 'shot', racer);
+    if (playSound) {
+      const sound = kind === 'dragonfire' || kind === 'curse' ? 'fire'
+        : kind === 'wave' ? 'water'
+          : kind === 'laser' || kind === 'plasma' ? 'laser'
+            : kind === 'cannon' ? 'cannon' : 'shot';
+      this.racerSound(sound, racer);
+    }
   }
 
   private dropField(racer: Racer, kind: PowerField['kind'], color: number, radius: number, life: number, back = -2.6) {
@@ -1537,6 +1547,7 @@ class GenieRace {
   }
 
   private updateRace(dt: number) {
+    for (const racer of this.racers) racer.previousPosition.copy(racer.position);
     if (this.wishHolding) {
       this.wishElapsed += dt;
       const newIndex = Math.floor(this.wishElapsed / 0.32) % 3;
@@ -2070,6 +2081,7 @@ class GenieRace {
   private respawn(racer: Racer) {
     const point = this.track.at(racer.lastSafeProgress);
     racer.position.copy(point.position);
+    racer.previousPosition.copy(racer.position);
     racer.yaw = Math.atan2(point.tangent.x, point.tangent.z);
     racer.moveYaw = racer.yaw;
     racer.progress = point.progress;
@@ -2254,6 +2266,7 @@ class GenieRace {
   private updateProjectiles(dt: number) {
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const projectile = this.projectiles[i];
+      const previousProjectile = projectile.mesh.position.clone();
       projectile.life -= dt;
       if (projectile.target >= 0 && (projectile.kind === 'laser' || projectile.kind === 'firefly')) {
         const target = this.racers[projectile.target];
@@ -2279,65 +2292,82 @@ class GenieRace {
         this.sparks.spawn(projectile.mesh.position, velocity, spark === 0 ? projectile.color : 0xffffff, 0.32 + Math.random() * 0.18);
       }
       let remove = projectile.life <= 0;
+      let hit: { racer: Racer; time: number; rearGuard: boolean } | null = null;
       for (const racer of this.racers) {
         if (racer.id === projectile.owner || racer.stunTime > 0 || racer.hitCooldown > 0) continue;
-        const offset = projectile.mesh.position.clone().sub(racer.position);
-        const rearGuard = racer.character === 'moana' && racer.oceanBarrierTime > 0 && offset.dot(new THREE.Vector3(Math.sin(racer.yaw), 0, Math.cos(racer.yaw))) < -0.5 && offset.length() < 4.5;
-        if (rearGuard || offset.length() < (projectile.kind === 'dragon' ? 3.8 : projectile.kind === 'dragonfire' ? 3.5 : projectile.kind === 'wave' || projectile.kind === 'tornado' ? 4.3 : projectile.kind === 'firefly' ? 2.3 : 2.8)) {
-          if (rearGuard) {
-            this.makePulse(projectile.mesh.position, 0x6ff4ec, 0.42, 2.4);
-            this.burst(projectile.mesh.position, 0x56ddd7, 0xd4fff4, 17);
-            racer.hitCooldown = Math.max(racer.hitCooldown, 0.25);
-            if (racer.id === 0) this.showBanner('OCEAN BARRIER BLOCK!', 0.9);
-            this.racerSound('shield', racer);
-          } else if (racer.mirrorTime > 0) {
-            racer.mirrorTime = 0;
-            racer.shieldTime = 0;
-            this.stun(this.racers[projectile.owner], 0.65);
-            if (racer.id === 0) this.showBanner('MIRROR REFLECT!', 0.9);
-          } else if (projectile.kind === 'curse' || projectile.kind === 'dragonfire') {
-            if (racer.shieldTime > 0) this.stun(racer, 0.3);
-            else {
-              racer.curseTime = Math.max(racer.curseTime, projectile.kind === 'dragonfire' ? 3 : 4);
-              racer.speed *= projectile.kind === 'dragonfire' ? 0.58 : 0.74;
-              if (projectile.kind === 'dragonfire') racer.wobbleTime = Math.max(racer.wobbleTime, 0.8);
-              racer.hitCooldown = Math.max(racer.hitCooldown, 0.6);
+        const racerStart = racer.previousPosition.distanceToSquared(racer.position) < 144 ? racer.previousPosition : racer.position;
+        const start = previousProjectile.clone().sub(racerStart);
+        const end = projectile.mesh.position.clone().sub(racer.position);
+        start.y -= KART_HITBOX_HEIGHT;
+        end.y -= KART_HITBOX_HEIGHT;
+        const radius = projectile.kind === 'dragon' ? 3.8 : projectile.kind === 'dragonfire' ? 3.5 : projectile.kind === 'wave' || projectile.kind === 'tornado' ? 4.3 : projectile.kind === 'firefly' ? 2.3 : 2.8;
+        let time = sweptSphereHit(start, end, radius);
+        let rearGuard = false;
+        if (racer.character === 'moana' && racer.oceanBarrierTime > 0) {
+          const guardTime = sweptSphereHit(start, end, 4.5);
+          if (guardTime !== null) {
+            const contact = start.clone().lerp(end, guardTime);
+            const forward = new THREE.Vector3(Math.sin(racer.yaw), 0, Math.cos(racer.yaw));
+            if (contact.dot(forward) < -0.5 && (time === null || guardTime <= time)) {
+              time = guardTime;
+              rearGuard = true;
             }
           }
-          else if (projectile.kind === 'tornado') {
-            const side = racer.position.clone().sub(projectile.mesh.position).setY(0).normalize();
-            racer.position.addScaledVector(side, 5.5);
-            racer.speed *= 0.52;
-            racer.wobbleTime = Math.max(racer.wobbleTime, 1.25);
-            racer.hitCooldown = Math.max(racer.hitCooldown, 0.75);
-          }
-          else if (projectile.kind === 'wave') {
-            const side = new THREE.Vector3(projectile.velocity.z, 0, -projectile.velocity.x).normalize();
-            const sign = Math.sign(racer.position.clone().sub(projectile.mesh.position).dot(side)) || 1;
-            racer.position.addScaledVector(side, sign * 3.1);
-            racer.speed *= 0.62;
-            racer.wobbleTime = Math.max(racer.wobbleTime, 0.9);
-            racer.hitCooldown = Math.max(racer.hitCooldown, 0.65);
-          }
-          else if (racer.character === 'jack' && racer.luckyEscapeCooldown <= 0 && Math.random() < 0.18 && racer.shieldTime <= 0) {
-            racer.luckyEscapeCooldown = 25;
-            racer.speed *= 0.84;
-            racer.wobbleTime = Math.max(racer.wobbleTime, 0.35);
-            if (racer.id === 0) this.showBanner('LUCKY ESCAPE!', 0.85);
-          }
-          else this.stun(racer, projectile.kind === 'dragon' ? 1.1 : projectile.kind === 'laser' ? 0.55 : 0.85);
-          this.makeFlash(projectile.mesh.position, projectile.color, 4.2, 0.3);
-          this.burst(projectile.mesh.position, projectile.color, 0xffffff, 16);
-          this.makePulse(projectile.mesh.position, projectile.color, 0.32, 1.7);
-          const owner = this.racers[projectile.owner];
-          if (!rearGuard) owner.ultimateMeter = Math.min(100, owner.ultimateMeter + 8);
-          if (projectile.owner === 0) {
-            const powerName = projectile.kind === 'dragonfire' ? 'DRAGON BREATH' : projectile.kind.toUpperCase();
-            this.showBanner(rearGuard ? `${powerName} BLOCKED!` : `${powerName} HIT!`, 1);
-          }
-          remove = true;
-          break;
         }
+        if (time !== null && (!hit || time < hit.time)) hit = { racer, time, rearGuard };
+      }
+      if (hit) {
+        const { racer, rearGuard } = hit;
+        const currentProjectile = projectile.mesh.position.clone();
+        projectile.mesh.position.copy(previousProjectile).lerp(currentProjectile, hit.time);
+        if (rearGuard) {
+          this.makePulse(projectile.mesh.position, 0x6ff4ec, 0.42, 2.4);
+          this.burst(projectile.mesh.position, 0x56ddd7, 0xd4fff4, 17);
+          racer.hitCooldown = Math.max(racer.hitCooldown, 0.25);
+          if (racer.id === 0) this.showBanner('OCEAN BARRIER BLOCK!', 0.9);
+          this.racerSound('shield', racer);
+        } else if (racer.mirrorTime > 0) {
+          racer.mirrorTime = 0;
+          racer.shieldTime = 0;
+          this.stun(this.racers[projectile.owner], 0.65);
+          if (racer.id === 0) this.showBanner('MIRROR REFLECT!', 0.9);
+        } else if (projectile.kind === 'curse' || projectile.kind === 'dragonfire') {
+          if (racer.shieldTime > 0) this.stun(racer, 0.3);
+          else {
+            racer.curseTime = Math.max(racer.curseTime, projectile.kind === 'dragonfire' ? 3 : 4);
+            racer.speed *= projectile.kind === 'dragonfire' ? 0.58 : 0.74;
+            if (projectile.kind === 'dragonfire') racer.wobbleTime = Math.max(racer.wobbleTime, 0.8);
+            racer.hitCooldown = Math.max(racer.hitCooldown, 0.6);
+          }
+        } else if (projectile.kind === 'tornado') {
+          const side = racer.position.clone().sub(projectile.mesh.position).setY(0).normalize();
+          racer.position.addScaledVector(side, 5.5);
+          racer.speed *= 0.52;
+          racer.wobbleTime = Math.max(racer.wobbleTime, 1.25);
+          racer.hitCooldown = Math.max(racer.hitCooldown, 0.75);
+        } else if (projectile.kind === 'wave') {
+          const side = new THREE.Vector3(projectile.velocity.z, 0, -projectile.velocity.x).normalize();
+          const sign = Math.sign(racer.position.clone().sub(projectile.mesh.position).dot(side)) || 1;
+          racer.position.addScaledVector(side, sign * 3.1);
+          racer.speed *= 0.62;
+          racer.wobbleTime = Math.max(racer.wobbleTime, 0.9);
+          racer.hitCooldown = Math.max(racer.hitCooldown, 0.65);
+        } else if (racer.character === 'jack' && racer.luckyEscapeCooldown <= 0 && Math.random() < 0.18 && racer.shieldTime <= 0) {
+          racer.luckyEscapeCooldown = 25;
+          racer.speed *= 0.84;
+          racer.wobbleTime = Math.max(racer.wobbleTime, 0.35);
+          if (racer.id === 0) this.showBanner('LUCKY ESCAPE!', 0.85);
+        } else this.stun(racer, projectile.kind === 'dragon' ? 1.1 : projectile.kind === 'laser' ? 0.55 : 0.85);
+        this.makeFlash(projectile.mesh.position, projectile.color, 4.2, 0.3);
+        this.burst(projectile.mesh.position, projectile.color, 0xffffff, 16);
+        this.makePulse(projectile.mesh.position, projectile.color, 0.32, 1.7);
+        const owner = this.racers[projectile.owner];
+        if (!rearGuard) owner.ultimateMeter = Math.min(100, owner.ultimateMeter + 8);
+        if (projectile.owner === 0) {
+          const powerName = projectile.kind === 'dragonfire' ? 'DRAGON BREATH' : projectile.kind.toUpperCase();
+          this.showBanner(rearGuard ? `${powerName} BLOCKED!` : `${powerName} HIT!`, 1);
+        }
+        remove = true;
       }
       if (remove) {
         this.scene.remove(projectile.mesh);

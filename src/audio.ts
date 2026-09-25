@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import type { CharacterId } from './characters';
 
-type SoundName = 'go' | 'drift' | 'boost' | 'pad' | 'wish' | 'shield' | 'shot' | 'laser' | 'water' | 'cannon' | 'fire' | 'ice' | 'hit' | 'stun' | 'lap' | 'final-lap' | 'ultimate' | 'trick' | 'draft' | 'pickup' | 'cart-warning' | 'birds' | 'crate-hit' | 'market-hit' | 'boulder-hit' | 'urn-hit' | 'cart-hit' | 'field-soul' | 'field-clock' | 'field-anchor' | 'field-star' | 'field-fire';
+type SoundName = 'go' | 'drift' | 'boost' | 'pad' | 'wish' | 'shield' | 'shot' | 'laser' | 'water' | 'cannon' | 'fire' | 'ice' | 'hit' | 'stun' | 'lap' | 'final-lap' | 'ultimate' | 'trick' | 'draft' | 'pickup' | 'cart-warning' | 'birds' | 'crate-hit' | 'market-hit' | 'boulder-hit' | 'urn-hit' | 'cart-hit' | 'field-soul' | 'field-clock' | 'field-anchor' | 'field-star' | 'field-fire' | 'ufo-arrival' | 'ufo-lock' | 'ufo-impact';
 
 // Sources, licenses, and processing notes are documented in AUDIO_CREDITS.md.
 const ASSETS = {
@@ -16,8 +16,9 @@ const ASSETS = {
   crateCrack: 'crate-crack.mp3', woodHit: 'wood-hit.mp3', stoneImpact: 'stone-impact.mp3',
   urnShatter: 'urn-shatter.mp3', cartClank: 'cart-clank.mp3',
   wind: 'wind-ambience.mp3', fountain: 'fountain-ambience.mp3',
+  ufoArrival: 'rampage-arrival.ogg', ufoInbound: 'rampage-inbound.ogg', ufoLock: 'rampage-lock.ogg',
 } as const;
-const AUDIO_REVISION = '11';
+const AUDIO_REVISION = '12';
 type AssetName = keyof typeof ASSETS;
 type Loop = { source: AudioBufferSourceNode; gain: GainNode };
 type RivalEngine = { id: number; position: { x: number; y: number; z: number }; speed: number };
@@ -463,6 +464,9 @@ export class GameAudio {
       case 'lap': this.sample('grand', 0.38, 1.15); break;
       case 'final-lap': this.sample('grand', 0.52, 1.35); this.sample('whoosh', 0.32, 1.1); break;
       case 'ultimate': this.sample('grand', 0.52, 0.91); this.sample('whoosh', 0.38, 0.83); break;
+      case 'ufo-arrival': this.sample('ufoInbound', 0.54, 1); this.sample('ufoArrival', 0.45, 0.94); break;
+      case 'ufo-lock': this.sample('ufoLock', 0.46, 1); break;
+      case 'ufo-impact': this.sample('laser', 0.25, 0.77); this.sample('heavy', 0.22, 0.92); break;
       case 'trick': this.sample('spark', 0.3, 1.37); this.sample('whoosh', 0.18, 1.4); break;
       case 'draft': this.sample('whoosh', 0.33, 1.34); break;
       case 'pickup': this.sample('spark', 0.27, 1.3); break;
@@ -502,8 +506,13 @@ export class GameAudio {
   }
 
   playUltimate(character: CharacterId) {
+    if (character === 'stitch') {
+      this.play('ufo-arrival');
+      if (this.context) this.duckUntil = this.context.currentTime + 1.3;
+      return;
+    }
     const dark = character === 'maleficent' || character === 'hades';
-    const quick = character === 'buzz' || character === 'stitch' || character === 'mulan';
+    const quick = character === 'buzz' || character === 'mulan';
     this.sample('whoosh', 0.48, quick ? 1.24 : dark ? 0.68 : 0.92);
     this.sample('grand', 0.53, dark ? 0.71 : quick ? 1.28 : 1, 0.06);
     this.sample('heavy', 0.32, 0.82, 0.12);

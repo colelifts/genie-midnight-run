@@ -39,9 +39,9 @@ export const CHARACTERS: CharacterDefinition[] = [
   {
     id: 'stitch', name: 'Stitch', title: 'Chaotic Aggressor', icon: 'ϟ', color: 0x4b86ed, accent: 0xbce7ff, kartColor: 0x344fb0,
     speed: 1.01, acceleration: 1.02, handling: 0.98, weight: 1.05,
-    passiveName: 'Experiment 626', passive: 'Collisions slow Stitch less.',
-    signatureName: 'Plasma Pulse', signature: 'A bouncing plasma orb stuns the first rival it touches.', signatureCooldown: 10,
-    ultimateName: 'Chaos Mode', ultimate: 'Alien thrusters accelerate; electric contact throws rivals sideways.',
+    passiveName: 'Alien Instinct', passive: 'Plasma hits charge the UFO faster; Stitch keeps momentum through bumps.',
+    signatureName: 'Plasma Burst', signature: 'Fire three fast homing plasma bolts. Land the full volley for a spinout.', signatureCooldown: 18,
+    ultimateName: '626 Rampage', ultimate: 'Call a UFO that darkens the sky, locks blast zones on rivals, and sweeps the road with plasma.',
   },
   {
     id: 'elsa', name: 'Elsa', title: 'Technical Control', icon: '❄', color: 0x95eaff, accent: 0xe4fbff, kartColor: 0x9adceb,

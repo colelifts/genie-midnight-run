@@ -61,7 +61,7 @@ export const CHARACTERS: CharacterDefinition[] = [
     id: 'buzz', name: 'Buzz Lightyear', title: 'Precision Pilot', icon: '✧', color: 0x9cdb72, accent: 0xcba4ff, kartColor: 0xeff1e4,
     speed: 1.02, acceleration: 0.99, handling: 1.02, weight: 0.97,
     passiveName: 'Star Command', passive: 'Jumping from boost carpets improves the next laser lock.',
-    signatureName: 'Laser Lock', signature: 'Mark a racer ahead and fire a dodgable green laser.', signatureCooldown: 11,
+    signatureName: 'Laser Lock', signature: 'Hold E on a racer ahead to lock on, then release a dodgable green laser.', signatureCooldown: 11,
     ultimateName: 'To Infinity', ultimate: 'Deploy wings, skim small hazards, and fire quick mini lasers while speeding up.',
   },
   {
@@ -81,7 +81,7 @@ export const CHARACTERS: CharacterDefinition[] = [
   {
     id: 'jack', name: 'Jack Sparrow', title: 'Pirate Trickster', icon: '☠', color: 0xc49a69, accent: 0xffd47e, kartColor: 0x604736,
     speed: 1, acceleration: 1.01, handling: 1.03, weight: 0.96,
-    passiveName: 'Lucky Escape', passive: 'A rare projectile glances off instead of fully stunning Jack.',
+    passiveName: 'Lucky Escape', passive: 'A rare projectile glances off instead of stunning Jack; this can happen once every 25 seconds.',
     signatureName: 'Cursed Compass', signature: 'Reveal the next shortcut or pickup and gain a small burst of speed.', signatureCooldown: 9,
     ultimateName: "Dead Man's Chest", ultimate: 'Ghostly cannons fire to both sides while the pirate kart speeds on.',
   },
@@ -89,7 +89,7 @@ export const CHARACTERS: CharacterDefinition[] = [
     id: 'mulan', name: 'Mulan', title: 'Agile Strategist', icon: '◇', color: 0xd95154, accent: 0x76dbc4, kartColor: 0x9d373d,
     speed: 1.02, acceleration: 1.01, handling: 1.06, weight: 0.95,
     passiveName: 'Discipline', passive: 'Clean drift boosts last a little longer.',
-    signatureName: 'Dragon Dash', signature: 'Dash forward through a corner without cancelling your drift.', signatureCooldown: 10,
+    signatureName: 'Dragon Dash', signature: 'Dash through a corner with a small jade dragon circling the kart; your drift stays active.', signatureCooldown: 10,
     ultimateName: 'Honor Guardian', ultimate: 'A dragon spirit races ahead, knocking rivals aside along its path.',
   },
 ];

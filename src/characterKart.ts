@@ -23,6 +23,20 @@ const box = (parent: THREE.Group, width: number, height: number, depth: number, 
 const cone = (parent: THREE.Group, radius: number, height: number, material: THREE.Material, x: number, y: number, z: number, sides = 12) =>
   add(parent, new THREE.ConeGeometry(radius, height, sides), material, x, y, z);
 
+function curvedFlame(parent: THREE.Group, material: THREE.Material, x: number, baseY: number, z: number, radius: number, height: number, curlX: number, curlZ: number) {
+  const geometry = new THREE.ConeGeometry(radius, height, 10, 5);
+  const positions = geometry.getAttribute('position');
+  for (let i = 0; i < positions.count; i++) {
+    const rise = Math.max(0, Math.min(1, (positions.getY(i) + height / 2) / height));
+    positions.setXYZ(i, positions.getX(i) + curlX * rise * rise, positions.getY(i), positions.getZ(i) + curlZ * rise * rise);
+  }
+  geometry.computeVertexNormals();
+  const flame = add(parent, geometry, material, x, baseY + height / 2, z);
+  flame.castShadow = false;
+  flame.receiveShadow = false;
+  return flame;
+}
+
 function branch(parent: THREE.Group, from: THREE.Vector3, to: THREE.Vector3, radius: number, material: THREE.Material) {
   const direction = to.clone().sub(from);
   const part = add(parent, new THREE.CylinderGeometry(radius * 0.87, radius, direction.length(), 10), material);
@@ -34,7 +48,7 @@ function branch(parent: THREE.Group, from: THREE.Vector3, to: THREE.Vector3, rad
 function figure(id: CharacterId) {
   const root = new THREE.Group();
   const model = CHARACTER_BY_ID[id];
-  const suit = paint(model.color, 0.04, 0.66);
+  const suit = paint(id === 'hades' ? 0x34374e : model.color, 0.04, 0.66);
   const accent = paint(model.accent, 0.25, 0.4);
   const skin = paint(id === 'stitch' ? 0x447bd6 : id === 'hades' ? 0x6b9fe0 : id === 'maleficent' ? 0xb4b4b0 : id === 'mickey' ? 0x202532 : id === 'elsa' ? 0xf9ddcf : id === 'moana' ? 0xc58964 : id === 'jack' ? 0xb48662 : id === 'mulan' ? 0xd8a27c : 0xf2c7ac);
   const hair = paint(id === 'elsa' ? 0xf3e7c1 : id === 'hades' ? 0x54d8ff : id === 'stitch' ? 0x31558b : 0x252238, 0.02, 0.7);
@@ -152,21 +166,42 @@ function figure(id: CharacterId) {
     cloak.scale.z = 0.62;
     ball(root, 0.11, glow(0x84fc6d), 0, 1.52, 0.53);
   } else if (id === 'hades') {
-    for (let i = 0; i < 7; i++) {
-      const angle = i / 7 * Math.PI * 2;
-      const flame = cone(root, 0.22, 0.75 + (i % 3) * 0.18, glow(i % 2 ? 0x50e1ff : 0x84b5ff, 0.85), Math.sin(angle) * 0.47, 3.12 + (i % 2) * 0.12, Math.cos(angle) * 0.39);
-      flame.rotation.z = Math.sin(angle) * -0.24;
+    const flameBlue = glow(0x338de4, 0.9);
+    const flameCyan = glow(0x7be9ff, 0.88);
+    const flameCore = glow(0xc7faff, 0.92);
+    ball(root, 0.54, paint(0x285b9a), 0, 3.02, -0.1).scale.set(1.1, 0.42, 0.9);
+    for (let i = 0; i < 9; i++) {
+      const angle = i / 9 * Math.PI * 2;
+      const x = Math.sin(angle) * 0.42;
+      const z = Math.cos(angle) * 0.34 - 0.1;
+      const height = 1.04 + (i % 4) * 0.21;
+      curvedFlame(root, i % 2 ? flameBlue : flameCyan, x, 3.02, z, 0.23, height, Math.sin(angle) * 0.72 + (i % 2 ? 0.16 : -0.11), Math.cos(angle) * 0.33);
     }
+    for (let i = 0; i < 3; i++) curvedFlame(root, flameCore, (i - 1) * 0.2, 3.1, 0.2, 0.11, 1.08 + i * 0.12, (i - 1) * 0.24, 0.08);
     const robe = cone(root, 0.95, 1.6, paint(0x333853), 0, 0.85, -0.26);
     robe.scale.z = 0.67;
     box(root, 0.8, 0.19, 0.6, paint(0x654a7c), 0, 1.55, 0.18);
+    for (const side of [-1, 1]) {
+      const brow = branch(root, new THREE.Vector3(side * 0.1, 2.68, 0.54), new THREE.Vector3(side * 0.36, 2.76, 0.48), 0.055, paint(0x314363));
+      brow.castShadow = false;
+    }
   } else if (id === 'jack') {
-    const hatBrim = ball(root, 0.82, paint(0x3a2c2b), 0, 3.02, 0);
+    const hatMaterial = paint(0x312629, 0.05, 0.8);
+    const hatBrim = ball(root, 0.82, hatMaterial, 0, 3.02, 0);
     hatBrim.scale.set(1.4, 0.18, 0.78);
-    const hat = cone(root, 0.68, 0.78, paint(0x3a2c2b), 0, 3.35, -0.07);
-    hat.scale.z = 0.68;
-    const hatBand = box(root, 1.04, 0.13, 0.9, paint(0x714d3c), 0, 3.12, -0.07);
-    hatBand.rotation.z = 0.06;
+    add(root, new THREE.CylinderGeometry(0.49, 0.56, 0.49, 14), hatMaterial, 0, 3.26, -0.08).scale.z = 0.83;
+    const flapShape = new THREE.Shape();
+    flapShape.moveTo(-0.83, 0);
+    flapShape.quadraticCurveTo(-0.61, 0.39, 0, 0.31);
+    flapShape.quadraticCurveTo(0.61, 0.39, 0.83, 0);
+    flapShape.quadraticCurveTo(0, -0.2, -0.83, 0);
+    const flapGeometry = new THREE.ExtrudeGeometry(flapShape, { depth: 0.08, bevelEnabled: true, bevelSegments: 1, bevelSize: 0.035, bevelThickness: 0.025 });
+    for (const angle of [0, 2.1, -2.1]) {
+      const flap = add(root, flapGeometry, hatMaterial, Math.sin(angle) * 0.22, 3.07, Math.cos(angle) * 0.32);
+      flap.rotation.y = angle;
+    }
+    box(root, 0.93, 0.09, 0.12, paint(0x956f49), 0, 3.35, 0.44);
+    box(root, 1.08, 0.14, 0.78, paint(0x9a3c3b), 0, 2.94, -0.03);
     for (const side of [-1, 1]) {
       const braid = ball(root, 0.17, hair, side * 0.51, 2.0, -0.17);
       braid.scale.set(0.68, 2.9, 0.7);
@@ -175,6 +210,12 @@ function figure(id: CharacterId) {
     cone(root, 0.25, 0.43, hair, 0, 1.95, 0.48).rotation.x = Math.PI;
     box(root, 1.08, 0.55, 0.75, paint(0x74543c), 0, 1.27, -0.05);
     box(root, 0.12, 0.65, 0.12, accent, 0, 1.21, 0.39);
+    for (const side of [-1, 1]) {
+      const coat = box(root, 0.3, 0.94, 0.56, paint(0x3a2c2a), side * 0.57, 1.05, 0.15);
+      coat.rotation.z = side * -0.14;
+    }
+    const sash = box(root, 1.05, 0.17, 0.13, paint(0x9f3c42), 0, 1.17, 0.47);
+    sash.rotation.z = -0.23;
   } else if (id === 'mulan') {
     ball(root, 0.68, hair, 0, 2.61, -0.22).scale.set(1.03, 0.85, 0.73);
     for (const side of [-1, 1]) ball(root, 0.2, hair, side * 0.37, 2.69, 0.24).scale.set(0.8, 0.78, 0.82);

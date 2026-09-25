@@ -94,6 +94,7 @@ interface Racer {
   draftBoosts: number;
   compassTime: number;
   compassTarget: Pickup | null;
+  compassShortcut: { route: Exclude<RouteName, 'main'>; progress: number } | null;
   lastSafe: THREE.Vector3;
   lastSafeProgress: number;
   aiRoute: RouteName;
@@ -461,7 +462,7 @@ class GenieRace {
       const racer: Racer = {
         id: i, character, visual, itemOrbit, position: gridPosition.clone(), yaw, moveYaw: yaw, speed: 0, progress: starts[i], lap: 1, finishPlace: 0,
         boostTime: 0, padBoostTime: 0, shieldTime: 0, ultimateTime: 0, ultimateMeter: 0, signatureCooldown: 0, item: null, tripleSparks: 0, fogTime: 0, featherTime: 0, mirrorTime: 0, wishUpgrade: false, curseTime: 0, wobbleTime: 0, hotHeadTime: 0, laserReadyTime: 0, powerTick: 0, stunTime: 0, hitCooldown: 0, offTrackTime: 0, lastPad: 0,
-        drifting: false, driftCharge: 0, jumpTime: 0, jumpDuration: 0, jumpPower: 0, trickReady: false, trickBoost: false, trickAnim: 0, slipCharge: 0, slipCooldown: 0, tricksLanded: 0, draftBoosts: 0, compassTime: 0, compassTarget: null,
+        drifting: false, driftCharge: 0, jumpTime: 0, jumpDuration: 0, jumpPower: 0, trickReady: false, trickBoost: false, trickAnim: 0, slipCharge: 0, slipCooldown: 0, tricksLanded: 0, draftBoosts: 0, compassTime: 0, compassTarget: null, compassShortcut: null,
         lastSafe: gridPosition.clone(), lastSafeProgress: starts[i], aiRoute: this.aiRouteForLap(i, 1), aiLane: START_LANES[i], aiLine: START_LANES[i],
         aiAbilityTimer: 7 + i * 1.2, aiUltimateTimer: 40 + i * 3, ultimateHit: new Set<number>(), steerVisual: 0,
       };
@@ -655,6 +656,7 @@ class GenieRace {
       racer.tricksLanded = racer.draftBoosts = 0;
       racer.compassTime = 0;
       racer.compassTarget = null;
+      racer.compassShortcut = null;
       racer.lastSafe.copy(racer.position);
       racer.lastSafeProgress = starts[i];
       racer.aiRoute = this.aiRouteForLap(i, 1);
@@ -884,16 +886,34 @@ class GenieRace {
         this.dropField(racer, 'soul', 0x55a8ff, 4.8, 9, -3.3);
         break;
       case 'jack': {
-        const next = this.pickups.filter((pickup) => !pickup.collected)
+        const currentRoute = this.track.nearest(racer.position, racer.progress).point.route;
+        const next = this.pickups.filter((pickup) => !pickup.collected && pickup.route === currentRoute)
           .map((pickup) => ({ pickup, ahead: wrap(pickup.progress - racer.progress) }))
-          .filter((entry) => entry.ahead > 0.012 && entry.ahead < 0.27)
-          .sort((a, b) => a.ahead - b.ahead)[0]?.pickup;
-        if (next) {
-          racer.compassTarget = next;
+          .filter((entry) => entry.ahead > 0.012 && entry.ahead < 0.11)
+          .sort((a, b) => a.ahead - b.ahead)[0];
+        const shortcut = currentRoute === 'main' ? ([
+          { route: 'alley', progress: 0.045 },
+          { route: 'roof', progress: 0.19 },
+          { route: 'garden', progress: 0.37 },
+        ] as const).map((entry) => ({ ...entry, ahead: wrap(entry.progress - racer.progress) }))
+          .filter((entry) => entry.ahead > 0.012 && entry.ahead < 0.11)
+          .sort((a, b) => a.ahead - b.ahead)[0] : undefined;
+        if (shortcut && (!next || shortcut.ahead < next.ahead)) {
+          racer.compassShortcut = { route: shortcut.route, progress: shortcut.progress };
+          racer.compassTarget = null;
           racer.compassTime = 6;
-          this.makePulse(next.mesh.position, 0xffd77d, 1.15, 6);
-          this.makeFlash(next.mesh.position, 0xffdd85, 6, 0.7);
-          if (racer.id === 0) this.showBanner(`COMPASS · ${next.route.toUpperCase()} SPARK AHEAD`, 1.4);
+          if (racer.id !== 0 || this.demoMode) racer.aiRoute = shortcut.route;
+          const entrance = this.track.at(shortcut.progress).position;
+          this.makePulse(entrance, 0xffd77d, 1.15, 6);
+          this.makeFlash(entrance, 0xffdd85, 6, 0.7);
+          if (racer.id === 0) this.showBanner(`COMPASS · ${shortcut.route.toUpperCase()} SHORTCUT AHEAD`, 1.4);
+        } else if (next) {
+          racer.compassTarget = next.pickup;
+          racer.compassShortcut = null;
+          racer.compassTime = 6;
+          this.makePulse(next.pickup.mesh.position, 0xffd77d, 1.15, 6);
+          this.makeFlash(next.pickup.mesh.position, 0xffdd85, 6, 0.7);
+          if (racer.id === 0) this.showBanner(`COMPASS · ${next.pickup.route.toUpperCase()} SPARK AHEAD`, 1.4);
         }
         racer.boostTime = Math.max(racer.boostTime, 1.1);
         break;
@@ -1635,6 +1655,10 @@ class GenieRace {
     racer.hotHeadTime = Math.max(0, racer.hotHeadTime - dt);
     racer.laserReadyTime = Math.max(0, racer.laserReadyTime - dt);
     racer.compassTime = Math.max(0, racer.compassTime - dt);
+    if (racer.compassShortcut && wrap(racer.progress - racer.compassShortcut.progress) < 0.012) {
+      racer.compassShortcut = null;
+      racer.compassTime = 0;
+    }
     racer.trickAnim = Math.max(0, racer.trickAnim - dt);
     racer.slipCooldown = Math.max(0, racer.slipCooldown - dt);
     racer.stunTime = Math.max(0, racer.stunTime - dt);
@@ -2045,7 +2069,7 @@ class GenieRace {
       boostFill.style.width = `${clamp(charge / 1.9, 0, 1) * 100}%`;
       boostFill.style.background = charge >= 1.9 ? '#d799ff' : charge >= 1.18 ? '#ffd075' : '#65dbf9';
     } else {
-      surfaceText.textContent = player.slipCharge > 0.1 ? `DRAFTING · ${Math.round(player.slipCharge / 1.2 * 100)}%` : player.compassTime > 0 && player.compassTarget ? `COMPASS → ${player.compassTarget.route.toUpperCase()} SPARK` : road.onRoad ? road.point.route === 'main' ? 'ROAD' : `${road.point.route.toUpperCase()} ROUTE` : 'OFF ROAD';
+      surfaceText.textContent = player.slipCharge > 0.1 ? `DRAFTING · ${Math.round(player.slipCharge / 1.2 * 100)}%` : player.compassTime > 0 && player.compassShortcut ? `COMPASS → ${player.compassShortcut.route.toUpperCase()} SHORTCUT` : player.compassTime > 0 && player.compassTarget ? `COMPASS → ${player.compassTarget.route.toUpperCase()} SPARK` : road.onRoad ? road.point.route === 'main' ? 'ROAD' : `${road.point.route.toUpperCase()} ROUTE` : 'OFF ROAD';
       boostFill.style.width = `${clamp(Math.max(player.boostTime / 3, player.slipCharge / 1.2), 0, 1) * 100}%`;
       boostFill.style.background = '';
     }
@@ -2093,8 +2117,9 @@ class GenieRace {
     drawRoute(this.track.roofSamples, '#77d9eb', 2, true);
     drawRoute(this.track.gardenSamples, '#b5e8a2', 2, true);
     const compass = this.racers[0];
-    if (compass.compassTime > 0 && compass.compassTarget && !compass.compassTarget.collected) {
-      const mark = mapPoint(compass.compassTarget.mesh.position);
+    const compassPosition = compass.compassShortcut ? this.track.at(compass.compassShortcut.progress).position : compass.compassTarget && !compass.compassTarget.collected ? compass.compassTarget.mesh.position : null;
+    if (compass.compassTime > 0 && compassPosition) {
+      const mark = mapPoint(compassPosition);
       ctx.beginPath();
       ctx.arc(mark.x, mark.y, 7 + Math.sin(this.elapsed * 10) * 1.8, 0, Math.PI * 2);
       ctx.strokeStyle = '#ffdc83';

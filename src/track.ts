@@ -438,7 +438,7 @@ export class RaceTrack {
   }
 
   private makeMarketBanners() {
-    const spans = [0.025, 0.08, 0.125, 0.17, 0.235, 0.29, 0.89, 0.93, 0.97];
+    const spans = [0.025, 0.08, 0.17, 0.235, 0.29, 0.89, 0.93, 0.97];
     for (let span = 0; span < spans.length; span++) {
       const progress = spans[span];
       const point = this.at(progress);
@@ -534,17 +534,17 @@ export class RaceTrack {
   }
 
   private makeDecor() {
-    for (let i = 0; i < 165; i++) {
-      const progress = i / 165;
+    for (let i = 0; i < 205; i++) {
+      const progress = i / 205;
       const sample = this.mainSamples[Math.floor(progress * this.mainSamples.length)];
       const side = i % 2 === 0 ? 1 : -1;
-      const offset = sample.width / 2 + 19 + this.rng() * 13;
+      const offset = sample.width / 2 + 16 + this.rng() * 12;
       const position = sample.position.clone().addScaledVector(sample.right, side * offset);
       if (progress < 0.33 || progress > 0.88) {
         const facing = sample.right.clone().multiplyScalar(-side);
         const yaw = Math.atan2(facing.x, facing.z);
         this.makeBuilding(position, 8 + this.rng() * 7, 8 + this.rng() * 10, 8 + this.rng() * 9, i, yaw);
-        if (i % 3 === 0) this.makeStall(sample.position.clone().addScaledVector(sample.right, side * (sample.width / 2 + 9)), i, yaw);
+        if (i % 3 === 0) this.makeStall(sample.position.clone().addScaledVector(sample.right, side * (sample.width / 2 + 7.5)), i, yaw);
       } else if (progress < 0.56) {
         if (i % 3 === 0) this.makeGardenWall(position);
         else this.makePalm(position, 7 + this.rng() * 3);
@@ -557,7 +557,8 @@ export class RaceTrack {
     this.makeGarden();
     this.makeCave();
     this.makePalace();
-    this.makeMarketGate();
+    this.makeMarketGate(0.12);
+    this.makeMarketGate(0.91);
     for (let i = 0; i < 25; i++) {
       const p = this.roofSamples[20 + Math.floor(this.rng() * 50)];
       const pos = p.position.clone();
@@ -971,34 +972,60 @@ export class RaceTrack {
     this.group.add(palace);
   }
 
-  private makeMarketGate() {
-    const point = this.at(0.91);
+  private makeMarketGate(progress: number) {
+    const point = this.at(progress);
     const gate = new THREE.Group();
     for (const side of [-1, 1]) {
-      const tower = box(4.2, 13.5, 4.2, stoneLight);
-      tower.position.set(side * (point.width / 2 + 3), 6.75, 0);
+      const tower = box(4.2, 18, 4.2, stoneLight);
+      tower.position.set(side * (point.width / 2 + 3), 9, 0);
       tower.castShadow = true;
       gate.add(tower);
       const dome = new THREE.Mesh(new THREE.SphereGeometry(2.65, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2), roofMat);
-      dome.position.set(side * (point.width / 2 + 3), 13.7, 0);
+      dome.position.set(side * (point.width / 2 + 3), 18.2, 0);
       gate.add(dome);
       const lamp = box(0.72, 1.25, 0.7, glow);
-      lamp.position.set(side * (point.width / 2 + 0.2), 6.8, 2.25);
+      lamp.position.set(side * (point.width / 2 + 0.2), 8.6, 2.25);
       gate.add(lamp);
       const halo = lanternHalo(5);
       halo.position.copy(lamp.position);
       gate.add(halo);
+      const window = box(0.8, 1.85, 0.08, glow);
+      window.position.set(side * (point.width / 2 + 3), 12.6, 2.15);
+      gate.add(window);
+      const windowHalo = lanternHalo(4.2);
+      windowHalo.position.copy(window.position);
+      gate.add(windowHalo);
     }
     const lintel = box(point.width + 6.4, 2.3, 3.6, stoneLight);
-    lintel.position.y = 11.7;
+    lintel.position.y = 14.8;
     lintel.castShadow = true;
     gate.add(lintel);
+    const upperCourse = box(point.width + 7.2, 0.55, 4.2, stoneDark);
+    upperCourse.position.y = 16.15;
+    gate.add(upperCourse);
+    const centerTower = box(9, 3.2, 4.5, stoneLight);
+    centerTower.position.y = 18;
+    gate.add(centerTower);
+    const centerDome = new THREE.Mesh(new THREE.SphereGeometry(4.2, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), roofMat);
+    centerDome.position.y = 19.6;
+    gate.add(centerDome);
+    const finial = new THREE.Mesh(new THREE.ConeGeometry(0.38, 1.8, 8), gold);
+    finial.position.y = 24.5;
+    gate.add(finial);
     const banner = box(6, 3.5, 0.13, red);
-    banner.position.set(0, 8.95, 1.88);
+    banner.position.set(0, 11.8, 1.88);
     gate.add(banner);
     const ornament = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.15, 7, 16), glow);
-    ornament.position.set(0, 9.1, 2.05);
+    ornament.position.set(0, 11.95, 2.05);
     gate.add(ornament);
+    for (const x of [-19, -10, 10, 19]) {
+      const lantern = box(0.55, 0.82, 0.55, glow);
+      lantern.position.set(x, 12.85, 1.95);
+      gate.add(lantern);
+      const lanternGlow = lanternHalo(5.2);
+      lanternGlow.position.copy(lantern.position);
+      gate.add(lanternGlow);
+    }
     gate.position.copy(point.position);
     gate.position.y = 0;
     gate.rotation.y = Math.atan2(point.tangent.x, point.tangent.z);

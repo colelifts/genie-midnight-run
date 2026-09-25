@@ -40,6 +40,7 @@ interface Racer {
   progress: number;
   lap: number;
   boostTime: number;
+  padBoostTime: number;
   shieldTime: number;
   ultimateTime: number;
   stunTime: number;
@@ -347,7 +348,7 @@ class GenieRace {
       this.scene.add(visual.group);
       const racer: Racer = {
         id: i, visual, position: start.position.clone(), yaw, moveYaw: yaw, speed: 0, progress: starts[i], lap: 1,
-        boostTime: 0, shieldTime: 0, ultimateTime: 0, stunTime: 0, hitCooldown: 0, offTrackTime: 0, lastPad: 0,
+        boostTime: 0, padBoostTime: 0, shieldTime: 0, ultimateTime: 0, stunTime: 0, hitCooldown: 0, offTrackTime: 0, lastPad: 0,
         drifting: false, driftCharge: 0, jumpTime: 0, jumpDuration: 0, jumpPower: 0,
         lastSafe: start.position.clone(), lastSafeProgress: starts[i], aiRoute: i === 0 && this.demoMode && (demoRoute === 'alley' || demoRoute === 'roof') ? demoRoute : i === 1 ? 'alley' : i === 2 ? 'roof' : 'main',
         aiAbilityTimer: 10 + i * 5, aiUltimateTimer: 48 + i * 13, ultimateHit: new Set<number>(), steerVisual: 0,
@@ -452,7 +453,7 @@ class GenieRace {
       racer.speed = 0;
       racer.progress = starts[i];
       racer.lap = 1;
-      racer.boostTime = racer.shieldTime = racer.ultimateTime = racer.stunTime = 0;
+      racer.boostTime = racer.padBoostTime = racer.shieldTime = racer.ultimateTime = racer.stunTime = 0;
       racer.hitCooldown = racer.offTrackTime = racer.lastPad = 0;
       racer.drifting = false;
       racer.driftCharge = 0;
@@ -626,7 +627,7 @@ class GenieRace {
       if (this.countdownElapsed > 3.75) countdown.classList.add('hidden');
     }
     if (this.mode !== 'paused') {
-      this.track.update(this.elapsed, dt);
+      this.track.update(this.elapsed, dt, this.mode === 'race' ? this.racers.map((racer) => racer.position) : []);
       this.updatePickups(dt);
       this.updateCamera(dt);
       this.sparks.update(dt);
@@ -706,8 +707,8 @@ class GenieRace {
     }
     const roadBefore = this.track.nearest(player.position, player.progress);
     const offRoad = !roadBefore.onRoad && player.jumpTime <= 0;
-    const maxSpeed = player.ultimateTime > 0 ? 41 : player.boostTime > 0 ? 40 : offRoad ? 20 : 31;
-    if (accel > 0) player.speed += (player.ultimateTime > 0 ? 28 : 19) * accel * dt;
+    const maxSpeed = player.padBoostTime > 0 ? 53 : player.ultimateTime > 0 ? 41 : player.boostTime > 0 ? 40 : offRoad ? 20 : 31;
+    if (accel > 0) player.speed += (player.padBoostTime > 0 ? 32 : player.ultimateTime > 0 ? 28 : 19) * accel * dt;
     else player.speed -= (player.speed > 0 ? 5.3 : 2.5) * dt;
     if (brake > 0) player.speed -= 29 * brake * dt;
     if (player.boostTime > 0) player.speed += 11 * dt;
@@ -722,7 +723,7 @@ class GenieRace {
     } else if (player.drifting) {
       this.releaseDrift(player);
     }
-    const turnRate = (1.5 - Math.min(Math.abs(player.speed) / 50, 0.5)) * (player.drifting ? 1.25 : 1);
+    const turnRate = (1.5 - Math.min(Math.abs(player.speed) / 50, 0.5)) * (player.drifting ? 1.25 : 1) * (player.padBoostTime > 0 ? 1.22 : 1);
     player.yaw -= steer * turnRate * dt * Math.min(1, Math.abs(player.speed) / 6);
     if (Math.abs(steer) < 0.12 && roadBefore.onRoad && !player.drifting && player.speed > 8) {
       const roadYaw = Math.atan2(roadBefore.point.tangent.x, roadBefore.point.tangent.z);
@@ -757,7 +758,7 @@ class GenieRace {
 
   private updateAI(racer: Racer, dt: number) {
     if (racer.stunTime > 0) { racer.speed = 0; return; }
-    const ahead = wrap(racer.progress + Math.max(0.014, racer.speed * 0.75 / this.track.length));
+    const ahead = wrap(racer.progress + Math.max(0.014, racer.speed * (racer.padBoostTime > 0 ? 1.05 : 0.75) / this.track.length));
     let route: RouteName = 'main';
     if (racer.aiRoute === 'alley' && ahead > 0.045 && ahead < 0.16) route = 'alley';
     if (racer.aiRoute === 'roof' && ahead > 0.19 && ahead < 0.33) route = 'roof';
@@ -779,6 +780,7 @@ class GenieRace {
     let targetSpeed = 27 + racer.id * 0.6 + Math.sin(this.elapsed * 0.5 + racer.id) * 1.4;
     if (Math.abs(error) > 0.5) targetSpeed = 22;
     if (racer.boostTime > 0) targetSpeed = racer.ultimateTime > 0 ? 41 : 37;
+    if (racer.padBoostTime > 0) targetSpeed = 49;
     if (racer.ultimateTime > 0) targetSpeed = 41;
     racer.speed += (targetSpeed - racer.speed) * Math.min(1, dt * (targetSpeed > racer.speed ? 1.2 : 2.2));
     racer.position.x += Math.sin(racer.moveYaw) * racer.speed * dt;
@@ -890,8 +892,12 @@ class GenieRace {
     for (const pad of this.track.boostPads) {
       if (touchesBoostPad(pad, racer.position, route)) {
         racer.boostTime = Math.max(racer.boostTime, pad.boostSeconds);
-        racer.lastPad = 2.2;
-        this.startJump(racer, 0.75, 1.5);
+        racer.padBoostTime = Math.max(racer.padBoostTime, pad.boostSeconds);
+        racer.speed = Math.max(racer.speed, 44);
+        racer.lastPad = 1.25;
+        this.startJump(racer, 0.7, 1.15);
+        this.makePulse(racer.position, 0x6feeff, 0.65, 5.2);
+        this.burst(racer.position.clone().add(new THREE.Vector3(0, 0.8, 0)), 0x75edff, 0xffd675, 22);
         if (racer.id === 0) { this.showBanner('MAGIC CARPET BOOST', 1.1); this.audio.play('boost'); }
         break;
       }
@@ -900,6 +906,7 @@ class GenieRace {
 
   private updateRacerTimers(racer: Racer, dt: number) {
     racer.boostTime = Math.max(0, racer.boostTime - dt);
+    racer.padBoostTime = Math.max(0, racer.padBoostTime - dt);
     racer.shieldTime = Math.max(0, racer.shieldTime - dt);
     racer.ultimateTime = Math.max(0, racer.ultimateTime - dt);
     racer.stunTime = Math.max(0, racer.stunTime - dt);
@@ -925,6 +932,7 @@ class GenieRace {
     racer.moveYaw = racer.yaw;
     racer.progress = point.progress;
     racer.speed = 12;
+    racer.padBoostTime = 0;
     racer.offTrackTime = 0;
     racer.shieldTime = Math.max(racer.shieldTime, 1.2);
     if (racer.id === 0) {
@@ -991,6 +999,7 @@ class GenieRace {
       racer.shieldTime = 0;
       racer.ultimateTime = 0;
       racer.boostTime = 0;
+      racer.padBoostTime = 0;
     }
     racer.stunTime = Math.max(racer.stunTime, duration);
     racer.speed = 0;
@@ -1009,10 +1018,10 @@ class GenieRace {
         const normal = distance > 0.05
           ? new THREE.Vector3((racer.position.x - obstacle.position.x) / distance, 0, (racer.position.z - obstacle.position.z) / distance)
           : forward.clone().negate();
-        racer.position.addScaledVector(normal, obstacle.radius + 2.05 - distance);
+        racer.position.addScaledVector(normal, obstacle.radius + (obstacle.kind === 'boulder' ? 3.5 : 2.05) - distance);
         racer.position.addScaledVector(forward, -0.75);
         this.keepOnCourse(racer);
-        racer.hitCooldown = 1.45;
+        racer.hitCooldown = obstacle.kind === 'boulder' ? 1.7 : 1.45;
         if (obstacle.kind === 'crate') {
           obstacle.broken = true;
           obstacle.respawn = 12;
@@ -1031,7 +1040,7 @@ class GenieRace {
         } else {
           racer.speed *= obstacle.kind === 'boulder' ? 0.38 : 0.55;
           if (obstacle.kind === 'boulder') this.stun(racer, 0.38);
-          if (racer.id === 0) this.showBanner(obstacle.kind === 'boulder' ? 'BOULDER HIT!' : 'CART HIT!', 0.8);
+          if (racer.id === 0) this.showBanner(obstacle.kind === 'boulder' ? 'BOULDER HIT!' : obstacle.kind === 'urn' ? 'PALACE URN HIT!' : 'CART HIT!', 0.8);
         }
         this.audio.play('hit');
       }
@@ -1143,14 +1152,14 @@ class GenieRace {
       }
     } else {
       const insideCave = player.progress > 0.665 && player.progress < 0.78;
-      const targetDistance = insideCave ? 12.7 : player.ultimateTime > 0 ? 14.1 : player.boostTime > 0 ? 13.5 : 13.1;
+      const targetDistance = insideCave ? 12.7 : player.padBoostTime > 0 ? 14.6 : player.ultimateTime > 0 ? 14.1 : player.boostTime > 0 ? 13.5 : 13.1;
       this.cameraDistance += (targetDistance - this.cameraDistance) * Math.min(1, dt * 4);
       const distance = this.cameraDistance;
       const desired = player.position.clone().addScaledVector(forward, -distance).add(new THREE.Vector3(0, 4.55 + player.speed * 0.012, 0));
       this.camera.position.copy(desired);
       const target = player.position.clone().addScaledVector(forward, 12).add(new THREE.Vector3(0, 2.4, 0));
       this.cameraLook.copy(target);
-      const targetFov = player.ultimateTime > 0 ? 77 : player.boostTime > 0 ? 72 : 67 + Math.min(player.speed / 31, 1) * 2;
+      const targetFov = player.padBoostTime > 0 ? 77 : player.ultimateTime > 0 ? 77 : player.boostTime > 0 ? 72 : 67 + Math.min(player.speed / 31, 1) * 2;
       this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, dt * 2.3);
       this.camera.updateProjectionMatrix();
     }
@@ -1169,7 +1178,7 @@ class GenieRace {
 
   private updateHUD() {
     const player = this.racers[0];
-    hud.dataset.state = JSON.stringify(this.racers.map((racer) => ({ id: racer.id, lap: racer.lap, p: Number(racer.progress.toFixed(3)), x: Number(racer.position.x.toFixed(2)), y: Number(racer.position.y.toFixed(2)), z: Number(racer.position.z.toFixed(2)), yaw: Number(racer.yaw.toFixed(3)), route: this.track.nearest(racer.position, racer.progress).point.route, speed: Math.round(racer.speed), stun: Number(racer.stunTime.toFixed(2)), hitGrace: Number(racer.hitCooldown.toFixed(2)), ultimate: Number(racer.ultimateTime.toFixed(2)) })));
+    hud.dataset.state = JSON.stringify(this.racers.map((racer) => ({ id: racer.id, lap: racer.lap, p: Number(racer.progress.toFixed(3)), x: Number(racer.position.x.toFixed(2)), y: Number(racer.position.y.toFixed(2)), z: Number(racer.position.z.toFixed(2)), yaw: Number(racer.yaw.toFixed(3)), route: this.track.nearest(racer.position, racer.progress).point.route, speed: Math.round(racer.speed), padBoost: Number(racer.padBoostTime.toFixed(2)), stun: Number(racer.stunTime.toFixed(2)), hitGrace: Number(racer.hitCooldown.toFixed(2)), ultimate: Number(racer.ultimateTime.toFixed(2)) })));
     const standings = [...this.racers].sort((a, b) => (b.lap - 1 + b.progress) - (a.lap - 1 + a.progress));
     const rank = standings.findIndex((racer) => racer.id === 0) + 1;
     const suffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : 'rd';

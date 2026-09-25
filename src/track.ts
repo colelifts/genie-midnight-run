@@ -20,7 +20,7 @@ export interface RoadHit {
 }
 
 export interface Obstacle {
-  kind: 'crate' | 'boulder' | 'cart';
+  kind: 'crate' | 'boulder' | 'cart' | 'urn';
   mesh: THREE.Group;
   position: THREE.Vector3;
   radius: number;
@@ -49,13 +49,9 @@ export function touchesBoostPad(pad: BoostPad, position: THREE.Vector3, route: R
   return Math.abs(toPad.dot(pad.right)) <= pad.halfWidth + 1.2 && Math.abs(toPad.dot(pad.tangent)) <= pad.halfLength + 1.8;
 }
 
-export function roadArrowRotation(tangent: THREE.Vector3) {
-  return new THREE.Euler(Math.PI / 2, Math.atan2(tangent.x, tangent.z), 0, 'YXZ');
-}
-
-export function roadTurnSignRotation(tangent: THREE.Vector3, upcoming: THREE.Vector3) {
-  const driverRight = new THREE.Vector3(-tangent.z, 0, tangent.x);
-  return upcoming.dot(driverRight) >= 0 ? -Math.PI / 2 : Math.PI / 2;
+export function turnSignDirection(tangent: THREE.Vector3, upcoming: THREE.Vector3): 'left' | 'right' {
+  const screenRight = new THREE.Vector3(-tangent.z, 0, tangent.x);
+  return upcoming.dot(screenRight) >= 0 ? 'right' : 'left';
 }
 
 export function overMainPavement(main: RoadPoint[], position: THREE.Vector3, padding = 0) {
@@ -84,15 +80,51 @@ export function branchCoversMainEdge(branches: RoadPoint[][], position: THREE.Ve
 
 export const MARKET_BANNER_SPANS = [0.025, 0.08, 0.17, 0.235, 0.29, 0.89, 0.93, 0.97];
 export const MARKET_GATE_SPANS = [0.175, 0.91];
+export const TURN_SIGN_SPANS = [0.235, 0.305, 0.345, 0.435, 0.585, 0.695, 0.785, 0.895, 0.935];
 export const CAVE_ARCH_SPANS = [0.684, 0.721, 0.758];
 export const CAVE_ARCH_SHAPE = { pillarOutset: 8, pillarHalfWidth: 7.4, crystalOutset: 5.5, crystalRadius: 1.7, ceilingY: 16.5, ceilingHalfHeight: 4.8 };
 export const CAVE_TUNNEL_SHAPE = { wallOutset: 20, wallRadius: 14, roofCenterY: 19, roofEdgeY: 9 };
-export const COURSE_SCALE = 2.1;
-export const MAIN_ROAD_WIDTH = 62;
-export const ALLEY_ROAD_WIDTH = 32;
-export const ROOF_ROAD_WIDTH = 34;
-export const ALLEY_OFFSET = -67;
-export const ROOF_OFFSET = -85;
+export const COURSE_SCALE = 2;
+export const MAIN_ROAD_WIDTH = 46;
+export const ALLEY_ROAD_WIDTH = 26;
+export const ROOF_ROAD_WIDTH = 26;
+export const ALLEY_OFFSET = -61;
+export const ROOF_OFFSET = -72;
+export const BOOST_PAD_LENGTH = 10;
+export const BOOST_PAD_LAYOUT: Array<{ route: RouteName; progress: number; boostSeconds: number }> = [
+  { route: 'main', progress: 0.08, boostSeconds: 3.3 },
+  { route: 'alley', progress: 0.08, boostSeconds: 5.3 },
+  { route: 'alley', progress: 0.128, boostSeconds: 5.3 },
+  { route: 'roof', progress: 0.22, boostSeconds: 5.3 },
+  { route: 'roof', progress: 0.266, boostSeconds: 5.3 },
+  { route: 'roof', progress: 0.311, boostSeconds: 5.3 },
+  { route: 'main', progress: 0.535, boostSeconds: 3.3 },
+  { route: 'main', progress: 0.975, boostSeconds: 3.3 },
+];
+export const OBSTACLE_LAYOUT: Array<{ kind: Obstacle['kind']; route: RouteName; progress: number; lateral: number; phase?: number }> = [
+  { kind: 'cart', route: 'main', progress: 0.025, lateral: 8 },
+  { kind: 'crate', route: 'main', progress: 0.115, lateral: -7 },
+  { kind: 'crate', route: 'main', progress: 0.115, lateral: 7 },
+  { kind: 'crate', route: 'main', progress: 0.245, lateral: -8 },
+  { kind: 'urn', route: 'main', progress: 0.385, lateral: -8 },
+  { kind: 'urn', route: 'main', progress: 0.445, lateral: -10 },
+  { kind: 'urn', route: 'main', progress: 0.445, lateral: 7 },
+  { kind: 'urn', route: 'main', progress: 0.565, lateral: 0 },
+  { kind: 'urn', route: 'main', progress: 0.615, lateral: 9 },
+  { kind: 'boulder', route: 'main', progress: 0.685, lateral: -9 },
+  { kind: 'boulder', route: 'main', progress: 0.708, lateral: 9, phase: Math.PI },
+  { kind: 'boulder', route: 'main', progress: 0.73, lateral: -8 },
+  { kind: 'boulder', route: 'main', progress: 0.73, lateral: 9, phase: Math.PI },
+  { kind: 'boulder', route: 'main', progress: 0.755, lateral: 0 },
+  { kind: 'boulder', route: 'main', progress: 0.785, lateral: 10, phase: Math.PI },
+  { kind: 'boulder', route: 'main', progress: 0.815, lateral: -10 },
+  { kind: 'cart', route: 'main', progress: 0.92, lateral: 8 },
+  { kind: 'crate', route: 'main', progress: 0.955, lateral: -8 },
+  { kind: 'crate', route: 'alley', progress: 0.085, lateral: 0 },
+  { kind: 'crate', route: 'alley', progress: 0.106, lateral: -4 },
+  { kind: 'crate', route: 'roof', progress: 0.24, lateral: 3 },
+  { kind: 'crate', route: 'roof', progress: 0.285, lateral: -4 },
+];
 
 export function clearOfOtherRoutes(samples: RoadPoint[], position: THREE.Vector3, radius: number, excludedRoute: RouteName) {
   for (const point of samples) {
@@ -158,17 +190,24 @@ export function makeMainCurve() {
     new THREE.Vector3(-44, 0, -107),
     new THREE.Vector3(7, 0, -102),
     new THREE.Vector3(55, 0, -91),
-    new THREE.Vector3(100, 0, -60),
-    new THREE.Vector3(118, 0, -15),
-    new THREE.Vector3(110, 0, 35),
-    new THREE.Vector3(85, 0, 78),
-    new THREE.Vector3(35, 0, 103),
-    new THREE.Vector3(-20, 0, 105),
-    new THREE.Vector3(-68, 0, 106),
-    new THREE.Vector3(-111, 0, 77),
-    new THREE.Vector3(-135, 0, 31),
-    new THREE.Vector3(-130, 0, -20),
-    new THREE.Vector3(-125, 0, -68),
+    new THREE.Vector3(96, 0, -65),
+    new THREE.Vector3(117, 0, -30),
+    new THREE.Vector3(112, 0, 5),
+    new THREE.Vector3(122, 0, 35),
+    new THREE.Vector3(110, 0, 70),
+    new THREE.Vector3(75, 0, 96),
+    new THREE.Vector3(35, 0, 90),
+    new THREE.Vector3(5, 0, 50),
+    new THREE.Vector3(-20, 0, 12),
+    new THREE.Vector3(-55, 0, 5),
+    new THREE.Vector3(-85, 0, 30),
+    new THREE.Vector3(-115, 0, 45),
+    new THREE.Vector3(-145, 0, 35),
+    new THREE.Vector3(-160, 0, 5),
+    new THREE.Vector3(-155, 0, -25),
+    new THREE.Vector3(-155, 0, -45),
+    new THREE.Vector3(-155, 0, -70),
+    new THREE.Vector3(-130, 0, -98),
   ].map((point) => point.multiplyScalar(COURSE_SCALE)), true, 'catmullrom', 0.5);
 }
 
@@ -240,6 +279,12 @@ export class RaceTrack {
   private readonly carpetMaterials: THREE.MeshBasicMaterial[] = [];
   private readonly marketPeople: Array<{ figure: THREE.Group; phase: number; baseX: number }> = [];
   private readonly marketWalkers: Array<{ figure: THREE.Group; progress: number; side: number; phase: number; leftArm: THREE.Mesh; rightArm: THREE.Mesh }> = [];
+  private readonly marketFlags: Array<{ mesh: THREE.Mesh; phase: number }> = [];
+  private readonly roofPerches: THREE.Vector3[] = [];
+  private readonly clouds: Array<{ sprite: THREE.Sprite; baseX: number; speed: number }> = [];
+  private readonly fireflies: Array<{ sprite: THREE.Sprite; base: THREE.Vector3; phase: number }> = [];
+  private readonly birds: Array<{ group: THREE.Group; leftWing: THREE.Group; rightWing: THREE.Group; base: THREE.Vector3; phase: number; launchTime: number; direction: THREE.Vector3 }> = [];
+  private readonly skyBirds: Array<{ group: THREE.Group; leftWing: THREE.Group; rightWing: THREE.Group; center: THREE.Vector3; phase: number; radius: number }> = [];
 
   constructor(scene: THREE.Scene) {
     roadMat.map = makePavingTexture();
@@ -255,7 +300,9 @@ export class RaceTrack {
     this.makeRoadLights();
     this.makeMarketBanners();
     this.makeRouteSigns();
+    this.makeTurnSigns();
     this.makeDecor();
+    this.makeAtmosphere();
     this.makeMarketWalkers();
     this.makeObstacles();
     this.makePads();
@@ -465,38 +512,6 @@ export class RaceTrack {
   }
 
   private makeRoadMarkers() {
-    const arrowShape = new THREE.Shape();
-    arrowShape.moveTo(0, 1.8);
-    arrowShape.lineTo(1.3, -0.2);
-    arrowShape.lineTo(0.45, -0.2);
-    arrowShape.lineTo(0.45, -1.5);
-    arrowShape.lineTo(-0.45, -1.5);
-    arrowShape.lineTo(-0.45, -0.2);
-    arrowShape.lineTo(-1.3, -0.2);
-    arrowShape.closePath();
-    const arrowGeo = new THREE.ShapeGeometry(arrowShape);
-    const arrowMat = new THREE.MeshBasicMaterial({ color: 0xd7c8ad, transparent: true, opacity: 0.7, side: THREE.DoubleSide });
-    for (let i = 18; i < this.mainSamples.length; i += 40) {
-      const sample = this.mainSamples[i];
-      for (const lane of [-0.25, 0.25]) {
-        const arrow = new THREE.Mesh(arrowGeo, arrowMat);
-        arrow.rotation.copy(roadArrowRotation(sample.tangent));
-        arrow.position.copy(sample.position).addScaledVector(sample.right, sample.width * lane);
-        arrow.position.y += 0.045;
-        this.group.add(arrow);
-      }
-    }
-    const lineMaterial = new THREE.MeshBasicMaterial({ color: 0xc4b8ad, transparent: true, opacity: 0.48 });
-    for (let i = 5; i < this.mainSamples.length; i += 11) {
-      const point = this.mainSamples[i];
-      for (const lane of [-0.25, 0, 0.25]) {
-        const dash = box(0.19, 0.025, 4.4, lineMaterial);
-        dash.position.copy(point.position).addScaledVector(point.right, point.width * lane);
-        dash.position.y += 0.065;
-        dash.rotation.y = Math.atan2(point.tangent.x, point.tangent.z);
-        this.group.add(dash);
-      }
-    }
     const start = this.mainSamples[0];
     const gridHalfTiles = Math.floor((start.width / 2 - 2) / 1.12);
     for (let i = -gridHalfTiles; i <= gridHalfTiles; i++) {
@@ -568,6 +583,7 @@ export class RaceTrack {
         flag.position.set((i - (flagCount - 1) / 2) * 2.5, 6.98, 0);
         flag.rotation.z = Math.PI;
         group.add(flag);
+        this.marketFlags.push({ mesh: flag, phase: i * 0.8 + span * 1.7 });
       }
       for (const fraction of [-0.4, -0.2, 0, 0.2, 0.4]) {
         const x = fraction * spanWidth;
@@ -645,6 +661,83 @@ export class RaceTrack {
     }
   }
 
+  private makeTurnSigns() {
+    const materials = new Map<'left' | 'right', THREE.MeshBasicMaterial>();
+    const signMaterial = (direction: 'left' | 'right') => {
+      const cached = materials.get(direction);
+      if (cached) return cached;
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 208;
+      const ctx = canvas.getContext('2d')!;
+      const background = ctx.createLinearGradient(0, 0, 512, 208);
+      background.addColorStop(0, '#142d55');
+      background.addColorStop(1, '#30345d');
+      ctx.fillStyle = background;
+      ctx.fillRect(0, 0, 512, 208);
+      ctx.strokeStyle = '#f2bf66';
+      ctx.lineWidth = 15;
+      ctx.strokeRect(10, 10, 492, 188);
+      ctx.strokeStyle = '#72e8ee';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(25, 25, 462, 158);
+      ctx.fillStyle = '#fce9b2';
+      ctx.font = 'bold 29px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('CURVE AHEAD', 256, 63);
+      ctx.lineWidth = 20;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = '#ffdb87';
+      ctx.shadowColor = '#fbc871';
+      ctx.shadowBlur = 16;
+      for (const x of [162, 256, 350]) {
+        const directionSign = direction === 'right' ? 1 : -1;
+        ctx.beginPath();
+        ctx.moveTo(x - directionSign * 18, 91);
+        ctx.lineTo(x + directionSign * 19, 132);
+        ctx.lineTo(x - directionSign * 18, 171);
+        ctx.stroke();
+      }
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.anisotropy = 4;
+      const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide, toneMapped: false });
+      materials.set(direction, material);
+      return material;
+    };
+    for (const progress of TURN_SIGN_SPANS) {
+      const point = this.at(progress);
+      const upcoming = this.at(progress + 0.035);
+      const direction = turnSignDirection(point.tangent, upcoming.tangent);
+      const preferredSide = direction === 'right' ? -1 : 1;
+      const side = [preferredSide, -preferredSide].find((candidate) => {
+        const position = point.position.clone().addScaledVector(point.right, candidate * (point.width / 2 + 5.6));
+        return this.clearOfOtherRoad(position, 5.1, 'main');
+      });
+      if (side === undefined) continue;
+      const sign = new THREE.Group();
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(9.2, 3.75), signMaterial(direction));
+      face.position.set(0, 4.65, 0.22);
+      sign.add(face);
+      const frame = box(9.55, 4.05, 0.28, gold);
+      frame.position.y = 4.65;
+      sign.add(frame);
+      for (const x of [-3.5, 3.5]) {
+        const post = box(0.36, 2.85, 0.36, stoneDark);
+        post.position.set(x, 1.42, 0);
+        sign.add(post);
+        const finial = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.72, 6), gold);
+        finial.position.set(x, 6.8, 0);
+        sign.add(finial);
+      }
+      sign.position.copy(point.position).addScaledVector(point.right, side * (point.width / 2 + 5.6));
+      sign.position.y = 0;
+      sign.rotation.y = Math.atan2(point.tangent.x, point.tangent.z) + Math.PI;
+      this.group.add(sign);
+    }
+  }
+
   private makeDecor() {
     for (let i = 0; i < 205; i++) {
       const progress = i / 205;
@@ -685,6 +778,96 @@ export class RaceTrack {
       pos.addScaledVector(p.right, (i % 2 ? 1 : -1) * (p.width / 2 + 17 + this.rng() * 13));
       const facing = p.right.clone().multiplyScalar(i % 2 ? -1 : 1);
       this.makeBuilding(pos, 9 + this.rng() * 7, 5 + this.rng() * 5, 9 + this.rng() * 7, i + 100, Math.atan2(facing.x, facing.z));
+    }
+  }
+
+  private makeBird() {
+    const plumage = new THREE.MeshStandardMaterial({ color: 0xe7d5bb, roughness: 1, side: THREE.DoubleSide });
+    const wingMaterial = new THREE.MeshStandardMaterial({ color: 0x8a7892, roughness: 1, side: THREE.DoubleSide });
+    const group = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.28, 9, 7), plumage);
+    body.scale.set(1, 0.62, 1.3);
+    group.add(body);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 6), plumage);
+    head.position.set(0, 0.17, 0.26);
+    group.add(head);
+    const beak = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.21, 5), gold);
+    beak.rotation.x = Math.PI / 2;
+    beak.position.set(0, 0.14, 0.47);
+    group.add(beak);
+    const wingGeometry = new THREE.SphereGeometry(1, 9, 6);
+    const wings: THREE.Group[] = [];
+    for (const side of [-1, 1]) {
+      const pivot = new THREE.Group();
+      pivot.position.set(side * 0.2, 0.05, -0.02);
+      const wing = new THREE.Mesh(wingGeometry, wingMaterial);
+      wing.scale.set(0.42, 0.055, 0.21);
+      wing.position.x = side * 0.31;
+      pivot.add(wing);
+      group.add(pivot);
+      wings.push(pivot);
+    }
+    group.scale.setScalar(1.6);
+    this.group.add(group);
+    return { group, leftWing: wings[0], rightWing: wings[1] };
+  }
+
+  private makeAtmosphere() {
+    const cloudCanvas = document.createElement('canvas');
+    cloudCanvas.width = 256;
+    cloudCanvas.height = 128;
+    const cloudCtx = cloudCanvas.getContext('2d')!;
+    for (const [x, y, radius] of [[65, 77, 44], [105, 62, 50], [150, 73, 44], [189, 80, 37]] as const) {
+      const mist = cloudCtx.createRadialGradient(x, y, 5, x, y, radius);
+      mist.addColorStop(0, 'rgba(250,233,255,0.78)');
+      mist.addColorStop(0.48, 'rgba(216,205,245,0.52)');
+      mist.addColorStop(1, 'rgba(208,199,238,0)');
+      cloudCtx.fillStyle = mist;
+      cloudCtx.beginPath();
+      cloudCtx.arc(x, y, radius, 0, Math.PI * 2);
+      cloudCtx.fill();
+    }
+    const cloudTexture = new THREE.CanvasTexture(cloudCanvas);
+    cloudTexture.colorSpace = THREE.SRGBColorSpace;
+    for (let i = 0; i < 30; i++) {
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: cloudTexture, color: i % 3 === 0 ? 0xf4d3e8 : 0xd6d9f3, transparent: true, opacity: 0.8, depthWrite: false, fog: false }));
+      const baseX = -420 + this.rng() * 840;
+      sprite.position.set(baseX, 55 + this.rng() * 43, -370 + this.rng() * 740);
+      sprite.scale.set(78 + this.rng() * 62, 25 + this.rng() * 15, 1);
+      this.group.add(sprite);
+      this.clouds.push({ sprite, baseX, speed: 1.1 + this.rng() * 1.8 });
+    }
+    for (let i = 0; i < 42; i++) {
+      const progress = i < 24 ? i < 12 ? 0.012 + i * 0.013 : 0.87 + (i - 12) * 0.01 : 0.38 + (i - 24) * 0.009;
+      const point = this.at(progress);
+      const side = i % 2 === 0 ? -1 : 1;
+      const base = point.position.clone().addScaledVector(point.right, side * (point.width / 2 + 7 + this.rng() * 13));
+      base.y = 1.4 + this.rng() * 3.5;
+      const sprite = lanternHalo(0.95 + this.rng() * 0.65, i % 4 === 0 ? 0x66eaff : 0xffdc82);
+      sprite.material.opacity = 0.38;
+      sprite.position.copy(base);
+      this.group.add(sprite);
+      this.fireflies.push({ sprite, base, phase: i * 1.8 });
+    }
+    for (const base of this.roofPerches.slice(0, 9)) {
+      const bird = this.makeBird();
+      bird.group.position.copy(base);
+      this.birds.push({ ...bird, base, phase: this.rng() * Math.PI * 2, launchTime: -1, direction: new THREE.Vector3(1, 0, 0) });
+    }
+    for (const index of [23, 28, 36, 44, 55, 64, 72, 77]) {
+      const point = this.roofSamples[index];
+      const side = index % 2 === 0 ? 1 : -1;
+      const base = point.position.clone().addScaledVector(point.right, side * (point.width / 2 + 0.8));
+      base.y += 1.6;
+      const bird = this.makeBird();
+      bird.group.position.copy(base);
+      this.birds.push({ ...bird, base, phase: this.rng() * Math.PI * 2, launchTime: -1, direction: point.right.clone().multiplyScalar(side) });
+    }
+    for (let i = 0; i < 7; i++) {
+      const point = this.at([0.07, 0.12, 0.23, 0.27, 0.88, 0.94, 0.18][i]);
+      const center = point.position.clone().add(new THREE.Vector3(0, 18 + i % 3 * 4, 0));
+      const bird = this.makeBird();
+      this.skyBirds.push({ ...bird, center, phase: i * 0.9, radius: 16 + i % 3 * 7 });
     }
   }
 
@@ -820,6 +1003,11 @@ export class RaceTrack {
     group.position.y = 0;
     group.rotation.y = yaw;
     this.group.add(group);
+    if (seed % 11 === 1 && seed % 4 !== 0) {
+      const perch = new THREE.Vector3(0, height + 0.65, depth / 2 - 0.9);
+      perch.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw).add(position);
+      this.roofPerches.push(perch);
+    }
   }
 
   private makeStall(position: THREE.Vector3, seed: number, yaw: number) {
@@ -1186,25 +1374,6 @@ export class RaceTrack {
       arch.rotation.y = Math.atan2(sample.tangent.x, sample.tangent.z);
       this.group.add(arch);
     }
-    for (const progress of [0.668, 0.705, 0.742]) {
-      const sample = this.at(progress);
-      const upcoming = this.at(progress + 0.018);
-      const turnArrowRotation = roadTurnSignRotation(sample.tangent, upcoming.tangent);
-      const group = new THREE.Group();
-      const sign = box(4.9, 2.6, 0.22, stoneDark);
-      sign.position.y = 3.7;
-      group.add(sign);
-      for (let i = 0; i < 2; i++) {
-        const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.62, 1.1, 3), glow);
-        arrow.rotation.z = turnArrowRotation;
-        arrow.position.set(-0.8 + i * 1.4, 3.7, 0.17);
-        group.add(arrow);
-      }
-      group.position.copy(sample.position).addScaledVector(sample.right, sample.width / 2 + 4.6);
-      group.position.y = 0;
-      group.rotation.y = Math.atan2(sample.tangent.x, sample.tangent.z) + Math.PI;
-      this.group.add(group);
-    }
   }
 
   private makePalace() {
@@ -1315,15 +1484,37 @@ export class RaceTrack {
       group.add(lid);
       radius = 2.1;
     } else if (kind === 'boulder') {
-      const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(1.85, 1), stoneDark);
-      rock.position.y = 1.9;
+      const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(2.6, 2), stoneDark);
+      rock.position.y = 2.55;
       rock.castShadow = true;
       group.add(rock);
-      const warning = new THREE.Mesh(new THREE.TorusGeometry(2.16, 0.13, 6, 32), new THREE.MeshBasicMaterial({ color: 0xffb65d }));
+      const warning = new THREE.Mesh(new THREE.TorusGeometry(3.05, 0.16, 6, 40), new THREE.MeshBasicMaterial({ color: 0xffc76e, toneMapped: false }));
       warning.rotation.x = Math.PI / 2;
       warning.position.y = 0.13;
       group.add(warning);
-      radius = 1.95;
+      radius = 2.65;
+    } else if (kind === 'urn') {
+      const jar = new THREE.Mesh(new THREE.SphereGeometry(1.55, 16, 10), roofMat);
+      jar.scale.y = 1.08;
+      jar.position.y = 1.7;
+      jar.castShadow = true;
+      group.add(jar);
+      const rim = new THREE.Mesh(new THREE.CylinderGeometry(1.08, 1.16, 0.4, 16), gold);
+      rim.position.y = 3.16;
+      group.add(rim);
+      const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.78, 1.08, 0.62, 16), stoneLight);
+      neck.position.y = 3.56;
+      group.add(neck);
+      for (const side of [-1, 1]) {
+        const handle = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.17, 6, 14, Math.PI), gold);
+        handle.position.set(side * 1.56, 2.28, 0);
+        handle.rotation.y = side * Math.PI / 2;
+        group.add(handle);
+      }
+      const foot = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.22, 0.35, 14), stoneDark);
+      foot.position.y = 0.26;
+      group.add(foot);
+      radius = 2.25;
     } else {
       const platform = box(3.7, 0.42, 2.45, wood);
       platform.position.y = 1.32;
@@ -1360,47 +1551,82 @@ export class RaceTrack {
   }
 
   private makeObstacles() {
-    this.addObstacle('cart', this.mainSamples[Math.floor(0.06 * 640)], 10);
-    this.addObstacle('crate', this.alleySamples[25], 0);
-    this.addObstacle('crate', this.alleySamples[55], -2.3);
-    this.addObstacle('crate', this.mainSamples[Math.floor(0.24 * 640)], -8.5);
-    this.addObstacle('boulder', this.mainSamples[Math.floor(0.705 * 640)], 9.5, 0);
-    this.addObstacle('boulder', this.mainSamples[Math.floor(0.735 * 640)], -9.5, Math.PI);
+    for (const item of OBSTACLE_LAYOUT) this.addObstacle(item.kind, this.routeAt(item.route, item.progress), item.lateral, item.phase ?? 0);
   }
 
   private makePads() {
-    const pads = [
-      { point: this.at(0.105), boostSeconds: 2 },
-      { point: this.alleySamples[27], boostSeconds: 5 },
-      { point: this.alleySamples[65], boostSeconds: 5 },
-      { point: this.roofSamples[19], boostSeconds: 5 },
-      { point: this.roofSamples[49], boostSeconds: 5 },
-      { point: this.roofSamples[78], boostSeconds: 5 },
-      { point: this.at(0.54), boostSeconds: 2 },
-      { point: this.at(0.805), boostSeconds: 2 },
-    ];
-    for (const { point, boostSeconds } of pads) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d')!;
+    const gradient = ctx.createLinearGradient(0, 0, 0, 256);
+    gradient.addColorStop(0, '#3d205d');
+    gradient.addColorStop(0.5, '#225779');
+    gradient.addColorStop(1, '#3d205d');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 1024, 256);
+    ctx.strokeStyle = '#f7c86b';
+    ctx.lineWidth = 21;
+    ctx.strokeRect(14, 14, 996, 228);
+    ctx.strokeStyle = '#6ce8f4';
+    ctx.lineWidth = 7;
+    ctx.strokeRect(37, 37, 950, 182);
+    ctx.fillStyle = 'rgba(255,230,152,0.23)';
+    for (let i = 0; i < 8; i++) {
+      const x = 74 + i * 125;
+      ctx.beginPath();
+      ctx.moveTo(x, 128);
+      ctx.lineTo(x + 44, 63);
+      ctx.lineTo(x + 88, 128);
+      ctx.lineTo(x + 44, 193);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#ffe09a';
+      ctx.lineWidth = 6;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(x + 44, 128, 8, 0, Math.PI * 2);
+      ctx.fillStyle = '#b6f9ff';
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,230,152,0.23)';
+    }
+    const carpetTexture = new THREE.CanvasTexture(canvas);
+    carpetTexture.colorSpace = THREE.SRGBColorSpace;
+    carpetTexture.anisotropy = 8;
+    const carpetFace = new THREE.MeshBasicMaterial({ map: carpetTexture, side: THREE.DoubleSide, toneMapped: false });
+    const glowMat = new THREE.MeshBasicMaterial({ map: lanternHaloTexture, color: 0x59e7ff, transparent: true, opacity: 0.32, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    const edgeGemMat = new THREE.MeshBasicMaterial({ color: 0x9af7ff, toneMapped: false });
+    for (const { route, progress, boostSeconds } of BOOST_PAD_LAYOUT) {
+      const point = this.routeAt(route, progress);
       const group = new THREE.Group();
-      const base = box(point.width * 0.78, 0.045, 5.3, new THREE.MeshBasicMaterial({ color: 0x6a3c99 }));
-      base.position.y = 0.03;
+      const base = box(point.width * 0.78, 0.055, BOOST_PAD_LENGTH, new THREE.MeshBasicMaterial({ color: 0x3d205d }));
+      base.position.y = 0.04;
       group.add(base);
       const mat = new THREE.MeshBasicMaterial({ color: 0xf2bd57 });
       this.carpetMaterials.push(mat);
+      const glowPlane = new THREE.Mesh(new THREE.PlaneGeometry(point.width * 0.95, BOOST_PAD_LENGTH * 1.25), glowMat);
+      glowPlane.rotation.x = -Math.PI / 2;
+      glowPlane.position.y = 0.09;
+      group.add(glowPlane);
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(point.width * 0.73, BOOST_PAD_LENGTH * 0.95), carpetFace);
+      face.rotation.x = -Math.PI / 2;
+      face.position.y = 0.105;
+      group.add(face);
       for (const x of [-point.width * 0.36, point.width * 0.36]) {
-        const edge = box(0.2, 0.06, 5.4, mat);
-        edge.position.set(x, 0.08, 0);
+        const edge = box(0.28, 0.09, BOOST_PAD_LENGTH * 0.98, mat);
+        edge.position.set(x, 0.15, 0);
         group.add(edge);
-      }
-      for (let i = 0; i < 3; i++) {
-        const stripe = box(point.width * 0.5, 0.05, 0.22, mat);
-        stripe.position.set(0, 0.08, -1.7 + i * 1.6);
-        group.add(stripe);
+        for (const z of [-3.5, -1.2, 1.2, 3.5]) {
+          const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.34, 0), edgeGemMat);
+          gem.position.set(x, 0.32, z);
+          group.add(gem);
+        }
       }
       group.position.copy(point.position);
       group.position.y += 0.08;
       group.rotation.y = Math.atan2(point.tangent.x, point.tangent.z);
       this.group.add(group);
-      this.boostPads.push({ position: group.position, tangent: point.tangent.clone(), right: point.right.clone(), halfWidth: point.width * 0.39, halfLength: 2.65, boostSeconds, route: point.route, mesh: group });
+      this.boostPads.push({ position: group.position, tangent: point.tangent.clone(), right: point.right.clone(), halfWidth: point.width * 0.39, halfLength: BOOST_PAD_LENGTH / 2, boostSeconds, route: point.route, mesh: group });
     }
   }
 
@@ -1452,7 +1678,7 @@ export class RaceTrack {
     return 'DESERT CAVE';
   }
 
-  update(time: number, dt: number) {
+  update(time: number, dt: number, racers: THREE.Vector3[] = []) {
     for (const obstacle of this.obstacles) {
       if (obstacle.broken) {
         obstacle.respawn -= dt;
@@ -1462,12 +1688,47 @@ export class RaceTrack {
         }
       }
       if (obstacle.moving && !obstacle.broken) {
-        const shift = Math.sin(time * 0.9 + obstacle.phase) * 0.4;
+        const shift = Math.sin(time * 0.9 + obstacle.phase) * 2.2;
         obstacle.mesh.position.copy(obstacle.basePosition).addScaledVector(obstacle.right, shift);
       }
     }
     const pulse = 0.88 + 0.12 * Math.sin(time * 3);
     for (const material of this.carpetMaterials) material.color.setRGB(1, 0.65 * pulse, 0.25 * pulse);
+    for (const cloud of this.clouds) cloud.sprite.position.x = ((cloud.baseX + time * cloud.speed + 550) % 1100) - 550;
+    for (const firefly of this.fireflies) {
+      firefly.sprite.position.x = firefly.base.x + Math.sin(time * 0.8 + firefly.phase) * 0.8;
+      firefly.sprite.position.y = firefly.base.y + Math.sin(time * 1.3 + firefly.phase) * 0.55;
+    }
+    for (const flag of this.marketFlags) flag.mesh.rotation.z = Math.PI + Math.sin(time * 1.4 + flag.phase) * 0.08;
+    for (const bird of this.birds) {
+      const nearest = racers.find((racer) => racer.distanceTo(bird.base) < 21);
+      if (bird.launchTime < 0 && nearest) {
+        bird.launchTime = time;
+        bird.direction.copy(bird.base).sub(nearest).setY(0).normalize();
+        if (bird.direction.lengthSq() < 0.1) bird.direction.set(1, 0, 0);
+      }
+      if (bird.launchTime >= 0) {
+        const flight = Math.min(7, time - bird.launchTime);
+        bird.group.position.copy(bird.base).addScaledVector(bird.direction, flight * 4.5);
+        bird.group.position.y += Math.min(2.4, flight) * 5.4 + Math.sin(time * 8 + bird.phase) * 0.22;
+        bird.group.rotation.y = Math.atan2(bird.direction.x, bird.direction.z);
+        if (time - bird.launchTime > 7 && !nearest) {
+          bird.launchTime = -1;
+          bird.group.position.copy(bird.base);
+        }
+      } else bird.group.position.y = bird.base.y + Math.sin(time * 1.9 + bird.phase) * 0.08;
+      const wingBeat = bird.launchTime >= 0 ? Math.sin(time * 17 + bird.phase) * 0.62 : Math.sin(time * 2 + bird.phase) * 0.07;
+      bird.leftWing.rotation.z = wingBeat;
+      bird.rightWing.rotation.z = -wingBeat;
+    }
+    for (const bird of this.skyBirds) {
+      const angle = time * 0.32 + bird.phase;
+      bird.group.position.set(bird.center.x + Math.cos(angle) * bird.radius, bird.center.y + Math.sin(time * 1.7 + bird.phase) * 1.5, bird.center.z + Math.sin(angle) * bird.radius);
+      bird.group.rotation.y = -angle;
+      const wingBeat = Math.sin(time * 12 + bird.phase) * 0.52;
+      bird.leftWing.rotation.z = wingBeat;
+      bird.rightWing.rotation.z = -wingBeat;
+    }
     for (const person of this.marketPeople) {
       person.figure.position.x = person.baseX + Math.sin(time * 0.65 + person.phase) * 0.22;
       person.figure.rotation.y = Math.sin(time * 0.55 + person.phase) * 0.17;

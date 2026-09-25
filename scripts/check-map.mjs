@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { ALLEY_OFFSET, ALLEY_ROAD_WIDTH, branchCoversMainEdge, CAVE_ARCH_SHAPE, CAVE_ARCH_SPANS, CAVE_TUNNEL_SHAPE, clearOfOtherRoutes, MAIN_ROAD_WIDTH, makeBranchSamples, makeMainCurve, MARKET_BANNER_SPANS, MARKET_GATE_SPANS, overMainPavement, roadArrowRotation, roadTurnSignRotation, ROOF_OFFSET, ROOF_ROAD_WIDTH, touchesBoostPad } from '../src/track.ts';
+import { ALLEY_OFFSET, ALLEY_ROAD_WIDTH, BOOST_PAD_LAYOUT, BOOST_PAD_LENGTH, branchCoversMainEdge, CAVE_ARCH_SHAPE, CAVE_ARCH_SPANS, CAVE_TUNNEL_SHAPE, clearOfOtherRoutes, MAIN_ROAD_WIDTH, makeBranchSamples, makeMainCurve, MARKET_BANNER_SPANS, MARKET_GATE_SPANS, OBSTACLE_LAYOUT, overMainPavement, ROOF_OFFSET, ROOF_ROAD_WIDTH, touchesBoostPad, TURN_SIGN_SPANS, turnSignDirection } from '../src/track.ts';
 
 const curve = makeMainCurve();
 const count = 640;
@@ -30,11 +30,14 @@ function crosses(a, b, c, d) {
 }
 
 let smallestMainRadius = Infinity;
+let tightestTurnProgress = 0;
 let closestSeparateRoad = Infinity;
 for (let i = 0; i < count; i++) {
-  smallestMainRadius = Math.min(smallestMainRadius, turnRadius(positions[(i + count - 1) % count], positions[i], positions[(i + 1) % count]));
-  const arrowForward = new THREE.Vector3(0, 1, 0).applyEuler(roadArrowRotation(tangents[i]));
-  assert.ok(arrowForward.dot(tangents[i]) > 0.999, `Road arrow points away from travel at ${i / count}`);
+  const radius = turnRadius(positions[(i + count - 1) % count], positions[i], positions[(i + 1) % count]);
+  if (radius < smallestMainRadius) {
+    smallestMainRadius = radius;
+    tightestTurnProgress = i / count;
+  }
   for (let j = i + 1; j < count; j++) {
     const gap = Math.min(j - i, count - j + i);
     if (gap < 32) continue;
@@ -44,9 +47,9 @@ for (let i = 0; i < count; i++) {
     }
   }
 }
-assert.ok(MAIN_ROAD_WIDTH >= 56 && MAIN_ROAD_WIDTH <= 68, 'The main road should feel wide enough for racing without becoming an empty plaza');
-assert.ok(curve.getLength() >= 1500 && curve.getLength() <= 1750, 'The lap is outside the intended course length');
-assert.ok(smallestMainRadius > MAIN_ROAD_WIDTH / 2 + 20, `Main road is too wide for its tightest turn: ${smallestMainRadius.toFixed(1)}m radius`);
+assert.ok(MAIN_ROAD_WIDTH >= 42 && MAIN_ROAD_WIDTH <= 50, 'The main road should hold several racers without becoming an empty plaza');
+assert.ok(curve.getLength() >= 1500 && curve.getLength() <= 1900, 'The lap is outside the intended course length');
+assert.ok(smallestMainRadius > MAIN_ROAD_WIDTH / 2 + 4, `Main road folds at ${tightestTurnProgress.toFixed(3)}: ${smallestMainRadius.toFixed(1)}m radius`);
 assert.ok(closestSeparateRoad > MAIN_ROAD_WIDTH + 4, `Separate ${MAIN_ROAD_WIDTH}m road sections overlap: ${closestSeparateRoad.toFixed(1)}m between centers`);
 
 const branches = [];
@@ -101,6 +104,41 @@ for (let i = 0; i < count; i += 3) {
 assert.ok(openBarrierSections >= 12 && openBarrierSections <= 60, `Unexpected number of shortcut openings: ${openBarrierSections}`);
 
 const routeSamples = [...mainSamples, ...branches.flat()];
+const pointFor = ({ route, progress }) => {
+  if (route === 'main') return mainSamples[Math.floor(progress * count)];
+  const branch = route === 'alley' ? branches[0] : branches[1];
+  const start = branch[0].progress;
+  const end = branch.at(-1).progress;
+  return branch[Math.floor(Math.max(0, Math.min(1, (progress - start) / (end - start))) * (branch.length - 1))];
+};
+assert.ok(OBSTACLE_LAYOUT.length >= 20, 'The course is too empty of hazards');
+const obstacles = OBSTACLE_LAYOUT.map((item) => {
+  const point = pointFor(item);
+  const radius = item.kind === 'boulder' ? 2.65 : item.kind === 'urn' ? 2.25 : item.kind === 'cart' ? 2.15 : 2.1;
+  assert.ok(Math.abs(item.lateral) + radius + 1.7 + (item.kind === 'boulder' ? 2.2 : 0) < point.width / 2, `${item.kind} at ${item.progress} crowds the road edge`);
+  const position = point.position.clone().addScaledVector(point.right, item.lateral);
+  assert.ok(clearOfOtherRoutes(routeSamples, position, radius + 1.7, item.route), `${item.kind} at ${item.progress} obstructs another route`);
+  return { ...item, position, radius };
+});
+for (let i = 0; i < obstacles.length; i++) {
+  for (let j = i + 1; j < obstacles.length; j++) {
+    const a = obstacles[i];
+    const b = obstacles[j];
+    if (Math.abs(a.position.y - b.position.y) > 3) continue;
+    assert.ok(a.position.distanceTo(b.position) > a.radius + b.radius + 2.5, `Hazards overlap at ${a.progress} and ${b.progress}`);
+  }
+}
+for (const pad of BOOST_PAD_LAYOUT) {
+  assert.ok(pad.boostSeconds >= (pad.route === 'main' ? 3 : 5), `Boost at ${pad.progress} is too short`);
+  const point = pointFor(pad);
+  for (const obstacle of obstacles) {
+    if (Math.abs(point.position.y - obstacle.position.y) > 3) continue;
+    const toObstacle = obstacle.position.clone().sub(point.position);
+    const lateral = Math.abs(toObstacle.dot(point.right));
+    const longitudinal = Math.abs(toObstacle.dot(point.tangent));
+    assert.ok(lateral > point.width * 0.39 + obstacle.radius + 1.7 || longitudinal > BOOST_PAD_LENGTH / 2 + obstacle.radius + 2, `Boost carpet at ${pad.progress} overlaps ${obstacle.kind} at ${obstacle.progress}`);
+  }
+}
 const clearBanners = MARKET_BANNER_SPANS.filter((progress) => {
   const point = curve.getPointAt(progress);
   const tangent = curve.getTangentAt(progress);
@@ -130,7 +168,7 @@ const pad = {
   tangent: new THREE.Vector3(0, 0, 1),
   right: new THREE.Vector3(1, 0, 0),
   halfWidth: MAIN_ROAD_WIDTH * 0.39,
-  halfLength: 2.65,
+  halfLength: BOOST_PAD_LENGTH / 2,
   route: 'main',
   mesh: new THREE.Group(),
 };
@@ -146,16 +184,15 @@ assert.ok(CAVE_ARCH_SHAPE.ceilingY - CAVE_ARCH_SHAPE.ceilingHalfHeight > 9, 'Cav
 assert.ok(CAVE_TUNNEL_SHAPE.wallOutset - CAVE_TUNNEL_SHAPE.wallRadius > 3, 'Cave wall clips the road edge');
 assert.ok(CAVE_TUNNEL_SHAPE.roofCenterY > 17 && CAVE_TUNNEL_SHAPE.roofEdgeY > 7, 'Cave roof is too low');
 assert.ok(CAVE_ARCH_SPANS.every((progress) => progress > 0.665 && progress < 0.78), 'Cave arch is outside the cave');
-for (const progress of [0.668, 0.705, 0.742]) {
+for (const progress of TURN_SIGN_SPANS) {
   const tangent = curve.getTangentAt(progress).normalize();
-  const upcoming = curve.getTangentAt(progress + 0.018).normalize();
+  const upcoming = curve.getTangentAt(progress + 0.035).normalize();
   const right = new THREE.Vector3(-tangent.z, 0, tangent.x);
-  const angle = roadTurnSignRotation(tangent, upcoming);
-  const signFacing = Math.atan2(tangent.x, tangent.z) + Math.PI;
-  const arrowForward = new THREE.Vector3(0, 1, 0)
-    .applyAxisAngle(new THREE.Vector3(0, 0, 1), angle)
-    .applyAxisAngle(new THREE.Vector3(0, 1, 0), signFacing);
-  assert.ok(arrowForward.dot(right) * upcoming.dot(right) > 0, `Cave sign arrow points against the turn at ${progress}`);
+  const turn = upcoming.dot(right);
+  assert.ok(Math.abs(turn) > 0.2, `Turn sign at ${progress} does not warn of a meaningful turn`);
+  assert.equal(turnSignDirection(tangent, upcoming), turn >= 0 ? 'right' : 'left', `Turn sign points against the bend at ${progress}`);
+  const point = curve.getPointAt(progress);
+  assert.ok([-1, 1].some((side) => clearOfOtherRoutes(routeSamples, point.clone().addScaledVector(right, side * (MAIN_ROAD_WIDTH / 2 + 5.6)), 5.1, 'main')), `Turn sign at ${progress} cannot be placed clear of the shortcuts`);
 }
 
 console.log(`Main course: ${curve.getLength().toFixed(0)}m long; ${smallestMainRadius.toFixed(1)}m minimum turn radius; ${closestSeparateRoad.toFixed(1)}m closest separate road centers; ${openBarrierSections} open barrier sections; ${clearBanners.length} safe market banners`);

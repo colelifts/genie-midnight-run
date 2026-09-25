@@ -4,6 +4,7 @@ import { GameAudio } from './audio';
 import { CharacterKartVisual, type RaceVisual } from './characterKart';
 import { CHARACTERS, CHARACTER_BY_ID, type CharacterId } from './characters';
 import { KartVisual, makeProjectile } from './kart';
+import { RacerShowcase } from './showcase';
 import { ITEMS, rollItem, type ItemId } from './items';
 import { MARKET_CROSSING_PROGRESS, marketCartState, PICKUP_LAYOUT, RaceTrack, touchesBoostPad, type RoadHit, type RoadPoint, type RouteName } from './track';
 
@@ -250,6 +251,7 @@ class GenieRace {
   readonly racers: Racer[] = [];
   readonly sparks: Sparks;
   readonly audio = new GameAudio();
+  readonly showcase: RacerShowcase;
   readonly projectiles: Projectile[] = [];
   readonly powerFields: PowerField[] = [];
   readonly pickups: Pickup[] = [];
@@ -342,6 +344,7 @@ class GenieRace {
     };
     this.sparks = new Sparks(this.scene);
     this.makeRacers();
+    this.showcase = new RacerShowcase(el<HTMLCanvasElement>('showcase-canvas'), this.selectedCharacter);
     this.makeCharacterSelect();
     this.makePickups();
     this.bindInput();
@@ -485,6 +488,7 @@ class GenieRace {
     try { localStorage.setItem('genie-midnight-character', character); } catch { /* Optional preference. */ }
     const player = this.racers[0];
     this.replaceVisual(player, character);
+    this.showcase.select(character);
     this.refreshCharacterSelect();
   }
 
@@ -507,6 +511,9 @@ class GenieRace {
       button.setAttribute('aria-pressed', String(selected));
     });
     characterDetail.innerHTML = `<strong>${character.name}</strong><span class="character-role">${character.title}</span><div class="power-line"><b>Passive · ${character.passiveName}:</b> ${character.passive}</div><div class="power-line"><b>E · ${character.signatureName}:</b> ${character.signature}</div><div class="power-line"><b>Q · ${character.ultimateName}:</b> ${character.ultimate}</div>`;
+    el<HTMLElement>('showcase-name').textContent = character.name;
+    el<HTMLElement>('showcase-role').textContent = character.title;
+    el<HTMLElement>('racer-showcase').style.setProperty('--showcase-accent', `#${character.accent.toString(16).padStart(6, '0')}`);
   }
 
   private makePickups() {
@@ -592,6 +599,7 @@ class GenieRace {
     this.camera.updateProjectionMatrix();
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.showcase.resize();
   }
 
   private startRace() {
@@ -1153,6 +1161,7 @@ class GenieRace {
     if (frameMs > 0) this.smoothedFps += (Math.min(120, 1000 / frameMs) - this.smoothedFps) * 0.05;
     hud.dataset.fps = String(Math.round(this.smoothedFps));
     if (this.mode !== 'paused') this.elapsed += dt;
+    if (this.mode === 'menu') this.showcase.update(dt);
     this.syncGamepad();
     if (this.mode === 'countdown') this.updateCountdown(dt);
     if (this.mode === 'race') { this.lapClock += dt; this.raceClock += dt; this.updateRace(dt); }

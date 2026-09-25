@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#171b38" />
+    <title>Genie's Midnight Run</title>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game" aria-label="3D kart racing game"></canvas>
+      <div id="vignette"></div>
+
+      <div id="hud" class="hidden">
+        <div class="race-status">
+          <div id="position" class="position">3<span>rd</span><em> / 3</em></div>
+          <div id="lap" class="lap">LAP 1</div>
+          <div id="zone" class="zone">MIDNIGHT MARKET</div>
+        </div>
+        <div id="banner" class="banner hidden"></div>
+        <div class="map-shell">
+          <div class="map-label">AGRABAH CIRCUIT</div>
+          <canvas id="minimap" width="200" height="170" aria-label="Race minimap"></canvas>
+        </div>
+        <div class="bottom-left">
+          <div class="item-icon">✦<span>∞</span></div>
+          <div class="item-caption">WISH ITEM<br><small>PASSIVE UPGRADE CHANCE</small></div>
+        </div>
+        <div class="speed-group">
+          <div class="speed"><strong id="speed">0</strong><span>km/h</span></div>
+          <div class="boost-track"><div id="boost-fill"></div></div>
+          <div id="surface" class="surface">ROAD</div>
+        </div>
+        <div class="ability-group">
+          <div class="ability-tile" id="wish-tile"><div class="ability-symbol">✦</div><div><strong>THREE WISHES</strong><small>HOLD E · RELEASE TO CHOOSE</small></div><kbd>E</kbd></div>
+          <div class="ability-tile ultimate-tile" id="ultimate-tile"><div class="ability-symbol">♛</div><div><strong>COSMIC SHOWSTOPPER</strong><small>READY · NO COOLDOWN</small></div><kbd>Q</kbd></div>
+        </div>
+        <div id="wish-picker" class="wish-picker hidden">
+          <div class="wish-title">CHOOSE YOUR WISH</div>
+          <div class="wish-options">
+            <div class="wish-option" data-wish="boost"><b>»</b><span>BOOST</span></div>
+            <div class="wish-option" data-wish="shield"><b>◇</b><span>SHIELD</span></div>
+            <div class="wish-option" data-wish="shot"><b>✦</b><span>SHOT</span></div>
+          </div>
+          <div class="wish-hint">RELEASE E TO CAST</div>
+        </div>
+        <div id="touch-controls" class="touch-controls hidden">
+          <div class="touch-left"><button data-touch="left">◀</button><button data-touch="right">▶</button></div>
+          <div class="touch-right"><button data-touch="drift">DRIFT</button><button data-touch="wish">WISH</button><button data-touch="ultimate">ULT</button><button data-touch="accel">GO</button></div>
+        </div>
+      </div>
+
+      <div id="menu" class="overlay menu">
+        <div class="menu-copy">
+          <div class="eyebrow">ONE RACER · ONE TRACK · ENDLESS LAPS</div>
+          <h1><span>GENIE'S</span><br />MIDNIGHT RUN</h1>
+          <p>Drift through the market, take the rooftop jump, cut through the cave, and outrun two other Genies.</p>
+          <button id="play" class="primary-button">START RACING <span>→</span></button>
+          <div class="menu-note">Abilities have no cooldown in this test build.</div>
+        </div>
+        <div class="controls-card">
+          <div class="card-heading">CONTROLS</div>
+          <div><span>Drive</span><strong>W A S D / ARROWS</strong></div>
+          <div><span>Drift &amp; jump</span><strong>SPACE</strong></div>
+          <div><span>Choose a wish</span><strong>HOLD E · RELEASE</strong></div>
+          <div><span>Quick-test wishes</span><strong>1 BOOST · 2 SHIELD · 3 SHOT</strong></div>
+          <div><span>Ultimate</span><strong>Q</strong></div>
+          <div><span>Pause</span><strong>ESC</strong></div>
+          <small>Controller supported · Best on desktop</small>
+        </div>
+      </div>
+
+      <div id="pause" class="overlay pause hidden">
+        <div class="pause-card">
+          <div class="eyebrow">RACE PAUSED</div>
+          <h2>Take a breath.</h2>
+          <p>The race stays endless. Jump back in whenever you're ready.</p>
+          <button id="resume" class="primary-button">RESUME <span>→</span></button>
+          <button id="restart" class="text-button">Restart race</button>
+          <button id="mute" class="text-button">Sound: on</button>
+        </div>
+      </div>
+      <div id="countdown" class="countdown hidden">3</div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

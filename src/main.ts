@@ -855,7 +855,8 @@ class GenieRace {
     this.makeFlash(origin, def.accent, 4.8, 0.38);
     this.burst(origin, def.color, def.accent, 20);
     if (racer.id === 0) this.showBanner(def.signatureName.toUpperCase(), 1);
-    this.audio.play('wish');
+    if (racer.id === 0) this.audio.playSignature(racer.character);
+    else this.audio.play('wish');
     switch (racer.character) {
       case 'genie':
         this.useWish(racer, 'boost');

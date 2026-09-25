@@ -182,6 +182,42 @@ export class GameAudio {
     if (stage === 3) this.kick(now + 0.035);
   }
 
+  playSignature(character: CharacterId) {
+    if (!this.context || this.muted) return;
+    const now = this.context.currentTime;
+    switch (character) {
+      case 'genie': this.chime([600, 800, 1000], now, 0.07, 0.12); break;
+      case 'mickey': this.chime([523, 659, 784], now, 0.055, 0.17); break;
+      case 'stitch':
+        this.tone(1047, 0.085, 'square', now, 0.075);
+        this.tone(330, 0.1, 'sawtooth', now + 0.07, 0.11);
+        this.tone(880, 0.075, 'square', now + 0.14, 0.09);
+        break;
+      case 'elsa': this.chime([880, 1175, 1568], now, 0.07, 0.23); break;
+      case 'moana':
+        this.sweep(240, 740, 0.3, now, 0.095);
+        this.chime([440, 587], now + 0.08, 0.09, 0.19);
+        break;
+      case 'buzz':
+        this.sweep(1120, 290, 0.18, now, 0.11);
+        this.tone(784, 0.065, 'square', now + 0.1, 0.1);
+        break;
+      case 'maleficent':
+        this.tone(220, 0.095, 'sawtooth', now, 0.24);
+        this.chime([330, 466], now + 0.06, 0.11, 0.18);
+        break;
+      case 'hades':
+        this.sweep(170, 560, 0.23, now, 0.09);
+        this.tone(659, 0.07, 'sawtooth', now + 0.1, 0.14);
+        break;
+      case 'jack': this.chime([294, 440, 587], now, 0.09, 0.19); break;
+      case 'mulan':
+        this.tone(147, 0.11, 'triangle', now, 0.13);
+        this.chime([440, 587, 880], now + 0.06, 0.05, 0.16);
+        break;
+    }
+  }
+
   playUltimate(character: CharacterId) {
     if (!this.context || this.muted) return;
     const now = this.context.currentTime;

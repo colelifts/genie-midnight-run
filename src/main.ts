@@ -288,6 +288,7 @@ class GenieRace {
   private finishCount = 0;
   private bestLap = Infinity;
   private cameraLook = new THREE.Vector3();
+  private sunlight!: THREE.DirectionalLight;
   private cameraDistance = 13.1;
   private cameraReady = false;
   private mapTransform = { centerX: 0, centerZ: 0, scale: 0.25 };
@@ -319,14 +320,15 @@ class GenieRace {
     sunlight.position.set(-75, 130, -85);
     sunlight.castShadow = true;
     sunlight.shadow.mapSize.set(1024, 1024);
-    sunlight.shadow.camera.left = -390;
-    sunlight.shadow.camera.right = 390;
-    sunlight.shadow.camera.top = 390;
-    sunlight.shadow.camera.bottom = -390;
+    sunlight.shadow.camera.left = -135;
+    sunlight.shadow.camera.right = 135;
+    sunlight.shadow.camera.top = 135;
+    sunlight.shadow.camera.bottom = -135;
     sunlight.shadow.camera.near = 1;
     sunlight.shadow.camera.far = 650;
     sunlight.shadow.bias = -0.0004;
-    this.scene.add(sunlight);
+    this.sunlight = sunlight;
+    this.scene.add(sunlight, sunlight.target);
     const moonFill = new THREE.DirectionalLight(0x809cff, 0.62);
     moonFill.position.set(90, 80, 45);
     this.scene.add(moonFill);
@@ -2085,6 +2087,9 @@ class GenieRace {
 
   private updateCamera(dt: number) {
     const player = this.racers[0];
+    this.sunlight.position.set(player.position.x - 75, player.position.y + 130, player.position.z - 85);
+    this.sunlight.target.position.copy(player.position);
+    this.sunlight.target.updateMatrixWorld();
     const forward = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
     if (this.mode === 'menu') {
       const right = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw));

@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "check:map": "node --experimental-strip-types scripts/check-map.mjs",
     "check:collisions": "node --experimental-strip-types scripts/check-collisions.mjs",
-    "build:pages": "npm run check:map && npm run check:collisions && tsc --noEmit && vite build --base /genie-midnight-run/",
+    "check:handling": "node --experimental-strip-types scripts/check-handling.mjs",
+    "build:pages": "npm run check:map && npm run check:collisions && npm run check:handling && tsc --noEmit && vite build --base /genie-midnight-run/",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {

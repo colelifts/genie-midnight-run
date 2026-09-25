@@ -3,6 +3,7 @@ import './style.css';
 import './roster.css';
 import { GameAudio } from './audio';
 import { sweptSphereHit } from './collision';
+import { advanceChaseYaw, advanceHeading, raceSpeed } from './handling';
 import { CharacterKartVisual, type RaceVisual } from './characterKart';
 import { CHARACTERS, CHARACTER_BY_ID, type CharacterId } from './characters';
 import { KartVisual, makeProjectile } from './kart';
@@ -43,8 +44,6 @@ const clamp = (value: number, min: number, max: number) => Math.max(min, Math.mi
 const wrap = (value: number) => ((value % 1) + 1) % 1;
 const angleDiff = (target: number, current: number) => Math.atan2(Math.sin(target - current), Math.cos(target - current));
 const formatLapTime = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${(seconds % 60).toFixed(2).padStart(5, '0')}`;
-const RACE_SPEED_SCALE = 1.3;
-const raceSpeed = (speed: number) => speed * RACE_SPEED_SCALE;
 const KART_HITBOX_HEIGHT = 1.45;
 const RACER_COUNT = 8;
 const START_LANES = [0, -4, 4, -4, 4, -4, 4, 0];
@@ -282,6 +281,7 @@ class GenieRace {
   readonly keys = new Set<string>();
   readonly touch = new Set<string>();
   readonly demoMode = new URLSearchParams(window.location.search).has('demo');
+  readonly debugDrive = window.location.hostname === '127.0.0.1' ? new URLSearchParams(window.location.search).get('debugDrive') : null;
   readonly debugPowers = window.location.hostname === '127.0.0.1' && new URLSearchParams(window.location.search).has('debugPowers');
   readonly debugBrake = this.debugPowers && new URLSearchParams(window.location.search).has('debugBrake');
   mode: GameMode = 'menu';
@@ -689,6 +689,8 @@ class GenieRace {
   private resetRace() {
     this.lapClock = 0;
     this.raceClock = 0;
+    delete hud.dataset.handlingStart;
+    delete hud.dataset.handlingEnd;
     this.finishCount = 0;
     const rivals = CHARACTERS.map((character) => character.id).filter((id) => id !== this.selectedCharacter);
     for (let i = rivals.length - 1; i > 0; i--) { const pick = Math.floor(Math.random() * (i + 1)); [rivals[i], rivals[pick]] = [rivals[pick], rivals[i]]; }
@@ -1569,7 +1571,7 @@ class GenieRace {
       }
       this.laserLockTarget = locked;
     }
-    if (this.demoMode) this.updateAI(this.racers[0], dt);
+    if (this.demoMode && !this.debugDrive) this.updateAI(this.racers[0], dt);
     else this.updatePlayer(dt);
     for (let i = 1; i < this.racers.length; i++) this.updateAI(this.racers[i], dt);
     this.updateSlipstreams(dt);
@@ -1602,12 +1604,13 @@ class GenieRace {
 
   private updatePlayer(dt: number) {
     const player = this.racers[0];
+    const scriptedTurn = this.debugDrive && this.raceClock >= 2.2 && this.raceClock < 2.75;
     const left = this.keys.has('KeyA') || this.keys.has('ArrowLeft') || this.touch.has('left');
     const right = this.keys.has('KeyD') || this.keys.has('ArrowRight') || this.touch.has('right');
-    const accel = this.keys.has('KeyW') || this.keys.has('ArrowUp') || this.touch.has('accel') ? 1 : this.gamepadAccel;
-    const brake = this.keys.has('KeyS') || this.keys.has('ArrowDown') ? 1 : this.gamepadBrake;
-    const steer = clamp((right ? 1 : 0) - (left ? 1 : 0) + this.gamepadSteer, -1, 1);
-    const driftPressed = this.keys.has('Space') || this.touch.has('drift') || this.gamepadDrift;
+    const accel = this.debugDrive || this.keys.has('KeyW') || this.keys.has('ArrowUp') || this.touch.has('accel') ? 1 : this.gamepadAccel;
+    const brake = !this.debugDrive && (this.keys.has('KeyS') || this.keys.has('ArrowDown')) ? 1 : this.gamepadBrake;
+    const steer = this.debugDrive ? scriptedTurn ? 1 : 0 : clamp((right ? 1 : 0) - (left ? 1 : 0) + this.gamepadSteer, -1, 1);
+    const driftPressed = this.debugDrive ? this.debugDrive === 'corner' && scriptedTurn : this.keys.has('Space') || this.touch.has('drift') || this.gamepadDrift;
     player.steerVisual = steer;
     if (player.stunTime > 0) {
       player.speed = 0;
@@ -1640,14 +1643,11 @@ class GenieRace {
       this.releaseDrift(player);
     }
     const boostHandling = player.padBoostTime > 0 ? 1.2 : player.ultimateTime > 0 ? 1.12 : 1;
-    const turnRate = (1.52 - Math.min(Math.abs(player.speed) / raceSpeed(50), 1) * 0.45)
-      * (player.drifting ? 2.1 : 1) * boostHandling * stats.handling * (player.wobbleTime > 0 ? 0.62 : 1);
-    const desiredYawRate = -(steer + (player.wobbleTime > 0 ? Math.sin(this.elapsed * 19) * 0.22 : 0))
-      * turnRate * Math.min(1, Math.abs(player.speed) / raceSpeed(6));
-    // Steering builds and releases with inertia; the travel direction follows the nose later.
-    player.yawRate += (desiredYawRate - player.yawRate) * (1 - Math.exp(-dt * (Math.abs(steer) < 0.05 ? 5 : player.drifting ? 6.5 : 8)));
-    player.yaw += player.yawRate * dt;
-    player.moveYaw += angleDiff(player.yaw, player.moveYaw) * (1 - Math.exp(-dt * (player.drifting ? 3.1 : 6.2)));
+    const heading = advanceHeading(player, { steer, speed: player.speed, handling: stats.handling * (player.wobbleTime > 0 ? 0.62 : 1), drifting: player.drifting,
+      boostHandling, wobble: player.wobbleTime > 0 ? Math.sin(this.elapsed * 19) * 0.22 : 0, dt });
+    player.yawRate = heading.yawRate;
+    player.yaw = heading.yaw;
+    player.moveYaw = heading.moveYaw;
     player.position.x += Math.sin(player.moveYaw) * player.speed * dt;
     player.position.z += Math.cos(player.moveYaw) * player.speed * dt;
     this.followRoadHeight(player, dt);
@@ -2464,7 +2464,7 @@ class GenieRace {
       }
     } else {
       // The chase view follows travel direction with a little lag, exposing the kart's drift angle.
-      this.cameraYaw += angleDiff(player.moveYaw, this.cameraYaw) * (1 - Math.exp(-dt * (player.drifting ? 3.5 : 6.5)));
+      this.cameraYaw = advanceChaseYaw(this.cameraYaw, player.moveYaw, player.drifting, dt);
       const chaseForward = new THREE.Vector3(Math.sin(this.cameraYaw), 0, Math.cos(this.cameraYaw));
       const insideCave = player.progress > 0.665 && player.progress < 0.78;
       const targetDistance = insideCave ? 13.3 : player.padBoostTime > 0 ? 16 : player.ultimateTime > 0 ? 15.5 : player.boostTime > 0 ? 15 : 14.3;
@@ -2493,6 +2493,16 @@ class GenieRace {
 
   private updateHUD() {
     const player = this.racers[0];
+    if (this.debugDrive) {
+      const road = this.track.nearest(player.position, player.progress);
+      const trace = JSON.stringify({ clock: Number(this.raceClock.toFixed(2)), progress: Number(player.progress.toFixed(3)),
+        x: Number(player.position.x.toFixed(2)), z: Number(player.position.z.toFixed(2)), yaw: Number(player.yaw.toFixed(3)),
+        moveYaw: Number(player.moveYaw.toFixed(3)), cameraYaw: Number(this.cameraYaw.toFixed(3)),
+        lateral: Number(road.lateral.toFixed(2)), roadHalfWidth: Number((road.point.width / 2).toFixed(2)),
+        speed: Number(player.speed.toFixed(1)), stun: Number(player.stunTime.toFixed(2)) });
+      if (this.raceClock >= 2.2 && !hud.dataset.handlingStart) hud.dataset.handlingStart = trace;
+      if (this.raceClock >= 2.75 && !hud.dataset.handlingEnd) hud.dataset.handlingEnd = trace;
+    }
     hud.dataset.state = JSON.stringify(this.racers.map((racer) => {
       const road = this.track.nearest(racer.position, racer.progress);
       return { id: racer.id, character: racer.character, lap: racer.lap, p: Number(racer.progress.toFixed(3)), x: Number(racer.position.x.toFixed(2)), y: Number(racer.position.y.toFixed(2)), z: Number(racer.position.z.toFixed(2)), yaw: Number(racer.yaw.toFixed(3)), moveYaw: Number(racer.moveYaw.toFixed(3)), yawRate: Number(racer.yawRate.toFixed(2)), route: road.point.route, lateral: Number(road.lateral.toFixed(2)), roadHalfWidth: Number((road.point.width / 2).toFixed(2)), onRoad: road.onRoad, aiRoute: racer.aiRoute, aiLine: Number(racer.aiLine.toFixed(1)), speed: Math.round(racer.speed), drift: Number(racer.driftCharge.toFixed(2)), jump: Number(racer.jumpTime.toFixed(2)), trickReady: racer.trickReady, trickBoost: racer.trickBoost, tricks: racer.tricksLanded, drafts: racer.draftBoosts, slip: Number(racer.slipCharge.toFixed(2)), padBoost: Number(racer.padBoostTime.toFixed(2)), iceSpeed: Number(racer.iceSpeedTime.toFixed(2)), stun: Number(racer.stunTime.toFixed(2)), hitGrace: Number(racer.hitCooldown.toFixed(2)), ultimate: Number(racer.ultimateTime.toFixed(2)), meter: Math.round(racer.ultimateMeter), signatureCooldown: Number(racer.signatureCooldown.toFixed(1)), item: racer.item, tripleSparks: racer.tripleSparks };

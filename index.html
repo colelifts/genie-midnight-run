@@ -90,6 +90,11 @@
           <button id="resume" class="primary-button">RESUME <span>→</span></button>
           <button id="restart" class="text-button">Restart race</button>
           <button id="mute" class="text-button">Sound: on</button>
+          <div class="audio-settings">
+            <label for="music-level">Music <input id="music-level" type="range" min="0" max="100" value="80" aria-label="Music volume"></label>
+            <label for="effects-level">Effects <input id="effects-level" type="range" min="0" max="100" value="90" aria-label="Effects volume"></label>
+          </div>
+          <a class="text-button" href="./audio/credits.html" target="_blank" rel="noopener">Audio credits</a>
         </div>
       </div>
       <div id="results" class="overlay results hidden">

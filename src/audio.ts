@@ -1,56 +1,94 @@
+/// <reference types="vite/client" />
 import type { CharacterId } from './characters';
 
 type SoundName = 'count' | 'go' | 'drift' | 'boost' | 'pad' | 'wish' | 'shield' | 'shot' | 'fire' | 'hit' | 'stun' | 'lap' | 'final-lap' | 'ultimate' | 'trick' | 'draft' | 'pickup' | 'cart-warning' | 'birds';
 
-const ULTIMATE_STINGS: Record<CharacterId, number[]> = {
-  genie: [392, 587, 784, 1175], mickey: [523, 659, 784, 1047], stitch: [220, 659, 330, 988],
-  elsa: [659, 880, 988, 1319], moana: [294, 440, 587, 880], buzz: [392, 587, 784, 1568],
-  maleficent: [185, 277, 370, 740], hades: [165, 247, 330, 659], jack: [220, 330, 440, 659], mulan: [294, 440, 587, 1175],
-};
-
-const MUSIC = {
-  market: [196, 246.94, 293.66, 392, 293.66, 246.94, 220, 293.66, 174.61, 220, 261.63, 349.23, 261.63, 220, 196, 261.63],
-  roof: [196, 293.66, 392, 493.88, 392, 293.66, 261.63, 392, 220, 329.63, 440, 493.88, 440, 329.63, 293.66, 392],
-  garden: [220, 261.63, 329.63, 440, 329.63, 261.63, 293.66, 392, 246.94, 293.66, 369.99, 493.88, 369.99, 293.66, 261.63, 440],
-  cave: [174.61, 220, 261.63, 349.23, 261.63, 220, 196, 261.63, 164.81, 196, 246.94, 329.63, 246.94, 196, 174.61, 220],
+// Sources, licenses, and processing notes are documented in AUDIO_CREDITS.md.
+const ASSETS = {
+  menu: 'desert-menu.mp3', race: 'desert-race.mp3', engine: 'engine.wav', skid: 'skid.wav',
+  spark: 'spell-spark.mp3', surge: 'spell-surge.mp3', grand: 'spell-grand.mp3',
+  whoosh: 'boost-whoosh.mp3', time: 'time-whoosh.mp3',
+  light: 'impact-light.mp3', mid: 'impact-mid.mp3', heavy: 'impact-heavy.mp3', birds: 'birds.mp3',
 } as const;
+type AssetName = keyof typeof ASSETS;
+type Loop = { source: AudioBufferSourceNode; gain: GainNode };
+const level = (key: string, fallback: number) => {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null) return fallback;
+    const stored = Number(raw);
+    return Number.isFinite(stored) && stored >= 0 && stored <= 1 ? stored : fallback;
+  } catch { return fallback; }
+};
 
 export class GameAudio {
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
-  private engineOscillator: OscillatorNode | null = null;
-  private engineGain: GainNode | null = null;
+  private musicBus: GainNode | null = null;
+  private effectsBus: GainNode | null = null;
+  private motorBus: GainNode | null = null;
   private windGain: GainNode | null = null;
   private windFilter: BiquadFilterNode | null = null;
   private fountainGain: GainNode | null = null;
   private fountainFilter: BiquadFilterNode | null = null;
-  private skidGain: GainNode | null = null;
-  private hatGain: GainNode | null = null;
-  private nextBeat = 0;
-  private beat = 0;
+  private readonly downloads = new Map<AssetName, Promise<ArrayBuffer | null>>();
+  private readonly buffers = new Map<AssetName, AudioBuffer>();
+  private readonly loops = new Map<AssetName, Loop>();
+  private paused = false;
+  private duckUntil = 0;
+  private musicLevel = level('genie-midnight-music', 0.8);
+  private effectsLevel = level('genie-midnight-effects', 0.9);
+  private listenerX = 0;
+  private listenerZ = 0;
+  private listenerYaw = 0;
+  private eventScale = 1;
+  private eventPan = 0;
   muted = false;
+
+  constructor() {
+    // Fetch during the menu so the first countdown and engine have time to arrive.
+    for (const [name, file] of Object.entries(ASSETS) as [AssetName, string][]) {
+      this.downloads.set(name, fetch(`${import.meta.env.BASE_URL}audio/${file}`)
+        .then((response) => {
+          if (!response.ok) throw new Error(`Audio ${file}: HTTP ${response.status}`);
+          return response.arrayBuffer();
+        })
+        .catch((error) => { console.warn(error); return null; }));
+    }
+  }
 
   start() {
     if (this.context) {
       void this.context.resume();
+      this.paused = false;
       return;
     }
     const context = new AudioContext();
     const master = context.createGain();
-    master.gain.value = 0.33;
-    master.connect(context.destination);
-    const engineFilter = context.createBiquadFilter();
-    engineFilter.type = 'lowpass';
-    engineFilter.frequency.value = 440;
-    engineFilter.connect(master);
-    const engineGain = context.createGain();
-    engineGain.gain.value = 0;
-    engineGain.connect(engineFilter);
-    const engineOscillator = context.createOscillator();
-    engineOscillator.type = 'sawtooth';
-    engineOscillator.frequency.value = 80;
-    engineOscillator.connect(engineGain);
-    engineOscillator.start();
+    master.gain.value = this.muted ? 0 : 0.85;
+    const limiter = context.createDynamicsCompressor();
+    limiter.threshold.value = -13;
+    limiter.knee.value = 12;
+    limiter.ratio.value = 3;
+    limiter.attack.value = 0.006;
+    limiter.release.value = 0.18;
+    master.connect(limiter).connect(context.destination);
+    const musicBus = context.createGain();
+    const effectsBus = context.createGain();
+    const motorBus = context.createGain();
+    musicBus.gain.value = this.musicLevel;
+    effectsBus.gain.value = this.effectsLevel;
+    motorBus.gain.value = this.effectsLevel;
+    musicBus.connect(master);
+    effectsBus.connect(master);
+    motorBus.connect(master);
+    this.context = context;
+    this.master = master;
+    this.musicBus = musicBus;
+    this.effectsBus = effectsBus;
+    this.motorBus = motorBus;
+    this.paused = false;
+
     const noiseBuffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
     const noise = noiseBuffer.getChannelData(0);
     for (let i = 0; i < noise.length; i++) noise[i] = Math.random() * 2 - 1;
@@ -62,218 +100,208 @@ export class GameAudio {
     windFilter.frequency.value = 450;
     const windGain = context.createGain();
     windGain.gain.value = 0;
-    noiseSource.connect(windFilter);
-    windFilter.connect(windGain);
-    windGain.connect(master);
+    noiseSource.connect(windFilter).connect(windGain).connect(motorBus);
     const fountainFilter = context.createBiquadFilter();
     fountainFilter.type = 'bandpass';
     fountainFilter.frequency.value = 650;
     fountainFilter.Q.value = 0.55;
     const fountainGain = context.createGain();
     fountainGain.gain.value = 0;
-    noiseSource.connect(fountainFilter);
-    fountainFilter.connect(fountainGain);
-    fountainGain.connect(master);
-    const skidFilter = context.createBiquadFilter();
-    skidFilter.type = 'bandpass';
-    skidFilter.frequency.value = 1450;
-    skidFilter.Q.value = 0.7;
-    const skidGain = context.createGain();
-    skidGain.gain.value = 0;
-    noiseSource.connect(skidFilter);
-    skidFilter.connect(skidGain);
-    skidGain.connect(master);
-    const hatFilter = context.createBiquadFilter();
-    hatFilter.type = 'highpass';
-    hatFilter.frequency.value = 5200;
-    const hatGain = context.createGain();
-    hatGain.gain.value = 0;
-    noiseSource.connect(hatFilter);
-    hatFilter.connect(hatGain);
-    hatGain.connect(master);
+    noiseSource.connect(fountainFilter).connect(fountainGain).connect(effectsBus);
     noiseSource.start();
-    this.context = context;
-    this.master = master;
-    this.engineOscillator = engineOscillator;
-    this.engineGain = engineGain;
     this.windGain = windGain;
     this.windFilter = windFilter;
     this.fountainGain = fountainGain;
     this.fountainFilter = fountainFilter;
-    this.skidGain = skidGain;
-    this.hatGain = hatGain;
-    this.nextBeat = context.currentTime + 0.1;
+    void context.resume();
+    void this.loadAssets();
+  }
+
+  private async loadAssets() {
+    const context = this.context;
+    if (!context) return;
+    await Promise.all((Object.keys(ASSETS) as AssetName[]).map(async (name) => {
+      const raw = await this.downloads.get(name);
+      if (!raw) return;
+      try {
+        const buffer = await context.decodeAudioData(raw);
+        this.buffers.set(name, buffer);
+        if (name === 'menu' || name === 'race' || name === 'engine' || name === 'skid') this.startLoop(name);
+      } catch (error) { console.warn(`Could not decode ${ASSETS[name]}`, error); }
+    }));
+  }
+
+  private startLoop(name: 'menu' | 'race' | 'engine' | 'skid') {
+    const context = this.context;
+    const buffer = this.buffers.get(name);
+    const bus = name === 'menu' || name === 'race' ? this.musicBus : this.motorBus;
+    if (!context || !buffer || !bus || this.loops.has(name)) return;
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    source.buffer = buffer;
+    source.loop = true;
+    source.connect(gain).connect(bus);
+    gain.gain.value = 0;
+    if (name === 'engine') source.playbackRate.value = 0.76;
+    source.start();
+    this.loops.set(name, { source, gain });
   }
 
   setMuted(value: boolean) {
     this.muted = value;
-    if (this.master && this.context) this.master.gain.setTargetAtTime(value ? 0 : 0.33, this.context.currentTime, 0.05);
+    if (this.master && this.context) this.master.gain.setTargetAtTime(value ? 0 : 0.85, this.context.currentTime, 0.04);
+  }
+
+  getMix() { return { music: this.musicLevel, effects: this.effectsLevel }; }
+
+  setMix(music: number, effects: number) {
+    this.musicLevel = Math.max(0, Math.min(1, music));
+    this.effectsLevel = Math.max(0, Math.min(1, effects));
+    if (this.context) {
+      this.musicBus?.gain.setTargetAtTime(this.musicLevel, this.context.currentTime, 0.05);
+      this.effectsBus?.gain.setTargetAtTime(this.effectsLevel, this.context.currentTime, 0.05);
+      this.motorBus?.gain.setTargetAtTime(this.effectsLevel, this.context.currentTime, 0.05);
+    }
+    try {
+      localStorage.setItem('genie-midnight-music', String(this.musicLevel));
+      localStorage.setItem('genie-midnight-effects', String(this.effectsLevel));
+    } catch { /* Optional preference. */ }
+  }
+
+  setPaused(value: boolean) {
+    this.paused = value;
+    if (!this.context) return;
+    const now = this.context.currentTime;
+    this.loops.get('race')?.gain.gain.setTargetAtTime(value ? 0.08 : 0.65, now, 0.22);
+    this.loops.get('engine')?.gain.gain.setTargetAtTime(value ? 0 : 0.2, now, 0.08);
+    this.loops.get('skid')?.gain.gain.setTargetAtTime(0, now, 0.06);
+  }
+
+  getStatus() {
+    return {
+      context: this.context?.state ?? 'not-started',
+      samplesLoaded: this.buffers.size,
+      samplesExpected: Object.keys(ASSETS).length,
+      loops: [...this.loops.keys()],
+      muted: this.muted,
+      musicLevel: this.musicLevel,
+      effectsLevel: this.effectsLevel,
+    };
+  }
+
+  setListener(x: number, z: number, yaw: number) {
+    this.listenerX = x;
+    this.listenerZ = z;
+    this.listenerYaw = yaw;
+  }
+
+  playAt(name: SoundName, position: { x: number; z: number }) {
+    const dx = position.x - this.listenerX;
+    const dz = position.z - this.listenerZ;
+    const distance = Math.hypot(dx, dz);
+    if (distance > 100) return;
+    this.eventScale = 1 / (1 + (distance / 21) ** 2);
+    this.eventPan = Math.max(-0.85, Math.min(0.85, (dx * Math.cos(this.listenerYaw) - dz * Math.sin(this.listenerYaw)) / 22));
+    this.play(name);
+    this.eventScale = 1;
+    this.eventPan = 0;
   }
 
   update(speed: number, drifting: boolean, ultimate: boolean, active: boolean, zone: string, finalLap = false, progress = 0) {
-    if (!this.context || !this.engineOscillator || !this.engineGain) return;
-    const now = this.context.currentTime;
-    this.engineOscillator.frequency.setTargetAtTime(75 + speed * (ultimate ? 5.7 : 4.1) + (drifting ? 18 : 0), now, 0.08);
-    this.engineGain.gain.setTargetAtTime(active ? 0.045 + Math.min(speed, 42) * 0.0011 : 0, now, 0.08);
+    const context = this.context;
+    if (!context) return;
+    const now = context.currentTime;
+    const running = active && !this.paused;
+    const engine = this.loops.get('engine');
+    if (engine) {
+      engine.source.playbackRate.setTargetAtTime(0.7 + Math.min(speed, 53) * (ultimate ? 0.023 : 0.018), now, 0.1);
+      engine.gain.gain.setTargetAtTime(running ? 0.24 + Math.min(speed, 45) * 0.006 : 0, now, 0.1);
+    }
+    const skid = this.loops.get('skid');
+    if (skid) {
+      skid.source.playbackRate.setTargetAtTime(0.84 + Math.min(speed, 45) * 0.008, now, 0.14);
+      skid.gain.gain.setTargetAtTime(running && drifting ? 0.15 + Math.min(speed, 40) * 0.005 : 0, now, 0.085);
+    }
+    const duck = now < this.duckUntil ? 0.5 : 1;
+    this.loops.get('menu')?.gain.gain.setTargetAtTime(!active && !this.paused ? 0.52 : 0, now, 0.32);
+    this.loops.get('race')?.gain.gain.setTargetAtTime(running ? (finalLap ? 0.8 : 0.66) * duck : this.paused ? 0.08 : 0, now, 0.32);
     const cave = zone === 'DESERT CAVE';
     const garden = zone === 'PALACE GARDEN';
-    this.windGain?.gain.setTargetAtTime(active ? cave ? 0.055 : garden ? 0.019 : 0.031 : 0, now, 0.35);
-    this.windFilter?.frequency.setTargetAtTime(cave ? 300 : garden ? 710 : 480 + Math.min(speed, 45) * 9, now, 0.4);
-    const fountainDistance = Math.abs(progress - 0.44);
-    const fountainPresence = garden ? Math.max(0, 1 - fountainDistance / 0.065) : 0;
-    this.fountainGain?.gain.setTargetAtTime(active ? fountainPresence * (0.015 + Math.sin(now * 3.4) * 0.003) : 0, now, 0.2);
+    this.windGain?.gain.setTargetAtTime(running ? cave ? 0.036 : garden ? 0.018 : 0.025 + Math.min(speed, 50) * 0.0005 : 0, now, 0.35);
+    this.windFilter?.frequency.setTargetAtTime(cave ? 340 : garden ? 730 : 490 + Math.min(speed, 50) * 8, now, 0.4);
+    const fountainPresence = garden ? Math.max(0, 1 - Math.abs(progress - 0.44) / 0.065) : 0;
+    this.fountainGain?.gain.setTargetAtTime(running ? fountainPresence * 0.022 : 0, now, 0.2);
     this.fountainFilter?.frequency.setTargetAtTime(620 + Math.sin(now * 1.8) * 110, now, 0.25);
-    this.skidGain?.gain.setTargetAtTime(active && drifting ? 0.055 + Math.min(speed, 40) * 0.0014 : 0, now, 0.075);
-    if (!active || this.muted) return;
-    if (this.nextBeat < now - 0.25) this.nextBeat = now + 0.03;
-    // Short original motifs share a beat so moving between districts sounds seamless.
-    const notes = cave ? MUSIC.cave : garden ? MUSIC.garden : zone === 'ROOFTOP RUN' ? MUSIC.roof : MUSIC.market;
-    while (this.nextBeat < now + 0.1) {
-      const note = notes[this.beat % notes.length];
-      this.tone(note, 0.075, 'triangle', this.nextBeat, 0.13);
-      if (this.beat % 4 === 0) {
-        this.tone(note / 4, 0.085, 'triangle', this.nextBeat, 0.28);
-        this.kick(this.nextBeat);
-      }
-      if (this.beat % 4 === 2) this.tone(155, 0.028, 'triangle', this.nextBeat, 0.09);
-      if (garden && this.beat % 4 === 3) this.tone(note * 2, 0.025, 'sine', this.nextBeat, 0.2);
-      if (cave && this.beat % 8 === 7) this.tone(note / 2, 0.033, 'sine', this.nextBeat, 0.7);
-      if (zone === 'MIDNIGHT MARKET' && this.beat % 16 === 15) this.tone(1174.66, 0.018, 'sine', this.nextBeat, 0.31);
-      if (this.hatGain) {
-        this.hatGain.gain.setValueAtTime(0, this.nextBeat);
-        this.hatGain.gain.linearRampToValueAtTime(cave ? 0.018 : 0.033, this.nextBeat + 0.003);
-        this.hatGain.gain.exponentialRampToValueAtTime(0.0001, this.nextBeat + 0.055);
-      }
-      this.beat++;
-      this.nextBeat += finalLap ? 0.215 : 0.25;
-    }
+  }
+
+  private sample(name: AssetName, volume: number, rate = 1, delay = 0, duration?: number, pan = 0) {
+    const context = this.context;
+    const buffer = this.buffers.get(name);
+    if (!context || !buffer || !this.effectsBus || this.muted) return;
+    const time = context.currentTime + delay;
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    const panner = context.createStereoPanner();
+    source.buffer = buffer;
+    source.playbackRate.value = rate;
+    panner.pan.value = Math.max(-1, Math.min(1, pan + this.eventPan));
+    source.connect(gain).connect(panner).connect(this.effectsBus);
+    const length = Math.min(duration ?? buffer.duration / rate, buffer.duration / rate);
+    gain.gain.setValueAtTime(0, time);
+    gain.gain.linearRampToValueAtTime(volume * this.eventScale, time + 0.008);
+    gain.gain.setValueAtTime(volume * this.eventScale, time + Math.max(0.009, length - 0.055));
+    gain.gain.linearRampToValueAtTime(0, time + length);
+    source.start(time);
+    source.stop(time + length + 0.01);
   }
 
   play(name: SoundName) {
     if (!this.context || this.muted) return;
-    const now = this.context.currentTime;
     switch (name) {
-      case 'count': this.tone(440, 0.13, 'square', now, 0.12); break;
-      case 'go': this.chime([523, 659, 784], now, 0.14, 0.22); break;
-      case 'drift': this.chime([400, 550], now, 0.1, 0.08); break;
-      case 'boost': this.sweep(350, 920, 0.28, now, 0.14); break;
-      case 'pad': this.sweep(250, 1150, 0.42, now, 0.16); this.chime([523, 784, 1046], now + 0.04, 0.085, 0.2); break;
-      case 'wish': this.chime([600, 800, 1000], now, 0.07, 0.12); break;
-      case 'shield': this.chime([390, 587, 783], now, 0.06, 0.2); break;
-      case 'shot': this.sweep(960, 330, 0.16, now, 0.12); break;
-      case 'fire': this.sweep(410, 125, 0.26, now, 0.075); this.tone(535, 0.025, 'sawtooth', now + 0.035, 0.11); break;
-      case 'hit': this.sweep(200, 65, 0.18, now, 0.15); break;
-      case 'stun': this.chime([780, 620, 495], now, 0.07, 0.17); break;
-      case 'lap': this.chime([392, 523, 659, 784], now, 0.1, 0.25); break;
-      case 'final-lap': this.chime([392, 523, 784, 1047, 1319], now, 0.075, 0.24); this.kick(now + 0.02); break;
-      case 'ultimate': this.chime([196, 392, 587, 784], now, 0.11, 0.4); break;
-      case 'trick': this.chime([659, 880, 1175], now, 0.055, 0.16); break;
-      case 'draft': this.sweep(380, 980, 0.3, now, 0.11); this.chime([587, 784], now + 0.08, 0.08, 0.12); break;
-      case 'pickup': this.chime([630, 890], now, 0.08, 0.1); break;
-      case 'cart-warning': this.chime([392, 293.66], now, 0.17, 0.24); break;
-      case 'birds': this.chime([1046.5, 1318.5, 1174.7], now, 0.085, 0.11); break;
+      case 'count': this.sample('spark', 0.2, 0.7, 0, 0.35); break;
+      case 'go': this.sample('grand', 0.42, 1.1); this.sample('whoosh', 0.23, 1.2); break;
+      case 'drift': this.sample('light', 0.14, 1.2); break;
+      case 'boost': this.sample('whoosh', 0.48, 1.13); break;
+      case 'pad': this.sample('whoosh', 0.58, 1.24); this.sample('spark', 0.17, 1.15, 0.05); break;
+      case 'wish': this.sample('spark', 0.25, 1.04); break;
+      case 'shield': this.sample('surge', 0.35, 1.13); this.sample('light', 0.15, 1.08); break;
+      case 'shot': this.sample('time', 0.32, 1.24); this.sample('spark', 0.13, 1.7, 0.06); break;
+      case 'fire': this.sample('surge', 0.33, 0.78); this.sample('whoosh', 0.29, 0.72); break;
+      case 'hit': this.sample(Math.random() < 0.4 ? 'heavy' : 'mid', 0.6, 0.93 + Math.random() * 0.15); if (this.eventScale > 0.45) this.duckUntil = this.context.currentTime + 0.36; break;
+      case 'stun': this.sample('heavy', 0.41, 0.75); this.sample('spark', 0.16, 1.48, 0.1); break;
+      case 'lap': this.sample('grand', 0.38, 1.15); break;
+      case 'final-lap': this.sample('grand', 0.52, 1.35); this.sample('whoosh', 0.32, 1.1); break;
+      case 'ultimate': this.sample('grand', 0.52, 0.91); this.sample('whoosh', 0.38, 0.83); break;
+      case 'trick': this.sample('spark', 0.3, 1.37); this.sample('whoosh', 0.18, 1.4); break;
+      case 'draft': this.sample('whoosh', 0.33, 1.34); break;
+      case 'pickup': this.sample('spark', 0.27, 1.3); break;
+      case 'cart-warning': this.sample('surge', 0.2, 0.65, 0, 0.7); break;
+      case 'birds': this.sample('birds', 0.24, 1, 0, undefined, 0.3); break;
     }
   }
 
   playDriftBoost(stage: 1 | 2 | 3) {
-    if (!this.context || this.muted) return;
-    const now = this.context.currentTime;
-    this.sweep(300 + stage * 60, 740 + stage * 150, 0.19 + stage * 0.055, now, 0.095 + stage * 0.014);
-    this.chime(stage === 3 ? [659, 988, 1319] : stage === 2 ? [587, 880] : [523, 784], now + 0.035, 0.055, 0.15 + stage * 0.025);
-    if (stage === 3) this.kick(now + 0.035);
+    this.sample('whoosh', 0.34 + stage * 0.11, 0.95 + stage * 0.13);
+    this.sample(stage === 3 ? 'grand' : 'spark', 0.12 + stage * 0.08, 0.85 + stage * 0.17, 0.06);
   }
 
   playSignature(character: CharacterId) {
-    if (!this.context || this.muted) return;
-    const now = this.context.currentTime;
-    switch (character) {
-      case 'genie': this.chime([600, 800, 1000], now, 0.07, 0.12); break;
-      case 'mickey': this.chime([523, 659, 784], now, 0.055, 0.17); break;
-      case 'stitch':
-        this.tone(1047, 0.085, 'square', now, 0.075);
-        this.tone(330, 0.1, 'sawtooth', now + 0.07, 0.11);
-        this.tone(880, 0.075, 'square', now + 0.14, 0.09);
-        break;
-      case 'elsa': this.chime([880, 1175, 1568], now, 0.07, 0.23); break;
-      case 'moana':
-        this.sweep(240, 740, 0.3, now, 0.095);
-        this.chime([440, 587], now + 0.08, 0.09, 0.19);
-        break;
-      case 'buzz':
-        this.sweep(1120, 290, 0.18, now, 0.11);
-        this.tone(784, 0.065, 'square', now + 0.1, 0.1);
-        break;
-      case 'maleficent':
-        this.tone(220, 0.095, 'sawtooth', now, 0.24);
-        this.chime([330, 466], now + 0.06, 0.11, 0.18);
-        break;
-      case 'hades':
-        this.sweep(170, 560, 0.23, now, 0.09);
-        this.tone(659, 0.07, 'sawtooth', now + 0.1, 0.14);
-        break;
-      case 'jack': this.chime([294, 440, 587], now, 0.09, 0.19); break;
-      case 'mulan':
-        this.tone(147, 0.11, 'triangle', now, 0.13);
-        this.chime([440, 587, 880], now + 0.06, 0.05, 0.16);
-        break;
-    }
+    const palette: Record<CharacterId, [AssetName, number, number]> = {
+      genie: ['grand', 0.38, 1.08], mickey: ['spark', 0.36, 1.28], stitch: ['time', 0.43, 1.48],
+      elsa: ['surge', 0.39, 1.5], moana: ['whoosh', 0.4, 0.88], buzz: ['time', 0.42, 1.7],
+      maleficent: ['grand', 0.42, 0.68], hades: ['surge', 0.44, 0.74], jack: ['spark', 0.36, 0.9], mulan: ['whoosh', 0.41, 1.23],
+    };
+    const [name, volume, rate] = palette[character];
+    this.sample(name, volume, rate);
+    if (character === 'stitch' || character === 'buzz' || character === 'maleficent') this.sample('whoosh', 0.19, rate * 0.82, 0.055);
   }
 
   playUltimate(character: CharacterId) {
-    if (!this.context || this.muted) return;
-    const now = this.context.currentTime;
-    const notes = ULTIMATE_STINGS[character];
-    const type: OscillatorType = character === 'stitch' || character === 'buzz' ? 'square' : character === 'maleficent' || character === 'hades' ? 'sawtooth' : 'triangle';
-    notes.forEach((frequency, index) => this.tone(frequency, index === notes.length - 1 ? 0.13 : 0.09, type, now + index * 0.075, index === notes.length - 1 ? 0.38 : 0.18));
-    this.kick(now + 0.02);
-  }
-
-  private chime(notes: number[], time: number, gap: number, length: number) {
-    notes.forEach((note, i) => this.tone(note, 0.13, 'sine', time + i * gap, length));
-  }
-
-  private kick(start: number) {
-    if (!this.context || !this.master) return;
-    const osc = this.context.createOscillator();
-    const gain = this.context.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(115, start);
-    osc.frequency.exponentialRampToValueAtTime(48, start + 0.16);
-    gain.gain.setValueAtTime(0.085, start);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.17);
-    osc.connect(gain);
-    gain.connect(this.master);
-    osc.start(start);
-    osc.stop(start + 0.18);
-  }
-
-  private tone(frequency: number, volume: number, type: OscillatorType, start: number, duration: number) {
-    if (!this.context || !this.master) return;
-    const osc = this.context.createOscillator();
-    const gain = this.context.createGain();
-    osc.type = type;
-    osc.frequency.setValueAtTime(frequency, start);
-    gain.gain.setValueAtTime(0, start);
-    gain.gain.linearRampToValueAtTime(volume, start + 0.012);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-    osc.connect(gain);
-    gain.connect(this.master);
-    osc.start(start);
-    osc.stop(start + duration + 0.02);
-  }
-
-  private sweep(startHz: number, endHz: number, duration: number, start: number, volume: number) {
-    if (!this.context || !this.master) return;
-    const osc = this.context.createOscillator();
-    const gain = this.context.createGain();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(startHz, start);
-    osc.frequency.exponentialRampToValueAtTime(endHz, start + duration);
-    gain.gain.setValueAtTime(volume, start);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-    osc.connect(gain);
-    gain.connect(this.master);
-    osc.start(start);
-    osc.stop(start + duration + 0.02);
+    const dark = character === 'maleficent' || character === 'hades';
+    const quick = character === 'buzz' || character === 'stitch' || character === 'mulan';
+    this.sample('whoosh', 0.48, quick ? 1.24 : dark ? 0.68 : 0.92);
+    this.sample('grand', 0.53, dark ? 0.71 : quick ? 1.28 : 1, 0.06);
+    this.sample('heavy', 0.32, 0.82, 0.12);
+    if (this.context) this.duckUntil = this.context.currentTime + 0.65;
   }
 }

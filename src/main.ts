@@ -387,6 +387,7 @@ class GenieRace {
         })),
         projectiles: this.projectiles.length,
         powerFields: this.powerFields.length,
+        audio: this.audio.getStatus(),
       }),
     });
     this.onResize();
@@ -494,6 +495,11 @@ class GenieRace {
     return character === 'genie' ? new KartVisual('gold') : new CharacterKartVisual(character);
   }
 
+  private racerSound(name: Parameters<GameAudio['play']>[0], racer: Racer) {
+    if (racer.id === 0) this.audio.play(name);
+    else this.audio.playAt(name, racer.position);
+  }
+
   private makeCharacterSelect() {
     for (const [index, character] of CHARACTERS.entries()) {
       const button = document.createElement('button');
@@ -519,12 +525,14 @@ class GenieRace {
 
   private selectCharacter(character: CharacterId) {
     if (this.mode !== 'menu' || character === this.selectedCharacter) return;
+    this.audio.start();
     this.selectedCharacter = character;
     try { localStorage.setItem('genie-midnight-character', character); } catch { /* Optional preference. */ }
     const player = this.racers[0];
     this.replaceVisual(player, character);
     this.showcase.select(character);
     this.refreshCharacterSelect();
+    this.audio.play('pickup');
   }
 
   private replaceVisual(racer: Racer, character: CharacterId) {
@@ -618,6 +626,14 @@ class GenieRace {
       this.audio.setMuted(!this.audio.muted);
       (event.currentTarget as HTMLButtonElement).textContent = `Sound: ${this.audio.muted ? 'off' : 'on'}`;
     });
+    const musicLevel = el<HTMLInputElement>('music-level');
+    const effectsLevel = el<HTMLInputElement>('effects-level');
+    const mix = this.audio.getMix();
+    musicLevel.value = String(Math.round(mix.music * 100));
+    effectsLevel.value = String(Math.round(mix.effects * 100));
+    const updateMix = () => this.audio.setMix(Number(musicLevel.value) / 100, Number(effectsLevel.value) / 100);
+    musicLevel.addEventListener('input', updateMix);
+    effectsLevel.addEventListener('input', updateMix);
     document.querySelectorAll<HTMLButtonElement>('[data-touch]').forEach((button) => {
       const action = button.dataset.touch!;
       button.addEventListener('pointerdown', (event) => {
@@ -659,6 +675,7 @@ class GenieRace {
     pause.classList.add('hidden');
     results.classList.add('hidden');
     countdown.classList.remove('hidden');
+    this.updateHUD();
     this.showBanner('GET READY', 2.2);
   }
 
@@ -738,6 +755,7 @@ class GenieRace {
 
   private pauseGame() {
     this.mode = 'paused';
+    this.audio.setPaused(true);
     pause.classList.remove('hidden');
     this.keys.clear();
     this.wishHolding = false;
@@ -748,6 +766,7 @@ class GenieRace {
 
   private resumeGame() {
     this.mode = 'race';
+    this.audio.setPaused(false);
     pause.classList.add('hidden');
     this.lastFrame = performance.now();
   }
@@ -862,13 +881,13 @@ class GenieRace {
       case 'dash':
         racer.boostTime = Math.max(racer.boostTime, 2.65);
         racer.speed = Math.max(racer.speed, 41);
-        this.audio.play('boost');
+        this.racerSound('boost', racer);
         break;
       case 'mirror':
         racer.mirrorTime = 12;
         racer.shieldTime = Math.max(racer.shieldTime, 12);
         this.makePulse(racer.position, color, 0.7, 5);
-        this.audio.play('shield');
+        this.racerSound('shield', racer);
         break;
       case 'spark':
         this.launchPower(racer, 'star', color, 47, 4);
@@ -885,12 +904,12 @@ class GenieRace {
         break;
       case 'clock':
         this.dropField(racer, 'clock', color, 5.2, 7, -4);
-        this.audio.play('wish');
+        this.racerSound('wish', racer);
         break;
       case 'fog':
         racer.fogTime = 4.2;
         this.makePulse(racer.position, color, 1, 5.5);
-        this.audio.play('shield');
+        this.racerSound('shield', racer);
         break;
       case 'horn':
         this.makePulse(racer.position, color, 0.85, 12);
@@ -903,22 +922,22 @@ class GenieRace {
           other.hitCooldown = Math.max(other.hitCooldown, 0.65);
           this.makeFlash(other.position.clone().add(new THREE.Vector3(0, 1, 0)), color, 4, 0.3);
         }
-        this.audio.play('hit');
+        this.racerSound('hit', racer);
         break;
       case 'feather':
         racer.featherTime = 7;
         racer.boostTime = Math.max(racer.boostTime, 1.2);
         this.startJump(racer, 1.3, 1.9);
-        this.audio.play('boost');
+        this.racerSound('boost', racer);
         break;
       case 'anchor':
         this.dropField(racer, 'anchor', color, 2.6, 13, -4);
-        this.audio.play('hit');
+        this.racerSound('hit', racer);
         break;
       case 'triple':
         racer.tripleSparks = 3;
         this.makePulse(racer.position, color, 0.75, 5);
-        this.audio.play('shield');
+        this.racerSound('shield', racer);
         break;
     }
   }
@@ -945,7 +964,7 @@ class GenieRace {
     this.burst(origin, def.color, def.accent, 20);
     if (racer.id === 0) this.showBanner(def.signatureName.toUpperCase(), 1);
     if (racer.id === 0) this.audio.playSignature(racer.character);
-    else this.audio.play('wish');
+    else this.audio.playAt('wish', racer.position);
     switch (racer.character) {
       case 'genie':
         this.useWish(racer, 'boost');
@@ -966,7 +985,7 @@ class GenieRace {
           const rear = racer.position.clone().addScaledVector(forward, -2.7);
           this.makePulse(rear, 0x66e9e9, 0.65, 3.6);
           if (racer.id === 0) this.showBanner('OCEAN BARRIER · REAR GUARD', 1.1);
-          this.audio.play('shield');
+          this.racerSound('shield', racer);
         } else this.launchPower(racer, 'wave', 0x58e8db, 30, 1.25);
         break;
       case 'buzz': {
@@ -1033,12 +1052,12 @@ class GenieRace {
       const ignition = racer.position.clone().add(new THREE.Vector3(0, 0.7, 0));
       this.burst(ignition, 0x55dfff, 0xffd56c, 18);
       if (racer.id === 0) this.showBanner('WISH: BOOST', 0.9);
-      this.audio.play('boost');
+      this.racerSound('boost', racer);
     } else if (wish === 'shield') {
       racer.shieldTime = Math.max(racer.shieldTime, upgraded ? 6 : 4);
       this.burst(racer.position.clone().add(new THREE.Vector3(0, 2.3, 0)), 0x71e7ff, 0xc9f6ff, 14);
       if (racer.id === 0) this.showBanner('WISH: SHIELD', 0.9);
-      this.audio.play('shield');
+      this.racerSound('shield', racer);
     } else {
       const mesh = makeProjectile();
       const direction = new THREE.Vector3(Math.sin(racer.yaw), 0, Math.cos(racer.yaw));
@@ -1050,7 +1069,7 @@ class GenieRace {
       this.scene.add(mesh);
       this.projectiles.push({ owner: racer.id, mesh, velocity: direction.multiplyScalar(upgraded ? 52 : 44), life: 3, kind: 'star', color: 0xffb35e, bounces: 0, target: -1 });
       if (racer.id === 0) this.showBanner('WISH: STAR SHOT', 0.9);
-      this.audio.play('shot');
+      this.racerSound('shot', racer);
     }
   }
 
@@ -1082,7 +1101,7 @@ class GenieRace {
     if (racer.character === 'mickey') this.pushWave(racer, 13, 0xffd866);
     if (racer.character === 'mulan') this.launchPower(racer, 'dragon', 0x74e3cf, 54, 5);
     if (racer.id === 0) this.audio.playUltimate(racer.character);
-    else this.audio.play('ultimate');
+    else this.audio.playAt('ultimate', racer.position);
   }
 
   private launchPower(racer: Racer, kind: Projectile['kind'], color: number, speed: number, life: number, target = -1, side = 0, playSound = true) {
@@ -1208,7 +1227,7 @@ class GenieRace {
     this.scene.add(mesh);
     this.projectiles.push({ owner: racer.id, mesh, velocity: direction.multiplyScalar(speed).addScaledVector(right, side * 10), life, kind, color, bounces: kind === 'star' ? 2 : kind === 'plasma' ? 1 : 0, target });
     if (kind !== 'dragonfire') this.makePulse(mesh.position, color, 0.35, 1.6);
-    if (playSound) this.audio.play(kind === 'dragonfire' ? 'fire' : 'shot');
+    if (playSound) this.racerSound(kind === 'dragonfire' ? 'fire' : 'shot', racer);
   }
 
   private dropField(racer: Racer, kind: PowerField['kind'], color: number, radius: number, life: number, back = -2.6) {
@@ -1442,6 +1461,11 @@ class GenieRace {
     this.lastFrame = now;
     if (frameMs > 0) this.smoothedFps += (Math.min(120, 1000 / frameMs) - this.smoothedFps) * 0.05;
     hud.dataset.fps = String(Math.round(this.smoothedFps));
+    const audioStatus = this.audio.getStatus();
+    hud.dataset.audioState = audioStatus.context;
+    hud.dataset.audioSamples = `${audioStatus.samplesLoaded}/${audioStatus.samplesExpected}`;
+    hud.dataset.audioLoops = audioStatus.loops.join(',');
+    hud.dataset.audioMix = `${Math.round(audioStatus.musicLevel * 100)}/${Math.round(audioStatus.effectsLevel * 100)}`;
     if (this.mode !== 'paused') this.elapsed += dt;
     if (this.mode === 'menu') this.showcase.update(dt);
     this.syncGamepad();
@@ -1472,6 +1496,7 @@ class GenieRace {
       this.updatePulses(dt);
       this.updateFlashes(dt);
       this.updateDashDragons(dt);
+      this.audio.setListener(this.racers[0].position.x, this.racers[0].position.z, this.racers[0].yaw);
       this.audio.update(this.racers[0].speed, this.racers[0].drifting, this.racers[0].ultimateTime > 0, this.mode === 'race', this.track.zone(this.racers[0].progress), this.racers[0].lap >= 3, this.racers[0].progress);
       if (this.announcementTime > 0) {
         this.announcementTime -= dt;
@@ -2073,7 +2098,8 @@ class GenieRace {
           if (a.character === 'hades') a.hotHeadTime = Math.max(a.hotHeadTime, 1.7);
           if (b.character === 'hades') b.hotHeadTime = Math.max(b.hotHeadTime, 1.7);
           a.hitCooldown = b.hitCooldown = 0.35;
-          if (a.id === 0) this.audio.play('hit');
+          if (a.id === 0 || b.id === 0) this.audio.play('hit');
+          else this.audio.playAt('hit', a.position);
         }
       }
     }
@@ -2090,7 +2116,7 @@ class GenieRace {
     this.burst(impact, 0x43cfc9, 0xd7ffef, 18);
     this.makePulse(defender.position.clone().addScaledVector(outward, 2), 0x7be9dd, 0.45, 2.9);
     if (defender.id === 0) this.showBanner('OCEAN BARRIER REPEL!', 0.9);
-    this.audio.play('shield');
+    this.racerSound('shield', defender);
   }
 
   private ultimateBump(attacker: Racer, victim: Racer, direction: THREE.Vector3) {
@@ -2113,7 +2139,7 @@ class GenieRace {
       racer.hitCooldown = Math.max(racer.hitCooldown, 0.45);
       this.makePulse(racer.position, 0xffbc8c, 0.4, 3);
       if (racer.id === 0) this.showBanner('SPARK GUARD!', 0.7);
-      this.audio.play('shield');
+      this.racerSound('shield', racer);
       return;
     }
     if (!ignoreShield && (racer.shieldTime > 0 || racer.ultimateTime > 0)) {
@@ -2123,7 +2149,7 @@ class GenieRace {
       if (racer.ultimateTime <= 0) { racer.shieldTime = 0; racer.mirrorTime = 0; }
       racer.hitCooldown = Math.max(racer.hitCooldown, 0.55);
       if (racer.id === 0) this.showBanner('SHIELD BLOCK!', 0.9);
-      this.audio.play('shield');
+      this.racerSound('shield', racer);
       return;
     }
     if (ignoreShield) {
@@ -2136,7 +2162,7 @@ class GenieRace {
     racer.speed = 0;
     if (racer.character === 'hades') racer.hotHeadTime = 2.2;
     racer.hitCooldown = Math.max(racer.hitCooldown, duration + 0.5);
-    this.audio.play('stun');
+    this.racerSound('stun', racer);
   }
 
   private checkObstacleCollisions() {
@@ -2159,9 +2185,19 @@ class GenieRace {
         const normal = distance > 0.05
           ? new THREE.Vector3((racer.position.x - obstacle.position.x) / distance, 0, (racer.position.z - obstacle.position.z) / distance)
           : forward.clone().negate();
-        racer.position.addScaledVector(normal, obstacle.radius + (obstacle.kind === 'boulder' ? 3.5 : 2.05) - distance);
-        racer.position.addScaledVector(forward, -0.75);
-        this.keepOnCourse(racer);
+        const clearance = obstacle.radius + 1.85;
+        racer.position.addScaledVector(normal, clearance - distance);
+        const roadAfter = this.keepOnCourse(racer);
+        const remaining = Math.hypot(racer.position.x - obstacle.position.x, racer.position.z - obstacle.position.z);
+        if (remaining < clearance - 0.04) {
+          // An edge barrier can oppose the radial push; move along the road instead.
+          const tangent = roadAfter.point.tangent.clone().setY(0).normalize();
+          const along = (racer.position.x - obstacle.position.x) * tangent.x + (racer.position.z - obstacle.position.z) * tangent.z;
+          const sign = along < 0 ? -1 : 1;
+          const travel = -sign * along + Math.sqrt(along * along + clearance * clearance - remaining * remaining) + 0.15;
+          racer.position.addScaledVector(tangent, sign * travel);
+          this.keepOnCourse(racer);
+        }
         if (obstacle.kind === 'crate') {
           obstacle.broken = true;
           obstacle.respawn = 12;
@@ -2185,7 +2221,8 @@ class GenieRace {
           if (racer.id === 0) this.showBanner(obstacle.kind === 'boulder' ? 'BOULDER HIT!' : obstacle.kind === 'urn' ? 'PALACE URN HIT!' : obstacle.kind === 'marketIsland' ? 'MARKET ISLAND HIT!' : 'CART HIT!', 0.8);
         }
         racer.hitCooldown = Math.max(racer.hitCooldown, obstacle.kind === 'boulder' ? 1.7 : 1.45);
-        this.audio.play('hit');
+        this.racerSound('hit', racer);
+        break;
       }
     }
   }
@@ -2228,7 +2265,7 @@ class GenieRace {
             this.burst(projectile.mesh.position, 0x56ddd7, 0xd4fff4, 17);
             racer.hitCooldown = Math.max(racer.hitCooldown, 0.25);
             if (racer.id === 0) this.showBanner('OCEAN BARRIER BLOCK!', 0.9);
-            this.audio.play('shield');
+            this.racerSound('shield', racer);
           } else if (racer.mirrorTime > 0) {
             racer.mirrorTime = 0;
             racer.shieldTime = 0;
@@ -2312,7 +2349,7 @@ class GenieRace {
               this.burst(sparkle, upgraded ? 0xffd778 : 0x89eeff, 0xfff0bd, upgraded ? 20 : 10);
               if (racer.id === 0) {
                 this.showBanner(upgraded ? `PHENOMENAL POWER · ${ITEMS[racer.item].name.toUpperCase()}!` : `${ITEMS[racer.item].name.toUpperCase()} READY!`, 0.9);
-                this.audio.play('pickup');
+                this.racerSound('pickup', racer);
               }
               break;
             }

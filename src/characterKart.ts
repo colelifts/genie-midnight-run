@@ -128,13 +128,31 @@ function figure(id: CharacterId) {
       crystal.rotation.z = (n - 1) * 0.22;
     }
   } else if (id === 'moana') {
-    ball(root, 0.72, hair, 0, 2.48, -0.28).scale.set(1.1, 1.22, 0.75);
-    for (const side of [-1, 1]) ball(root, 0.34, hair, side * 0.43, 1.92, -0.3).scale.set(0.6, 1.4, 0.65);
-    for (const side of [-1, 1]) ball(root, 0.2, hair, side * 0.57, 2.44, 0.19).scale.set(0.7, 1.7, 0.56);
-    box(root, 0.92, 0.3, 0.72, paint(0xd35246), 0, 1.25, 0.23);
+    const ocean = paint(0x3dafa7, 0.08, 0.47);
+    const coral = paint(0xc94f44, 0.04, 0.72);
+    const shell = paint(0xf8e5b7, 0.12, 0.43);
+    ball(root, 0.78, hair, 0, 2.44, -0.31).scale.set(1.14, 1.24, 0.79);
+    for (const side of [-1, 1]) {
+      const lock = ball(root, 0.34, hair, side * 0.52, 1.97, -0.22);
+      lock.scale.set(0.69, 1.65, 0.7);
+      lock.rotation.z = side * 0.18;
+      const frontLock = ball(root, 0.2, hair, side * 0.53, 2.5, 0.22);
+      frontLock.scale.set(0.84, 1.54, 0.65);
+      frontLock.rotation.z = side * 0.28;
+      branch(root, new THREE.Vector3(side * 0.2, 1.75, 0.5), new THREE.Vector3(side * 0.09, 1.56, 0.59), 0.034, shell);
+    }
+    ball(root, 0.22, hair, -0.22, 2.91, 0.13).scale.set(1.45, 0.45, 0.7);
+    box(root, 0.92, 0.35, 0.72, coral, 0, 1.27, 0.23);
+    for (let n = -2; n <= 2; n++) {
+      const tooth = box(root, 0.13, 0.09, 0.05, shell, n * 0.19, 1.46, 0.62);
+      tooth.rotation.z = n * 0.08;
+    }
+    const pendant = ball(root, 0.16, ocean, 0, 1.53, 0.67);
+    pendant.scale.set(0.72, 1.07, 0.47);
+    ball(root, 0.065, glow(0x7df0d2), 0, 1.55, 0.75).scale.z = 0.3;
     const skirt = cone(root, 0.7, 0.75, paint(0xe6d5ac), 0, 0.76, -0.06);
     skirt.scale.z = 0.7;
-    ball(root, 0.17, accent, 0, 1.56, 0.58).scale.set(1, 0.55, 0.4);
+    for (const side of [-1, 1]) box(root, 0.3, 0.12, 0.08, ocean, side * 0.26, 0.89, 0.48).rotation.z = side * 0.28;
   } else if (id === 'buzz') {
     ball(root, 0.73, white, 0, 1.23, -0.02).scale.set(1.05, 0.88, 0.76);
     const helmet = ball(root, 0.78, new THREE.MeshPhongMaterial({ color: 0xe4faff, transparent: true, opacity: 0.26, depthWrite: false, shininess: 96 }), 0, 2.42, 0);
@@ -217,16 +235,26 @@ function figure(id: CharacterId) {
     const sash = box(root, 1.05, 0.17, 0.13, paint(0x9f3c42), 0, 1.17, 0.47);
     sash.rotation.z = -0.23;
   } else if (id === 'mulan') {
+    const armor = paint(0x315d68, 0.14, 0.59);
+    const gold = paint(0xe8be77, 0.36, 0.38);
     ball(root, 0.68, hair, 0, 2.61, -0.22).scale.set(1.03, 0.85, 0.73);
-    for (const side of [-1, 1]) ball(root, 0.2, hair, side * 0.37, 2.69, 0.24).scale.set(0.8, 0.78, 0.82);
+    for (const side of [-1, 1]) {
+      ball(root, 0.2, hair, side * 0.37, 2.69, 0.24).scale.set(0.8, 0.78, 0.82);
+      const strand = ball(root, 0.14, hair, side * 0.5, 2.22, 0.11);
+      strand.scale.set(0.62, 2.1, 0.68);
+      const shoulderGuard = ball(root, 0.31, armor, side * 0.7, 1.61, 0.05);
+      shoulderGuard.scale.set(1, 0.57, 1.08);
+      box(root, 0.09, 0.56, 0.08, gold, side * 0.38, 1.28, 0.57).rotation.z = side * 0.5;
+    }
     const bun = ball(root, 0.32, hair, 0, 3.1, -0.42);
     bun.scale.z = 0.85;
-    branch(root, new THREE.Vector3(-0.42, 3.08, -0.36), new THREE.Vector3(0.44, 3.08, -0.36), 0.045, accent);
+    branch(root, new THREE.Vector3(-0.42, 3.08, -0.36), new THREE.Vector3(0.44, 3.08, -0.36), 0.055, gold);
     box(root, 1.12, 0.35, 0.62, paint(0xb43843), 0, 1.37, 0.22);
-    for (const side of [-1, 1]) {
-      box(root, 0.18, 0.75, 0.12, accent, side * 0.5, 1.31, 0.18).rotation.z = side * 0.25;
-    }
-    box(root, 0.86, 0.16, 0.56, accent, 0, 0.94, 0.27);
+    box(root, 0.62, 0.34, 0.1, armor, 0, 1.32, 0.61);
+    for (const side of [-1, 1]) box(root, 0.18, 0.75, 0.12, gold, side * 0.5, 1.31, 0.18).rotation.z = side * 0.25;
+    const crest = add(root, new THREE.OctahedronGeometry(0.13, 0), gold, 0, 1.32, 0.69);
+    crest.scale.set(0.8, 1.18, 0.38);
+    box(root, 0.86, 0.16, 0.56, gold, 0, 0.94, 0.27);
   }
   return root;
 }
@@ -250,7 +278,25 @@ function kartDecorations(id: CharacterId, body: THREE.Group, primary: THREE.Mate
       crystal.rotation.z = side * 0.3;
     }
   } else if (id === 'moana') {
-    for (const side of [-1, 1]) branch(body, new THREE.Vector3(side * 1.05, 0.7, -1.5), new THREE.Vector3(side * 1.05, 0.86, 1.8), 0.15, accent);
+    const water = paint(0x3bbcb4, 0.32, 0.38);
+    for (const side of [-1, 1]) {
+      branch(body, new THREE.Vector3(side * 1.05, 0.7, -1.5), new THREE.Vector3(side * 1.05, 0.86, 1.8), 0.15, accent);
+      const curl = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(side * 0.74, 1.31, 0.6),
+        new THREE.Vector3(side * 0.91, 1.37, 1.14),
+        new THREE.Vector3(side * 0.57, 1.57, 1.58),
+        new THREE.Vector3(side * 0.31, 1.56, 1.38),
+      ]);
+      add(body, new THREE.TubeGeometry(curl, 16, 0.065, 6, false), water);
+    }
+    const bow = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0, 1.05, 1.33),
+      new THREE.Vector3(0, 1.24, 1.9),
+      new THREE.Vector3(0, 1.64, 2.18),
+      new THREE.Vector3(0, 1.82, 2.02),
+    ]);
+    add(body, new THREE.TubeGeometry(bow, 16, 0.18, 8, false), accent);
+    ball(body, 0.19, water, 0, 1.7, 2.12).scale.set(0.9, 0.6, 0.4);
     const mast = branch(body, new THREE.Vector3(0, 1.3, -1.52), new THREE.Vector3(0, 3.7, -1.62), 0.11, primary);
     mast.castShadow = true;
     const sailShape = new THREE.Shape();
@@ -283,6 +329,10 @@ function kartDecorations(id: CharacterId, body: THREE.Group, primary: THREE.Mate
     for (const side of [-1, 1]) cone(body, 0.24, 0.62, accent, side * 0.94, 1.5, 1.35).rotation.z = side * 0.28;
     const dragon = cone(body, 0.31, 0.76, glow(0x7df1d0, 0.88), 0, 1.46, 1.9);
     dragon.rotation.x = Math.PI / 2;
+    const sword = branch(body, new THREE.Vector3(-0.82, 1.87, -1.23), new THREE.Vector3(0.28, 2.48, -1.22), 0.05, paint(0xd8e9e6, 0.55, 0.25));
+    sword.castShadow = true;
+    branch(body, new THREE.Vector3(-0.84, 1.9, -1.24), new THREE.Vector3(-0.58, 1.65, -1.24), 0.09, paint(0x816143, 0.25, 0.53));
+    ball(body, 0.13, accent, -0.8, 1.77, -1.24);
   }
 }
 

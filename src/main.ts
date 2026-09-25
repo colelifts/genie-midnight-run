@@ -76,6 +76,7 @@ interface Racer {
   iceSpeedTime: number;
   luckyEscapeCooldown: number;
   wobbleTime: number;
+  hauntedTime: number;
   hotHeadTime: number;
   laserReadyTime: number;
   powerTick: number;
@@ -479,7 +480,7 @@ class GenieRace {
       this.scene.add(itemOrbit);
       const racer: Racer = {
         id: i, character, visual, itemOrbit, position: gridPosition.clone(), yaw, moveYaw: yaw, speed: 0, progress: starts[i], lap: 1, finishPlace: 0,
-        boostTime: 0, padBoostTime: 0, shieldTime: 0, oceanBarrierTime: 0, ultimateTime: 0, ultimateMeter: 0, signatureCooldown: 0, item: null, tripleSparks: 0, fogTime: 0, featherTime: 0, mirrorTime: 0, wishUpgrade: false, curseTime: 0, iceSpeedTime: 0, luckyEscapeCooldown: 0, wobbleTime: 0, hotHeadTime: 0, laserReadyTime: 0, powerTick: 0, stunTime: 0, hitCooldown: 0, offTrackTime: 0, lastPad: 0,
+        boostTime: 0, padBoostTime: 0, shieldTime: 0, oceanBarrierTime: 0, ultimateTime: 0, ultimateMeter: 0, signatureCooldown: 0, item: null, tripleSparks: 0, fogTime: 0, featherTime: 0, mirrorTime: 0, wishUpgrade: false, curseTime: 0, iceSpeedTime: 0, luckyEscapeCooldown: 0, wobbleTime: 0, hauntedTime: 0, hotHeadTime: 0, laserReadyTime: 0, powerTick: 0, stunTime: 0, hitCooldown: 0, offTrackTime: 0, lastPad: 0,
         drifting: false, driftCharge: 0, jumpTime: 0, jumpDuration: 0, jumpPower: 0, trickReady: false, trickBoost: false, trickAnim: 0, slipCharge: 0, slipCooldown: 0, tricksLanded: 0, draftBoosts: 0, compassTime: 0, compassTarget: null, compassShortcut: null,
         lastSafe: gridPosition.clone(), lastSafeProgress: starts[i], aiRoute: this.aiRouteForLap(i, 1), aiLane: START_LANES[i], aiLine: START_LANES[i],
         aiAbilityTimer: 7 + i * 1.2, aiUltimateTimer: 40 + i * 3, ultimateHit: new Set<number>(), steerVisual: 0,
@@ -662,7 +663,7 @@ class GenieRace {
       racer.finishPlace = 0;
       racer.boostTime = racer.padBoostTime = racer.shieldTime = racer.oceanBarrierTime = racer.ultimateTime = racer.stunTime = 0;
       racer.ultimateMeter = this.debugPowers ? 100 : 0;
-      racer.signatureCooldown = racer.curseTime = racer.iceSpeedTime = racer.luckyEscapeCooldown = racer.wobbleTime = racer.hotHeadTime = racer.laserReadyTime = racer.powerTick = 0;
+      racer.signatureCooldown = racer.curseTime = racer.iceSpeedTime = racer.luckyEscapeCooldown = racer.wobbleTime = racer.hauntedTime = racer.hotHeadTime = racer.laserReadyTime = racer.powerTick = 0;
       const requestedItem = new URLSearchParams(window.location.search).get('debugItem');
       racer.item = this.debugPowers && i === 0 ? requestedItem && requestedItem in ITEMS ? requestedItem as ItemId : 'spark' : null;
       racer.tripleSparks = racer.fogTime = racer.featherTime = racer.mirrorTime = 0;
@@ -789,10 +790,11 @@ class GenieRace {
 
   private findLaserTarget(racer: Racer) {
     const forward = new THREE.Vector3(Math.sin(racer.yaw), 0, Math.cos(racer.yaw));
+    const range = racer.laserReadyTime > 0 ? 56 : 44;
     return this.racers.filter((other) => {
       if (other.id === racer.id || other.stunTime > 0 || other.fogTime > 0 || Math.abs(other.position.y - racer.position.y) > 4) return false;
       const gap = other.position.clone().sub(racer.position).setY(0);
-      return gap.length() < 44 && gap.dot(forward) > gap.length() * 0.7;
+      return gap.length() < range && gap.dot(forward) > gap.length() * 0.7;
     }).sort((a, b) => a.position.distanceToSquared(racer.position) - b.position.distanceToSquared(racer.position))[0];
   }
 
@@ -809,12 +811,14 @@ class GenieRace {
     if (this.mode !== 'race') return;
     const racer = this.racers[0];
     if (racer.character !== 'buzz' || racer.stunTime > 0 || racer.signatureCooldown > 0) return;
-    const target = this.laserLockElapsed >= 0.33 ? this.laserLockTarget : -1;
+    const starCommand = racer.laserReadyTime > 0;
+    const target = this.laserLockElapsed >= (starCommand ? 0.2 : 0.33) ? this.laserLockTarget : -1;
     racer.signatureCooldown = CHARACTER_BY_ID.buzz.signatureCooldown;
+    racer.laserReadyTime = 0;
     const origin = racer.position.clone().add(new THREE.Vector3(0, 1.4, 0));
     this.makeFlash(origin, 0xb0ff73, 5, 0.38);
     this.burst(origin, 0x73d94b, 0xe6ff9c, 20);
-    this.launchPower(racer, 'laser', 0xb0ff73, target >= 0 ? 62 : 52, 1.65, target);
+    this.launchPower(racer, 'laser', 0xb0ff73, starCommand ? 66 : target >= 0 ? 62 : 52, 1.65, target);
     this.showBanner(target >= 0 ? 'LASER LOCK · FIRED!' : 'LASER SHOT!', 0.9);
     this.audio.playSignature('buzz');
     this.laserLockTarget = -1;
@@ -1314,6 +1318,7 @@ class GenieRace {
           racer.speed *= 0.82;
         } else if (field.kind === 'soul') {
           racer.wobbleTime = Math.max(racer.wobbleTime, 1.25);
+          racer.hauntedTime = Math.max(racer.hauntedTime, 1.8);
           racer.speed *= 0.73;
         } else if (field.kind === 'star') {
           this.stun(racer, 0.7);
@@ -1494,8 +1499,9 @@ class GenieRace {
     }
     if (this.laserLocking) {
       this.laserLockElapsed += dt;
-      const target = this.findLaserTarget(this.racers[0]);
-      const locked = this.laserLockElapsed >= 0.33 ? target?.id ?? -1 : -1;
+      const player = this.racers[0];
+      const target = this.findLaserTarget(player);
+      const locked = this.laserLockElapsed >= (player.laserReadyTime > 0 ? 0.2 : 0.33) ? target?.id ?? -1 : -1;
       if (locked >= 0 && locked !== this.laserLockTarget) {
         this.makePulse(this.racers[locked].position, 0xb4ff67, 0.34, 2.4);
         this.audio.play('wish');
@@ -1827,9 +1833,14 @@ class GenieRace {
     if (tick === this.lastMagicTrailTick) return;
     this.lastMagicTrailTick = tick;
     for (const racer of this.racers) {
-      if (racer.boostTime <= 0 && racer.ultimateTime <= 0 && racer.fogTime <= 0 && racer.featherTime <= 0 && racer.tripleSparks <= 0 && racer.curseTime <= 0 && racer.iceSpeedTime <= 0) continue;
+      if (racer.boostTime <= 0 && racer.ultimateTime <= 0 && racer.fogTime <= 0 && racer.featherTime <= 0 && racer.tripleSparks <= 0 && racer.curseTime <= 0 && racer.iceSpeedTime <= 0 && racer.hauntedTime <= 0) continue;
       const forward = new THREE.Vector3(Math.sin(racer.yaw), 0, Math.cos(racer.yaw));
       const side = new THREE.Vector3(Math.cos(racer.yaw), 0, -Math.sin(racer.yaw));
+      if (racer.hauntedTime > 0 && tick % 2 === 0) {
+        const angle = this.elapsed * 9 + racer.id;
+        const ghost = racer.position.clone().add(new THREE.Vector3(Math.cos(angle) * 1.55, 1.15 + Math.sin(angle * 1.7) * 0.42, Math.sin(angle) * 1.55));
+        this.sparks.spawn(ghost, new THREE.Vector3(0, 1.2, 0), tick % 4 ? 0x66d7ff : 0xcab6ff, 0.6);
+      }
       if (racer.iceSpeedTime > 0 && tick % 2 === 0) {
         for (const lateral of [-1.12, 1.12]) {
           const position = racer.position.clone().addScaledVector(forward, -1.6).addScaledVector(side, lateral);
@@ -1909,6 +1920,7 @@ class GenieRace {
     racer.iceSpeedTime = Math.max(0, racer.iceSpeedTime - dt);
     racer.luckyEscapeCooldown = Math.max(0, racer.luckyEscapeCooldown - dt);
     racer.wobbleTime = Math.max(0, racer.wobbleTime - dt);
+    racer.hauntedTime = Math.max(0, racer.hauntedTime - dt);
     racer.hotHeadTime = Math.max(0, racer.hotHeadTime - dt);
     racer.laserReadyTime = Math.max(0, racer.laserReadyTime - dt);
     racer.compassTime = Math.max(0, racer.compassTime - dt);
@@ -2397,7 +2409,7 @@ class GenieRace {
     const dragonBreath = player.character === 'maleficent' && player.ultimateTime > 0;
     wishTile.querySelector('strong')!.textContent = dragonBreath ? 'DRAGON BREATH' : def.signatureName.toUpperCase();
     wishTile.querySelector('small')!.textContent = this.wishHolding ? 'CHOOSE · RELEASE E' : this.laserLocking ? this.laserLockTarget >= 0 ? 'TARGET LOCKED · RELEASE E' : 'LOCKING · HOLD ON RIVAL' : player.signatureCooldown > 0 ? `RECHARGING · ${player.signatureCooldown.toFixed(1)}s` : player.character === 'genie' ? 'READY · HOLD E TO CHOOSE' : player.character === 'buzz' ? 'READY · HOLD E TO LOCK' : 'READY · PRESS E';
-    signatureFill.style.width = `${this.laserLocking ? clamp(this.laserLockElapsed / 0.33, 0, 1) * 100 : clamp(1 - player.signatureCooldown / (dragonBreath ? 1.35 : def.signatureCooldown), 0, 1) * 100}%`;
+    signatureFill.style.width = `${this.laserLocking ? clamp(this.laserLockElapsed / (player.laserReadyTime > 0 ? 0.2 : 0.33), 0, 1) * 100 : clamp(1 - player.signatureCooldown / (dragonBreath ? 1.35 : def.signatureCooldown), 0, 1) * 100}%`;
     wishTile.classList.toggle('cooling', player.signatureCooldown > 0);
     wishTile.classList.toggle('ready', player.signatureCooldown <= 0);
     ultimateTile.querySelector('strong')!.textContent = def.ultimateName.toUpperCase();

@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 
-const blueSkin = new THREE.MeshStandardMaterial({ color: 0x367edc, roughness: 0.62, metalness: 0.04, flatShading: true });
-const lightBlue = new THREE.MeshStandardMaterial({ color: 0x63a9f2, roughness: 0.6, flatShading: true });
-const darkHair = new THREE.MeshStandardMaterial({ color: 0x17243e, roughness: 0.74, flatShading: true });
+const blueSkin = new THREE.MeshStandardMaterial({ color: 0x367edc, roughness: 0.62, metalness: 0.04 });
+const lightBlue = new THREE.MeshStandardMaterial({ color: 0x63a9f2, roughness: 0.6 });
+const darkHair = new THREE.MeshStandardMaterial({ color: 0x17243e, roughness: 0.74 });
 const eyeWhite = new THREE.MeshBasicMaterial({ color: 0xfff9eb });
 const pupil = new THREE.MeshBasicMaterial({ color: 0x101a38 });
 const smile = new THREE.MeshBasicMaterial({ color: 0x24233e });
@@ -20,8 +20,8 @@ function mesh(geometry: THREE.BufferGeometry, material: THREE.Material, x = 0, y
   return item;
 }
 
-function sphere(radius: number, material: THREE.Material, x = 0, y = 0, z = 0, segments = 16) {
-  return mesh(new THREE.SphereGeometry(radius, segments, 10), material, x, y, z);
+function sphere(radius: number, material: THREE.Material, x = 0, y = 0, z = 0, segments = 24) {
+  return mesh(new THREE.SphereGeometry(radius, Math.max(segments, 18), 16), material, x, y, z);
 }
 
 function starGeometry(outer: number, inner: number) {
@@ -104,7 +104,7 @@ function createGenieFigure(ultimatePose = false): THREE.Group {
     [0.43, 0], [0.58, 0.17], [0.72, 0.42], [0.88, 0.78],
     [0.91, 1.06], [0.76, 1.31], [0.42, 1.47],
   ].map(([radius, height]) => new THREE.Vector2(radius, height));
-  const torso = mesh(new THREE.LatheGeometry(torsoProfile, 18), blueSkin, 0, 0.54, -0.14);
+  const torso = mesh(new THREE.LatheGeometry(torsoProfile, 32), blueSkin, 0, 0.54, -0.14);
   torso.scale.z = 0.69;
   figure.add(torso);
   const sash = mesh(new THREE.CylinderGeometry(0.58, 0.55, 0.22, 12), purple, 0, 0.67, -0.16);
@@ -160,6 +160,9 @@ function createGenieFigure(ultimatePose = false): THREE.Group {
       brow.scale.set(1, 0.21, 0.3);
       brow.rotation.z = side * -0.16;
       figure.add(brow);
+      const cheek = sphere(0.16, lightBlue, side * 0.43, 2.34, 0.43);
+      cheek.scale.set(0.8, 0.47, 0.35);
+      figure.add(cheek);
     }
     const shoulder = new THREE.Vector3(side * 0.85, 1.63, 0.02);
     const raised = ultimatePose && side === -1;
@@ -185,6 +188,12 @@ function createGenieFigure(ultimatePose = false): THREE.Group {
     const mouth = sphere(0.24, smile, 0, 2.15, 0.58, 10);
     mouth.scale.set(1, 0.15, 0.12);
     figure.add(mouth);
+    const grin = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-0.25, 2.19, 0.59),
+      new THREE.Vector3(0, 2.10, 0.63),
+      new THREE.Vector3(0.25, 2.19, 0.59),
+    ]);
+    figure.add(mesh(new THREE.TubeGeometry(grin, 16, 0.026, 6, false), smile));
   }
   return figure;
 }
@@ -310,6 +319,11 @@ export class KartVisual {
     seatShape.closePath();
     const seatBack = mesh(new THREE.ExtrudeGeometry(seatShape, { depth: 0.26, bevelEnabled: true, bevelSize: 0.1, bevelThickness: 0.08, bevelSegments: 2 }), purple, 0, 1.68, -1.32);
     this.body.add(seatBack);
+    const steeringWheel = mesh(new THREE.TorusGeometry(0.68, 0.074, 10, 32), goldLight, 0, 2.25, 0.38);
+    steeringWheel.rotation.x = -0.22;
+    this.body.add(steeringWheel);
+    this.body.add(limb(new THREE.Vector3(0, 1.72, 0.74), new THREE.Vector3(0, 2.25, 0.38), 0.075, 0.085, gold));
+    for (const side of [-1, 1]) this.body.add(limb(new THREE.Vector3(0, 2.25, 0.38), new THREE.Vector3(side * 0.54, 2.25, 0.38), 0.045, 0.055, goldLight));
     const lampCap = mesh(new THREE.CylinderGeometry(0.16, 0.23, 0.29, 12), trim, 0, 1.91, -1.52);
     this.body.add(lampCap);
     const lampKnob = sphere(0.18, trim, 0, 2.09, -1.52, 10);
@@ -343,10 +357,10 @@ export class KartVisual {
       for (const z of [-1.25, 1.25]) {
         const wheelGroup = new THREE.Group();
         wheelGroup.position.set(x, 0.73, z);
-        const tyreMesh = mesh(new THREE.CylinderGeometry(0.73, 0.73, 0.57, 18), tire);
+        const tyreMesh = mesh(new THREE.CylinderGeometry(0.73, 0.73, 0.57, 28), tire);
         tyreMesh.rotation.z = Math.PI / 2;
         wheelGroup.add(tyreMesh);
-        const hub = mesh(new THREE.CylinderGeometry(0.37, 0.37, 0.61, 14), trim);
+        const hub = mesh(new THREE.CylinderGeometry(0.37, 0.37, 0.61, 20), trim);
         hub.rotation.z = Math.PI / 2;
         wheelGroup.add(hub);
         const hubCap = mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.64, 10), goldLight);

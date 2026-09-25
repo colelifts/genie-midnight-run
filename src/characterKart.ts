@@ -46,6 +46,27 @@ function branch(parent: THREE.Group, from: THREE.Vector3, to: THREE.Vector3, rad
   return part;
 }
 
+function stunBird() {
+  const bird = new THREE.Group();
+  const feathers = paint(0xfff3cf, 0.02, 0.65);
+  const beak = paint(0xffbb56, 0.05, 0.5);
+  ball(bird, 0.2, feathers, 0, 0, 0).scale.set(1.1, 0.65, 0.76);
+  ball(bird, 0.145, feathers, 0, 0.13, 0.1);
+  const bill = cone(bird, 0.075, 0.2, beak, 0, 0.1, 0.31, 7);
+  bill.rotation.x = Math.PI / 2;
+  for (const side of [-1, 1]) {
+    const wingShape = new THREE.Shape();
+    wingShape.moveTo(0, 0);
+    wingShape.quadraticCurveTo(side * 0.36, 0.3, side * 0.78, 0.19);
+    wingShape.quadraticCurveTo(side * 0.53, -0.14, side * 0.12, -0.12);
+    wingShape.closePath();
+    add(bird, new THREE.ShapeGeometry(wingShape), feathers, 0, 0.03, -0.04).castShadow = false;
+    ball(bird, 0.035, eye, side * 0.085, 0.16, 0.22);
+  }
+  bird.traverse((part) => { if (part instanceof THREE.Mesh) part.castShadow = false; });
+  return bird;
+}
+
 function figure(id: CharacterId) {
   const root = new THREE.Group();
   const model = CHARACTER_BY_ID[id];
@@ -537,6 +558,7 @@ export class CharacterKartVisual implements RaceVisual {
   private readonly aura = new THREE.Group();
   private readonly ultimateLight: THREE.PointLight;
   private readonly stunHalo = new THREE.Group();
+  private readonly stunBirds: THREE.Group[] = [];
   private readonly contactShadow: THREE.Mesh;
   private elapsed = 0;
 
@@ -653,9 +675,26 @@ export class CharacterKartVisual implements RaceVisual {
     this.aura.add(this.ultimateLight);
     this.aura.visible = false;
     this.group.add(this.aura);
+    const starShape = new THREE.Shape();
+    for (let n = 0; n < 10; n++) {
+      const angle = n * Math.PI / 5 - Math.PI / 2;
+      const radius = n % 2 ? 0.13 : 0.31;
+      if (n === 0) starShape.moveTo(Math.cos(angle) * radius, Math.sin(angle) * radius);
+      else starShape.lineTo(Math.cos(angle) * radius, Math.sin(angle) * radius);
+    }
+    starShape.closePath();
+    const starGeometry = new THREE.ShapeGeometry(starShape);
     for (let i = 0; i < 4; i++) {
-      const gem = cone(this.stunHalo, 0.21, 0.37, glow(i % 2 ? 0xffd46e : 0xd9f5ff), Math.sin(i * Math.PI / 2) * 1, 0, Math.cos(i * Math.PI / 2) * 1, 5);
-      gem.rotation.x = Math.PI / 2;
+      const star = add(this.stunHalo, starGeometry, glow(i % 2 ? 0xffd46e : 0xd9f5ff), Math.sin(i * Math.PI / 2) * 1.08, 0.1 + (i % 2) * 0.2, Math.cos(i * Math.PI / 2) * 1.08);
+      star.rotation.y = i * Math.PI / 2;
+      star.castShadow = false;
+    }
+    for (let i = 0; i < 2; i++) {
+      const bird = stunBird();
+      bird.position.set(i ? -1.18 : 1.18, 0.21, i ? 0.42 : -0.42);
+      bird.rotation.y = i ? -0.3 : Math.PI + 0.3;
+      this.stunBirds.push(bird);
+      this.stunHalo.add(bird);
     }
     this.stunHalo.position.y = 4.5;
     this.stunHalo.visible = false;
@@ -685,6 +724,11 @@ export class CharacterKartVisual implements RaceVisual {
     this.aura.position.y = Math.sin(this.elapsed * 3) * 0.13;
     this.aura.rotation.y = Math.sin(this.elapsed * 0.8) * 0.07;
     this.stunHalo.rotation.y += dt * 4;
+    for (let i = 0; i < this.stunBirds.length; i++) {
+      const bird = this.stunBirds[i];
+      bird.position.y = 0.21 + Math.sin(this.elapsed * 9 + i * Math.PI) * 0.1;
+      bird.rotation.z = Math.sin(this.elapsed * 8 + i * 2.3) * 0.13;
+    }
     if (this.oceanBarrier.visible) {
       this.oceanBarrier.rotation.y = Math.sin(this.elapsed * 4.5) * 0.07;
       this.oceanBarrier.scale.y = 0.96 + Math.sin(this.elapsed * 6) * 0.045;

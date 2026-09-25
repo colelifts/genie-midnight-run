@@ -16,10 +16,10 @@ const ASSETS = {
   crateCrack: 'crate-crack.mp3', woodHit: 'wood-hit.mp3', stoneImpact: 'stone-impact.mp3',
   urnShatter: 'urn-shatter.mp3', cartClank: 'cart-clank.mp3',
   wind: 'wind-ambience.mp3', fountain: 'fountain-ambience.mp3',
-  ufoArrival: 'rampage-arrival.ogg', ufoInbound: 'rampage-inbound.ogg', ufoLock: 'rampage-lock.ogg', ufoSiren: 'ufo-siren.ogg',
+  ufoArrival: 'rampage-arrival.ogg', ufoInbound: 'rampage-inbound.ogg', ufoLock: 'rampage-lock.ogg', ufoSiren: 'ufo-siren.ogg', stitchTheme: 'stitch-ultimate-theme.ogg',
   plasmaCast: 'plasma-cast.ogg', plasmaImpact: 'plasma-impact.ogg',
 } as const;
-const AUDIO_REVISION = '14';
+const AUDIO_REVISION = '15';
 type AssetName = keyof typeof ASSETS;
 type Loop = { source: AudioBufferSourceNode; gain: GainNode };
 type RivalEngine = { id: number; position: { x: number; y: number; z: number }; speed: number };
@@ -53,6 +53,7 @@ export class GameAudio {
   private readonly buffers = new Map<AssetName, AudioBuffer>();
   private readonly loops = new Map<AssetName, Loop>();
   private ufoDrone: Loop | null = null;
+  private ufoTheme: Loop | null = null;
   private assetsReady = false;
   private readonly rivalVoices: RivalVoice[] = [];
   private rivalsAudible = 0;
@@ -174,6 +175,8 @@ export class GameAudio {
   }
 
   resetRaceMusic() {
+    this.setUfoTheme(false, 0);
+    this.setUfoDrone(false);
     const now = this.context?.currentTime ?? 0;
     this.raceMusicGain?.gain.setValueAtTime(0, now);
     this.raceRequested = false;
@@ -275,7 +278,7 @@ export class GameAudio {
   setPaused(value: boolean) {
     this.paused = value;
     if (!this.context) return;
-    if (value) this.setUfoDrone(false);
+    if (value) { this.setUfoDrone(false); this.setUfoTheme(false, 0); }
     const now = this.context.currentTime;
     this.raceMusicGain?.gain.setTargetAtTime(value ? 0.08 : 0.65, now, 0.22);
     this.loops.get('engine')?.gain.gain.setTargetAtTime(value ? 0 : 0.2, now, 0.08);
@@ -304,6 +307,7 @@ export class GameAudio {
       musicLevel: this.musicLevel,
       effectsLevel: this.effectsLevel,
       ufoDrone: Boolean(this.ufoDrone),
+      ufoTheme: Boolean(this.ufoTheme),
     };
   }
 
@@ -368,12 +372,13 @@ export class GameAudio {
     this.eventPan = 0;
   }
 
-  update(speed: number, drifting: boolean, ultimate: boolean, boosting: boolean, active: boolean, zone: string, finalLap = false, fountain?: { x: number; z: number }, atmosphere: 'none' | 'ultimate' | 'ufo' = 'none') {
+  update(speed: number, drifting: boolean, ultimate: boolean, boosting: boolean, active: boolean, zone: string, finalLap = false, fountain?: { x: number; z: number }, atmosphere: 'none' | 'ultimate' | 'ufo' = 'none', ufoAge = 0) {
     const context = this.context;
     if (!context) return;
     const now = context.currentTime;
     const running = active && !this.paused;
     this.setUfoDrone(running && atmosphere === 'ufo');
+    this.setUfoTheme(running && atmosphere === 'ufo', ufoAge);
     const engine = this.loops.get('engine');
     if (engine) {
       engine.source.playbackRate.setTargetAtTime(0.48 + Math.min(speed, 70) * (ultimate ? 0.0128 : 0.011), now, 0.16);
@@ -397,7 +402,7 @@ export class GameAudio {
     }
     const duck = now < this.duckUntil ? 0.5 : 1;
     this.loops.get('menu')?.gain.gain.setTargetAtTime(!active && !this.paused ? 0.52 : 0, now, 0.32);
-    const ultimateMix = atmosphere === 'ufo' ? 0.53 : atmosphere === 'ultimate' ? 0.84 : 1;
+    const ultimateMix = atmosphere === 'ufo' ? 0.1 : atmosphere === 'ultimate' ? 0.84 : 1;
     this.raceMusicGain?.gain.setTargetAtTime(running ? (finalLap ? 0.8 : 0.66) * duck * ultimateMix : this.paused ? 0.08 : 0, now, 0.32);
     const cave = zone === 'DESERT CAVE';
     const garden = zone === 'PALACE GARDEN';
@@ -434,6 +439,28 @@ export class GameAudio {
     source.start();
     gain.gain.setTargetAtTime(0.16, context.currentTime, 0.7);
     this.ufoDrone = { source, gain };
+  }
+
+  private setUfoTheme(active: boolean, age: number) {
+    const context = this.context;
+    if (!context || !this.musicBus) return;
+    if (!active && this.ufoTheme) {
+      this.ufoTheme.gain.gain.setTargetAtTime(0, context.currentTime, 0.2);
+      this.ufoTheme.source.stop(context.currentTime + 0.75);
+      this.ufoTheme = null;
+    }
+    if (!active || this.ufoTheme) return;
+    const buffer = this.buffers.get('stitchTheme');
+    if (!buffer) return;
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    source.buffer = buffer;
+    source.loop = true;
+    gain.gain.value = 0;
+    source.connect(gain).connect(this.musicBus);
+    source.start(context.currentTime, age % buffer.duration);
+    gain.gain.setTargetAtTime(0.82, context.currentTime, 0.32);
+    this.ufoTheme = { source, gain };
   }
 
   private sample(name: AssetName, volume: number, rate = 1, delay = 0, duration?: number, pan = 0) {

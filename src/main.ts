@@ -290,6 +290,7 @@ class GenieRace {
   private plasmaCast = 0;
   private plasmaTotalHits = 0;
   private ufoTotalHits = 0;
+  private readonly ufoBeamVictims = new Set<number>();
   private lastUfoImpactSound = -10;
   private skyColors!: THREE.BufferAttribute;
   private skyCalm!: Float32Array;
@@ -748,6 +749,7 @@ class GenieRace {
     this.plasmaVolleys.length = 0;
     this.plasmaCombos.clear();
     this.plasmaTotalHits = this.ufoTotalHits = 0;
+    this.ufoBeamVictims.clear();
     this.lastUfoImpactSound = -10;
     this.ufoPhase = 'none';
     stitchAlert.classList.add('hidden');
@@ -1246,6 +1248,7 @@ class GenieRace {
       this.burst(strike.clone().add(new THREE.Vector3(0, 1.5, 0)), 0x66edff, 0xa370ff, impact.kind === 'beam' ? 5 : 12);
       nearImpact ||= impact.position.distanceTo(this.racers[0].position) < 55;
       for (const racer of this.racers) {
+        if (impact.target !== undefined && racer.id !== impact.target) continue;
         if (racer.id === this.ufo.owner || racer.stunTime > 0 || racer.hitCooldown > 0) continue;
         if (Math.abs(racer.position.y - impact.position.y) > 3.4) continue;
         let distance = Math.hypot(racer.position.x - impact.position.x, racer.position.z - impact.position.z);
@@ -1258,6 +1261,7 @@ class GenieRace {
         if (distance > impact.radius + 1.25) continue;
         this.stun(racer, impact.kind === 'beam' ? 0.65 : 0.48);
         this.ufoTotalHits++;
+        if (impact.kind === 'beam') this.ufoBeamVictims.add(racer.id);
         if (racer.id === 0) this.showBanner('UFO PLASMA HIT!', 0.8);
       }
     }
@@ -1270,9 +1274,9 @@ class GenieRace {
       if (wasActive) this.racers.forEach((racer) => { if (racer.character === 'stitch') racer.ultimateTime = 0; });
     } else {
       const threat = this.ufo.getLockedThreat(0);
-      stitchAlert.textContent = threat ? 'PLASMA LOCKED · EVADE!' : phase === 'beam' ? this.ufo.owner === 0 ? 'PLASMA SWEEP!' : 'PLASMA SWEEP · DODGE!' : phase === 'sweep' ? 'PLASMA SWEEP INBOUND' : phase === 'inbound' ? 'EXPERIMENT 626 · INBOUND' : phase === 'locked' ? 'PLASMA TARGETS LOCKED' : 'UFO TARGETING THE TRACK';
+      stitchAlert.textContent = threat ? 'PLASMA LOCKED · EVADE!' : phase === 'beam' ? this.ufo.beamTarget === 0 ? 'LEADER BEAM · DODGE!' : 'LEADER BEAM FIRING' : phase === 'sweep' ? this.ufo.beamTarget === 0 ? 'BEAM LOCKING ON YOU' : 'BEAM LOCKING ON LEADER' : phase === 'inbound' ? 'EXPERIMENT 626 · INBOUND' : phase === 'locked' ? 'PLASMA TARGETS LOCKED' : 'UFO TARGETING THE TRACK';
       stitchAlert.dataset.phase = phase;
-      stitchAlert.classList.remove('hidden');
+      stitchAlert.classList.toggle('hidden', this.stitchIntroTime > 0);
     }
   }
 
@@ -1657,6 +1661,7 @@ class GenieRace {
     hud.dataset.audioDriftCues = `${audioStatus.driftCueCount}/${audioStatus.lastDriftCue}`;
     hud.dataset.audioRivals = `${audioStatus.rivalsAudible}/${audioStatus.rivalVoices}`;
     hud.dataset.audioUfo = String(audioStatus.ufoDrone);
+    hud.dataset.audioUfoTheme = String(audioStatus.ufoTheme);
     hud.dataset.audioMusic = audioStatus.musicPhase;
     hud.dataset.audioMix = `${Math.round(audioStatus.musicLevel * 100)}/${Math.round(audioStatus.effectsLevel * 100)}`;
     if (this.mode !== 'paused') this.elapsed += dt;
@@ -1701,7 +1706,7 @@ class GenieRace {
       this.updateFlashes(dt);
       this.updateDashDragons(dt);
       this.audio.setListener(this.racers[0].position.x, this.racers[0].position.y, this.racers[0].position.z, this.racers[0].yaw);
-      this.audio.update(this.racers[0].speed, this.racers[0].drifting, this.racers[0].ultimateTime > 0, this.racers[0].boostTime > 0, this.mode === 'race', this.track.zone(this.racers[0].progress), this.racers[0].lap >= 3, this.track.fountainPosition, ultimateAtmosphere);
+      this.audio.update(this.racers[0].speed, this.racers[0].drifting, this.racers[0].ultimateTime > 0, this.racers[0].boostTime > 0, this.mode === 'race', this.track.zone(this.racers[0].progress), this.racers[0].lap >= 3, this.track.fountainPosition, ultimateAtmosphere, this.ufo.elapsed);
       this.audio.updateRivals(this.racers, this.mode === 'race');
       if (this.stitchIntroTime > 0) {
         this.stitchIntroTime -= dt;
@@ -2833,7 +2838,7 @@ class GenieRace {
       const road = this.track.nearest(racer.position, racer.progress);
       return { id: racer.id, character: racer.character, lap: racer.lap, p: Number(racer.progress.toFixed(3)), x: Number(racer.position.x.toFixed(2)), y: Number(racer.position.y.toFixed(2)), z: Number(racer.position.z.toFixed(2)), yaw: Number(racer.yaw.toFixed(3)), moveYaw: Number(racer.moveYaw.toFixed(3)), yawRate: Number(racer.yawRate.toFixed(2)), route: road.point.route, lateral: Number(road.lateral.toFixed(2)), roadHalfWidth: Number((road.point.width / 2).toFixed(2)), onRoad: road.onRoad, aiRoute: racer.aiRoute, aiLine: Number(racer.aiLine.toFixed(1)), speed: Math.round(racer.speed), drift: Number(racer.driftCharge.toFixed(2)), jump: Number(racer.jumpTime.toFixed(2)), trickReady: racer.trickReady, trickBoost: racer.trickBoost, tricks: racer.tricksLanded, drafts: racer.draftBoosts, slip: Number(racer.slipCharge.toFixed(2)), padBoost: Number(racer.padBoostTime.toFixed(2)), iceSpeed: Number(racer.iceSpeedTime.toFixed(2)), stun: Number(racer.stunTime.toFixed(2)), hitGrace: Number(racer.hitCooldown.toFixed(2)), ultimate: Number(racer.ultimateTime.toFixed(2)), meter: Math.round(racer.ultimateMeter), signatureCooldown: Number(racer.signatureCooldown.toFixed(1)), item: racer.item, tripleSparks: racer.tripleSparks };
     }));
-    if (this.debugPowers) hud.dataset.effects = JSON.stringify({ projectiles: this.projectiles.map((projectile) => ({ kind: projectile.kind, speed: Math.round(projectile.velocity.length()), target: projectile.target })), fields: this.powerFields.map((field) => field.kind), plasmaHits: this.plasmaTotalHits, plasmaCombos: [...this.plasmaCombos.entries()].map(([target, combo]) => ({ target, count: combo.count })), ufo: { active: this.ufo.active, owner: this.ufo.owner, age: Number(this.ufo.elapsed.toFixed(2)), phase: this.ufoPhase, warnings: this.ufo.warnings, hits: this.ufoTotalHits } });
+    if (this.debugPowers) hud.dataset.effects = JSON.stringify({ projectiles: this.projectiles.map((projectile) => ({ kind: projectile.kind, speed: Math.round(projectile.velocity.length()), target: projectile.target })), fields: this.powerFields.map((field) => field.kind), plasmaHits: this.plasmaTotalHits, plasmaCombos: [...this.plasmaCombos.entries()].map(([target, combo]) => ({ target, count: combo.count })), ufo: { active: this.ufo.active, owner: this.ufo.owner, age: Number(this.ufo.elapsed.toFixed(2)), phase: this.ufoPhase, warnings: this.ufo.warnings, hits: this.ufoTotalHits, beamTarget: this.ufo.beamTarget, beamVictims: [...this.ufoBeamVictims] } });
     const standings = [...this.racers].sort((a, b) => (b.lap - 1 + b.progress) - (a.lap - 1 + a.progress));
     const rank = standings.findIndex((racer) => racer.id === 0) + 1;
     const suffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th';

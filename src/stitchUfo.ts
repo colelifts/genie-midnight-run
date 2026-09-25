@@ -4,6 +4,7 @@ import type { RaceTrack } from './track';
 export interface UfoRacer {
   id: number;
   position: THREE.Vector3;
+  lap: number;
   progress: number;
   moveYaw: number;
   speed: number;
@@ -14,6 +15,7 @@ export interface UfoImpact {
   position: THREE.Vector3;
   previous?: THREE.Vector3;
   radius: number;
+  target?: number;
 }
 
 export type UfoPhase = 'none' | 'inbound' | 'tracking' | 'locked' | 'sweep' | 'beam';
@@ -38,6 +40,11 @@ const BOMB_RADIUS = 6.2;
 export const STITCH_UFO_DURATION = 9.6;
 const INBOUND_DURATION = 2;
 const BOMB_INTERVAL = 0.68;
+
+export function frontmostRival<T extends Pick<UfoRacer, 'id' | 'lap' | 'progress'>>(racers: readonly T[], ownerId: number): T | undefined {
+  return racers.filter((racer) => racer.id !== ownerId)
+    .sort((a, b) => (b.lap - 1 + b.progress) - (a.lap - 1 + a.progress))[0];
+}
 
 function makeShip() {
   const ship = new THREE.Group();
@@ -170,6 +177,7 @@ export class StitchUfo {
   private beamPrevious = new THREE.Vector3();
   private beamFireAt = 0;
   private beamDone = false;
+  private beamTargetId = -1;
 
   constructor(private readonly scene: THREE.Scene, private readonly track: RaceTrack) {
     scene.add(this.ship);
@@ -186,8 +194,8 @@ export class StitchUfo {
     this.sweep.visible = false;
     scene.add(this.sweep);
     const beamGeometry = new THREE.CylinderGeometry(1, 1, 1, 18, 1, true);
-    this.beamCore = new THREE.Mesh(beamGeometry, new THREE.MeshBasicMaterial({ color: 0x8af8ff, transparent: true, opacity: 0.84, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }));
-    this.beamShell = new THREE.Mesh(beamGeometry, new THREE.MeshBasicMaterial({ color: 0x825dff, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }));
+    this.beamCore = new THREE.Mesh(beamGeometry, new THREE.MeshBasicMaterial({ color: 0x8af8ff, transparent: true, opacity: 0.48, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }));
+    this.beamShell = new THREE.Mesh(beamGeometry, new THREE.MeshBasicMaterial({ color: 0x825dff, transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }));
     this.beamRing = new THREE.Mesh(new THREE.TorusGeometry(2.25, 0.2, 8, 40), new THREE.MeshBasicMaterial({ color: 0xa6faff, transparent: true, opacity: 0.9, depthWrite: false, toneMapped: false }));
     this.beamRing.rotation.x = Math.PI / 2;
     this.beamLight = new THREE.PointLight(0x70dfff, 0, 15, 2);
@@ -199,6 +207,7 @@ export class StitchUfo {
   get owner() { return this.ownerId; }
   get elapsed() { return this.age; }
   get warnings() { return this.marks.length; }
+  get beamTarget() { return this.beamTargetId; }
 
   start(owner: number, racers: UfoRacer[]) {
     if (this.active) return false;
@@ -223,14 +232,17 @@ export class StitchUfo {
   private updateShip(dt: number, racers: UfoRacer[]) {
     const caster = racers[this.ownerId];
     if (!caster) return;
+    const beamTarget = this.beamWarned ? racers.find((racer) => racer.id === this.beamTargetId) : undefined;
     let leader = caster;
     let lead = 0;
-    for (const peer of racers) {
-      if (peer.id === caster.id) continue;
-      const ahead = wrap(peer.progress - caster.progress) * this.track.length;
-      if (ahead > lead && ahead < 120) { lead = ahead; leader = peer; }
+    if (!beamTarget) {
+      for (const peer of racers) {
+        if (peer.id === caster.id) continue;
+        const ahead = wrap(peer.progress - caster.progress) * this.track.length;
+        if (ahead > lead && ahead < 120) { lead = ahead; leader = peer; }
+      }
     }
-    const point = this.track.at(wrap(caster.progress + (lead + 32 + Math.min(leader.speed, 80) * 0.45) / this.track.length));
+    const point = this.track.at(wrap((beamTarget?.progress ?? caster.progress) + (beamTarget ? 20 : lead + 32 + Math.min(leader.speed, 80) * 0.45) / this.track.length));
     const desired = point.position.clone().add(new THREE.Vector3(0, 18, 0));
     this.ship.position.lerp(desired, 1 - Math.exp(-dt * (this.age < INBOUND_DURATION ? 2.8 : 4)));
     const desiredYaw = Math.atan2(point.tangent.x, point.tangent.z);
@@ -254,23 +266,26 @@ export class StitchUfo {
   }
 
   private beginSweep(racers: UfoRacer[]) {
-    const caster = racers[this.ownerId];
-    if (!caster) return;
-    const target = racers.filter((racer) => racer.id !== this.ownerId).sort((a, b) => a.position.distanceToSquared(caster.position) - b.position.distanceToSquared(caster.position))[0];
+    const target = frontmostRival(racers, this.ownerId);
     if (!target) return;
-    const position = this.roadPoint(target, 2);
+    this.beamTargetId = target.id;
+    this.followBeamTarget(target, 0.3);
+    this.beamPrevious.copy(this.beamCenter).addScaledVector(this.beamRight, -this.beamHalfWidth);
+    this.sweep.visible = true;
+    this.beamWarned = true;
+    this.beamFireAt = 6.05;
+  }
+
+  private followBeamTarget(target: UfoRacer, lead: number) {
+    const position = this.roadPoint(target, lead);
     const road = this.track.nearest(position, target.progress);
     this.beamCenter.copy(road.point.position).add(new THREE.Vector3(0, 0.16, 0));
     this.beamRight.copy(road.point.right);
     this.beamHalfWidth = Math.max(3, road.point.width / 2 - 4);
-    this.beamPrevious.copy(this.beamCenter).addScaledVector(this.beamRight, -this.beamHalfWidth);
     this.sweep.position.copy(this.beamCenter);
     this.sweep.rotation.y = Math.atan2(road.point.tangent.x, road.point.tangent.z);
     this.sweepFloor.scale.set(this.beamHalfWidth * 2 + 6, 6, 1);
     this.sweep.children.slice(1).forEach((stripe, index) => { stripe.position.x = (index - 5) * this.beamHalfWidth / 5; });
-    this.sweep.visible = true;
-    this.beamWarned = true;
-    this.beamFireAt = 6.05;
   }
 
   private updateBeam(endpoint: THREE.Vector3) {
@@ -279,7 +294,7 @@ export class StitchUfo {
     const middle = endpoint.clone().addScaledVector(axis, 0.5);
     const direction = axis.clone().normalize();
     const rotation = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
-    for (const [mesh, radius] of [[this.beamCore, 0.7], [this.beamShell, 1.7]] as const) {
+    for (const [mesh, radius] of [[this.beamCore, 0.42], [this.beamShell, 1.1]] as const) {
       mesh.visible = true;
       mesh.position.copy(middle);
       mesh.quaternion.copy(rotation);
@@ -341,11 +356,16 @@ export class StitchUfo {
       this.marks.splice(index, 1);
     }
     if (!this.beamWarned && this.age >= 4.85) this.beginSweep(racers);
+    if (this.beamWarned && !this.beamDone) {
+      const target = racers.find((racer) => racer.id === this.beamTargetId);
+      if (target) this.followBeamTarget(target, this.age < this.beamFireAt ? 0.3 : 0);
+      if (this.age < this.beamFireAt) this.beamPrevious.copy(this.beamCenter).addScaledVector(this.beamRight, -this.beamHalfWidth);
+    }
     if (this.beamWarned && !this.beamDone && this.age >= this.beamFireAt) {
       const progress = clamp((this.age - this.beamFireAt) / 1.6, 0, 1);
       const endpoint = this.beamCenter.clone().addScaledVector(this.beamRight, -this.beamHalfWidth + this.beamHalfWidth * 2 * progress);
       this.updateBeam(endpoint);
-      impacts.push({ kind: 'beam', position: endpoint, previous: this.beamPrevious.clone(), radius: 3 });
+      impacts.push({ kind: 'beam', position: endpoint, previous: this.beamPrevious.clone(), radius: 3, target: this.beamTargetId });
       this.beamPrevious.copy(endpoint);
       if (progress >= 1) { this.beamDone = true; this.sweep.visible = false; this.hideBeam(); }
     }
@@ -367,6 +387,7 @@ export class StitchUfo {
     this.nextWave = 0;
     this.beamWarned = false;
     this.beamDone = false;
+    this.beamTargetId = -1;
     this.ship.visible = false;
     this.sweep.visible = false;
     this.hideBeam();

@@ -2,11 +2,17 @@
 
 A playable browser prototype of the endless Genie-only kart race. It uses original procedural proxy geometry and original synthesized sounds; it does not contain ripped film or game assets.
 
-## Play
+## Play online
 
-On Windows, double-click `play.cmd`. It installs the small development dependencies on first run and starts a local server. Open the URL printed in the terminal, usually <http://127.0.0.1:5173/>. Keep that terminal open while playing.
+Open **https://colelifts.github.io/genie-midnight-run/** on a laptop or another device. The game is hosted on GitHub Pages; it does not depend on the developer's local server being open.
 
-Or run `npm install` followed by `npm run dev` in this folder. `npm run build` verifies TypeScript and creates the production files in `dist/`.
+Every committed update pushed to `main` triggers `.github/workflows/deploy.yml`, which builds and publishes the game at the same URL. Wait for the workflow to finish before sharing an update.
+
+## Local development
+
+On Windows, double-click `play.cmd`. It installs dependencies on first run and starts a local development server. This is only for testing before publishing.
+
+Or run `npm install` followed by `npm run dev` in this folder. `npm run build` verifies TypeScript. `npm run build:pages` creates the production files for GitHub Pages in `dist/`.
 
 ## Controls
 

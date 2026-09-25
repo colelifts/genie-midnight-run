@@ -35,7 +35,9 @@ interface WarningMark {
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const wrap = (value: number) => ((value % 1) + 1) % 1;
 const BOMB_RADIUS = 6.2;
-export const STITCH_UFO_DURATION = 9.4;
+export const STITCH_UFO_DURATION = 9.6;
+const INBOUND_DURATION = 2;
+const BOMB_INTERVAL = 0.68;
 
 function makeShip() {
   const ship = new THREE.Group();
@@ -230,7 +232,7 @@ export class StitchUfo {
     }
     const point = this.track.at(wrap(caster.progress + (lead + 32 + Math.min(leader.speed, 80) * 0.45) / this.track.length));
     const desired = point.position.clone().add(new THREE.Vector3(0, 18, 0));
-    this.ship.position.lerp(desired, 1 - Math.exp(-dt * 4));
+    this.ship.position.lerp(desired, 1 - Math.exp(-dt * (this.age < INBOUND_DURATION ? 2.8 : 4)));
     const desiredYaw = Math.atan2(point.tangent.x, point.tangent.z);
     const deltaYaw = Math.atan2(Math.sin(desiredYaw - this.ship.rotation.y), Math.cos(desiredYaw - this.ship.rotation.y));
     this.ship.rotation.y += deltaYaw * (1 - Math.exp(-dt * 5));
@@ -244,7 +246,7 @@ export class StitchUfo {
     const rivals = racers.filter((racer) => racer.id !== this.ownerId).sort((a, b) => a.position.distanceToSquared(caster.position) - b.position.distanceToSquared(caster.position));
     for (let slot = 0; slot < rivals.length; slot++) {
       const target = rivals[(wave + slot) % rivals.length];
-      const impactAt = 1.6 + wave * 0.75 + 1.4;
+      const impactAt = INBOUND_DURATION + wave * BOMB_INTERVAL + 1.2;
       const mark = makeWarning(this.roadPoint(target, 1.4), target.id, impactAt);
       this.marks.push(mark);
       this.scene.add(mark.group, mark.bolt);
@@ -268,7 +270,7 @@ export class StitchUfo {
     this.sweep.children.slice(1).forEach((stripe, index) => { stripe.position.x = (index - 5) * this.beamHalfWidth / 5; });
     this.sweep.visible = true;
     this.beamWarned = true;
-    this.beamFireAt = 5.9;
+    this.beamFireAt = 6.05;
   }
 
   private updateBeam(endpoint: THREE.Vector3) {
@@ -303,7 +305,7 @@ export class StitchUfo {
     if (!this.active) return { impacts: [], locks: 0, phase: 'none' };
     this.age += dt;
     this.updateShip(dt, racers);
-    while (this.nextWave < 3 && this.age >= 1.6 + this.nextWave * 0.75) this.addWave(racers, this.nextWave++);
+    while (this.nextWave < 3 && this.age >= INBOUND_DURATION + this.nextWave * BOMB_INTERVAL) this.addWave(racers, this.nextWave++);
     const impacts: UfoImpact[] = [];
     let locks = 0;
     let anyLocked = false;
@@ -338,7 +340,7 @@ export class StitchUfo {
       for (const material of mark.materials) material.dispose();
       this.marks.splice(index, 1);
     }
-    if (!this.beamWarned && this.age >= 4.7) this.beginSweep(racers);
+    if (!this.beamWarned && this.age >= 4.85) this.beginSweep(racers);
     if (this.beamWarned && !this.beamDone && this.age >= this.beamFireAt) {
       const progress = clamp((this.age - this.beamFireAt) / 1.6, 0, 1);
       const endpoint = this.beamCenter.clone().addScaledVector(this.beamRight, -this.beamHalfWidth + this.beamHalfWidth * 2 * progress);
@@ -347,7 +349,7 @@ export class StitchUfo {
       this.beamPrevious.copy(endpoint);
       if (progress >= 1) { this.beamDone = true; this.sweep.visible = false; this.hideBeam(); }
     }
-    const phase: UfoPhase = this.age < 1.6 ? 'inbound' : this.beamWarned && !this.beamDone ? this.age >= this.beamFireAt ? 'beam' : 'sweep' : anyLocked ? 'locked' : 'tracking';
+    const phase: UfoPhase = this.age < INBOUND_DURATION ? 'inbound' : this.beamWarned && !this.beamDone ? this.age >= this.beamFireAt ? 'beam' : 'sweep' : anyLocked ? 'locked' : 'tracking';
     if (this.age >= STITCH_UFO_DURATION) this.reset();
     return { impacts, locks, phase };
   }

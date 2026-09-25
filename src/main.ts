@@ -1178,7 +1178,7 @@ class GenieRace {
     if (racer.character === 'stitch') {
       this.announcementTime = 0;
       ultimateAnnouncement.classList.add('hidden');
-      this.stitchIntroTime = 2.25;
+      this.stitchIntroTime = 2.6;
       stitchIntro.classList.remove('hidden');
     } else {
       this.announcementTime = 1.35;
@@ -1195,8 +1195,8 @@ class GenieRace {
     this.burst(racer.position.clone().add(new THREE.Vector3(0, 1.7, 0)), def.color, def.accent, 36);
     if (racer.character === 'mickey') this.pushWave(racer, 13, 0xffd866);
     if (racer.character === 'mulan') this.launchPower(racer, 'dragon', 0x74e3cf, 54, 5);
-    if (racer.id === 0) this.audio.playUltimate(racer.character);
-    else this.audio.playAt(racer.character === 'stitch' ? 'ufo-arrival' : 'ultimate', racer.position);
+    if (racer.character === 'stitch' || racer.id === 0) this.audio.playUltimate(racer.character);
+    else this.audio.playAt('ultimate', racer.position);
   }
 
   private firePlasmaBurst(racer: Racer) {
@@ -1667,8 +1667,9 @@ class GenieRace {
     const ultimateAtmosphere = this.mode === 'race' ? this.ufo.active ? 'ufo' : this.racers.some((racer) => racer.ultimateTime > 0) ? 'ultimate' : 'none' : 'none';
     if (this.mode !== 'paused') {
       const targetStorm = ultimateAtmosphere === 'ufo' ? 1 : 0;
-      const nextStorm = this.stormBlend + (targetStorm - this.stormBlend) * (1 - Math.exp(-dt * (targetStorm ? 1.9 : 1.25)));
+      const nextStorm = this.stormBlend + (targetStorm - this.stormBlend) * (1 - Math.exp(-dt * (targetStorm ? 1.35 : 1.25)));
       if (Math.abs(nextStorm - this.stormBlend) > 0.001) this.setStorm(nextStorm);
+      atmosphereShade.classList.toggle('siren', this.ufo.active && this.ufo.elapsed < 2.8);
       const targetAmbient = ultimateAtmosphere === 'ultimate' ? 1 : 0;
       this.ambientUltBlend += (targetAmbient - this.ambientUltBlend) * (1 - Math.exp(-dt * (targetAmbient ? 3 : 1.8)));
       this.sunlight.intensity = 2.15 - this.stormBlend * 1.03 - this.ambientUltBlend * 0.19;

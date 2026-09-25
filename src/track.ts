@@ -21,6 +21,8 @@ export interface RoadHit {
 
 export interface Obstacle {
   kind: 'crate' | 'boulder' | 'cart' | 'urn';
+  route: RouteName;
+  progress: number;
   mesh: THREE.Group;
   position: THREE.Vector3;
   radius: number;
@@ -1843,7 +1845,7 @@ export class RaceTrack {
     group.position.y = point.position.y;
     group.rotation.y = Math.atan2(point.tangent.x, point.tangent.z);
     this.group.add(group);
-    const obstacle = { kind, mesh: group, position: group.position, radius, broken: false, respawn: 0, moving: kind === 'boulder', basePosition: group.position.clone(), right: point.right.clone(), phase };
+    const obstacle = { kind, route: point.route, progress: point.progress, mesh: group, position: group.position, radius, broken: false, respawn: 0, moving: kind === 'boulder', basePosition: group.position.clone(), right: point.right.clone(), phase };
     this.obstacles.push(obstacle);
     return obstacle;
   }

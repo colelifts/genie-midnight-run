@@ -6,7 +6,7 @@ import { CHARACTERS, CHARACTER_BY_ID, type CharacterId } from './characters';
 import { KartVisual, makeProjectile } from './kart';
 import { RacerShowcase } from './showcase';
 import { ITEMS, rollItem, type ItemId } from './items';
-import { MARKET_CROSSING_PROGRESS, marketCartState, PICKUP_LAYOUT, RaceTrack, touchesBoostPad, type RoadHit, type RoadPoint, type RouteName } from './track';
+import { BOOST_PAD_LAYOUT, MARKET_CROSSING_PROGRESS, MARKET_CROSSING_TRAVEL, marketCartState, PICKUP_LAYOUT, RaceTrack, touchesBoostPad, type RoadHit, type RoadPoint, type RouteName } from './track';
 
 const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = el<HTMLCanvasElement>('game');
@@ -98,6 +98,7 @@ interface Racer {
   lastSafeProgress: number;
   aiRoute: RouteName;
   aiLane: number;
+  aiLine: number;
   aiAbilityTimer: number;
   aiUltimateTimer: number;
   ultimateHit: Set<number>;
@@ -428,9 +429,14 @@ class GenieRace {
     return Array.from({ length: RACER_COUNT }, (_, i) => wrap(base + (i === 0 ? 0 : Math.ceil(i / 2) * 0.006)));
   }
 
+  private aiRouteForLap(id: number, lap: number): RouteName {
+    const requested = new URLSearchParams(window.location.search).get('demoRoute');
+    if (this.demoMode && id === 0 && (requested === 'alley' || requested === 'roof' || requested === 'garden')) return requested;
+    return (['alley', 'roof', 'garden'] as const)[(id + lap + 1) % 3];
+  }
+
   private makeRacers() {
     const starts = this.raceStarts();
-    const demoRoute = new URLSearchParams(window.location.search).get('demoRoute');
     const candidates = CHARACTERS.map((character) => character.id).filter((id) => id !== this.selectedCharacter);
     for (let i = 0; i < RACER_COUNT; i++) {
       const start = this.track.at(starts[i]);
@@ -456,7 +462,7 @@ class GenieRace {
         id: i, character, visual, itemOrbit, position: gridPosition.clone(), yaw, moveYaw: yaw, speed: 0, progress: starts[i], lap: 1, finishPlace: 0,
         boostTime: 0, padBoostTime: 0, shieldTime: 0, ultimateTime: 0, ultimateMeter: 0, signatureCooldown: 0, item: null, tripleSparks: 0, fogTime: 0, featherTime: 0, mirrorTime: 0, wishUpgrade: false, curseTime: 0, wobbleTime: 0, hotHeadTime: 0, laserReadyTime: 0, powerTick: 0, stunTime: 0, hitCooldown: 0, offTrackTime: 0, lastPad: 0,
         drifting: false, driftCharge: 0, jumpTime: 0, jumpDuration: 0, jumpPower: 0, trickReady: false, trickBoost: false, trickAnim: 0, slipCharge: 0, slipCooldown: 0, tricksLanded: 0, draftBoosts: 0, compassTime: 0, compassTarget: null,
-        lastSafe: gridPosition.clone(), lastSafeProgress: starts[i], aiRoute: i === 0 && this.demoMode && (demoRoute === 'alley' || demoRoute === 'roof' || demoRoute === 'garden') ? demoRoute : i % 3 === 1 ? 'alley' : i % 3 === 2 ? 'roof' : 'garden', aiLane: START_LANES[i],
+        lastSafe: gridPosition.clone(), lastSafeProgress: starts[i], aiRoute: this.aiRouteForLap(i, 1), aiLane: START_LANES[i], aiLine: START_LANES[i],
         aiAbilityTimer: 7 + i * 1.2, aiUltimateTimer: 40 + i * 3, ultimateHit: new Set<number>(), steerVisual: 0,
       };
       this.racers.push(racer);
@@ -651,6 +657,8 @@ class GenieRace {
       racer.compassTarget = null;
       racer.lastSafe.copy(racer.position);
       racer.lastSafeProgress = starts[i];
+      racer.aiRoute = this.aiRouteForLap(i, 1);
+      racer.aiLine = racer.aiLane;
       racer.aiAbilityTimer = 7 + i * 1.2;
       racer.aiUltimateTimer = 40 + i * 3;
       racer.ultimateHit.clear();
@@ -1339,7 +1347,7 @@ class GenieRace {
     let route: RouteName = 'main';
     if (racer.aiRoute === 'alley' && ahead > 0.045 && ahead < 0.16) route = 'alley';
     if (racer.aiRoute === 'roof' && ahead > 0.19 && ahead < 0.33) route = 'roof';
-    if ((racer.aiRoute === 'garden' || racer.id === 1) && ahead > 0.37 && ahead < 0.53) route = 'garden';
+    if (racer.aiRoute === 'garden' && ahead > 0.37 && ahead < 0.53) route = 'garden';
     const target = this.track.routeAt(route, ahead);
     const currentTangent = this.track.routeAt(route, racer.progress).tangent;
     const bend = target.tangent.dot(new THREE.Vector3(-currentTangent.z, 0, currentTangent.x));
@@ -1353,15 +1361,42 @@ class GenieRace {
     } else if (racer.drifting) {
       this.releaseDrift(racer);
     }
-    const direction = target.position.clone().addScaledVector(target.right, racer.aiLane).sub(racer.position);
-    let targetYaw = Math.atan2(direction.x, direction.z);
-    for (const obstacle of this.track.obstacles) {
-      if (obstacle.broken) continue;
-      const distance = racer.position.distanceTo(obstacle.position);
-      if (distance < 13 && distance > 3 && Math.abs(angleDiff(Math.atan2(obstacle.position.x - racer.position.x, obstacle.position.z - racer.position.z), racer.yaw)) < 0.5) {
-        targetYaw += racer.id % 2 ? 0.35 : -0.35;
+    const laneLimit = target.width / 2 - 2.6;
+    let desiredLane = clamp(racer.aiLane + clamp(bend * 4, -2.4, 2.4), -laneLimit, laneLimit);
+    if (route === 'main' && (racer.id === 0 || (racer.id + racer.lap) % 3 !== 0)) {
+      for (const pad of BOOST_PAD_LAYOUT) {
+        if (pad.route !== 'main' || !pad.width) continue;
+        const distance = wrap(pad.progress - racer.progress) * this.track.length;
+        if (distance > 80) continue;
+        desiredLane += (pad.lateral! - desiredLane) * clamp((80 - distance) / 40, 0, 1);
       }
     }
+    let closestHazard = Infinity;
+    let hazardLane = 0;
+    let hazardRadius = 0;
+    for (const obstacle of this.track.obstacles) {
+      if (obstacle.broken || obstacle.route !== route || Math.abs(obstacle.position.y - racer.position.y) > 3.3) continue;
+      const distance = wrap(obstacle.progress - racer.progress) * this.track.length;
+      if (distance > 55 || distance >= closestHazard) continue;
+      const obstaclePoint = this.track.routeAt(route, obstacle.progress);
+      const predictedLane = obstacle.kind === 'cart' && Math.abs(obstacle.progress - MARKET_CROSSING_PROGRESS) < 0.005
+        ? marketCartState(this.elapsed + distance / Math.max(18, racer.speed)).lateral * MARKET_CROSSING_TRAVEL
+        : obstacle.position.clone().sub(obstaclePoint.position).dot(obstaclePoint.right);
+      if (Math.abs(predictedLane) > obstaclePoint.width / 2 + obstacle.radius) continue;
+      closestHazard = distance;
+      hazardLane = predictedLane;
+      hazardRadius = obstacle.radius;
+    }
+    const clearance = hazardRadius + 4.4;
+    if (closestHazard < Infinity && Math.abs(desiredLane - hazardLane) < clearance) {
+      const options = [hazardLane - clearance, hazardLane + clearance].filter((lane) => Math.abs(lane) <= laneLimit);
+      if (options.length) {
+        desiredLane = options.sort((a, b) => Math.abs(a - desiredLane) + Math.abs(a - racer.aiLine) * 0.2 - Math.abs(b - desiredLane) - Math.abs(b - racer.aiLine) * 0.2)[0];
+      }
+    }
+    racer.aiLine += clamp(desiredLane - racer.aiLine, -dt * 14, dt * 14);
+    const direction = target.position.clone().addScaledVector(target.right, racer.aiLine).sub(racer.position);
+    const targetYaw = Math.atan2(direction.x, direction.z);
     const error = angleDiff(targetYaw, racer.yaw);
     const steer = clamp(error * 2.4, -1, 1);
     racer.steerVisual = steer;
@@ -1631,6 +1666,7 @@ class GenieRace {
     const before = racer.progress;
     if (before > 0.84 && progress < 0.16 && racer.speed > 0) {
       racer.lap++;
+      racer.aiRoute = this.aiRouteForLap(racer.id, racer.lap);
       if (racer.lap >= 4 && racer.finishPlace === 0) racer.finishPlace = ++this.finishCount;
       if (racer.id === 0) {
         const lapTime = this.lapClock;
@@ -1985,7 +2021,7 @@ class GenieRace {
 
   private updateHUD() {
     const player = this.racers[0];
-    hud.dataset.state = JSON.stringify(this.racers.map((racer) => ({ id: racer.id, character: racer.character, lap: racer.lap, p: Number(racer.progress.toFixed(3)), x: Number(racer.position.x.toFixed(2)), y: Number(racer.position.y.toFixed(2)), z: Number(racer.position.z.toFixed(2)), yaw: Number(racer.yaw.toFixed(3)), route: this.track.nearest(racer.position, racer.progress).point.route, speed: Math.round(racer.speed), drift: Number(racer.driftCharge.toFixed(2)), jump: Number(racer.jumpTime.toFixed(2)), trickReady: racer.trickReady, trickBoost: racer.trickBoost, tricks: racer.tricksLanded, drafts: racer.draftBoosts, slip: Number(racer.slipCharge.toFixed(2)), padBoost: Number(racer.padBoostTime.toFixed(2)), stun: Number(racer.stunTime.toFixed(2)), hitGrace: Number(racer.hitCooldown.toFixed(2)), ultimate: Number(racer.ultimateTime.toFixed(2)), meter: Math.round(racer.ultimateMeter), signatureCooldown: Number(racer.signatureCooldown.toFixed(1)), item: racer.item, tripleSparks: racer.tripleSparks })));
+    hud.dataset.state = JSON.stringify(this.racers.map((racer) => ({ id: racer.id, character: racer.character, lap: racer.lap, p: Number(racer.progress.toFixed(3)), x: Number(racer.position.x.toFixed(2)), y: Number(racer.position.y.toFixed(2)), z: Number(racer.position.z.toFixed(2)), yaw: Number(racer.yaw.toFixed(3)), route: this.track.nearest(racer.position, racer.progress).point.route, aiRoute: racer.aiRoute, aiLine: Number(racer.aiLine.toFixed(1)), speed: Math.round(racer.speed), drift: Number(racer.driftCharge.toFixed(2)), jump: Number(racer.jumpTime.toFixed(2)), trickReady: racer.trickReady, trickBoost: racer.trickBoost, tricks: racer.tricksLanded, drafts: racer.draftBoosts, slip: Number(racer.slipCharge.toFixed(2)), padBoost: Number(racer.padBoostTime.toFixed(2)), stun: Number(racer.stunTime.toFixed(2)), hitGrace: Number(racer.hitCooldown.toFixed(2)), ultimate: Number(racer.ultimateTime.toFixed(2)), meter: Math.round(racer.ultimateMeter), signatureCooldown: Number(racer.signatureCooldown.toFixed(1)), item: racer.item, tripleSparks: racer.tripleSparks })));
     const standings = [...this.racers].sort((a, b) => (b.lap - 1 + b.progress) - (a.lap - 1 + a.progress));
     const rank = standings.findIndex((racer) => racer.id === 0) + 1;
     const suffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th';

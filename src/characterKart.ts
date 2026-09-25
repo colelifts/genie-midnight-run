@@ -535,7 +535,7 @@ function ultimateApparition(id: CharacterId) {
 
 export interface RaceVisual {
   readonly group: THREE.Group;
-  readonly driver: THREE.Group;
+  readonly driver: THREE.Object3D;
   setShield(active: boolean): void;
   setOceanBarrier?(active: boolean): void;
   setUltimate(active: boolean): void;
@@ -702,6 +702,10 @@ export class CharacterKartVisual implements RaceVisual {
   }
 
   setShield(active: boolean) { this.shield.visible = active; }
+  hideBaseModel() {
+    this.body.visible = false;
+    for (const wheel of this.wheels) wheel.visible = false;
+  }
   setOceanBarrier(active: boolean) { this.oceanBarrier.visible = active; }
   setUltimate(active: boolean) { this.aura.visible = active; this.ultimateLight.intensity = active ? 2.2 : 0; }
   setStunned(active: boolean) { this.stunHalo.visible = active; }

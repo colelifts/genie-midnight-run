@@ -5,6 +5,7 @@ import { GameAudio } from './audio';
 import { sweptSphereHit } from './collision';
 import { advanceChaseYaw, advanceHeading, driftBoostStage, raceSpeed, railScrapeSpeed, slideHeadingAlongRail } from './handling';
 import { CharacterKartVisual, type RaceVisual } from './characterKart';
+import { ImportedKartVisual, loadImportedKarts } from './importedKart';
 import { CHARACTERS, CHARACTER_BY_ID, type CharacterId } from './characters';
 import { KartVisual, makeProjectile } from './kart';
 import { RacerShowcase } from './showcase';
@@ -501,7 +502,9 @@ class GenieRace {
   }
 
   private makeVisual(character: CharacterId): RaceVisual {
-    return character === 'genie' ? new KartVisual('gold') : new CharacterKartVisual(character);
+    return character === 'genie' ? new KartVisual('gold')
+      : character === 'mickey' || character === 'stitch' ? new ImportedKartVisual(character)
+      : new CharacterKartVisual(character);
   }
 
   private racerSound(name: Parameters<GameAudio['play']>[0], racer: Racer) {
@@ -529,6 +532,15 @@ class GenieRace {
         if (portrait) button.querySelector<HTMLImageElement>('.roster-card-portrait')!.src = portrait;
       });
     } catch (error) { console.warn('Racer portraits unavailable; using selection symbols.', error); }
+    void loadImportedKarts().then((ready) => {
+      if (!ready) return;
+      const portraits = this.showcase.renderPortraits(['mickey', 'stitch']);
+      for (const character of ['mickey', 'stitch'] as const) {
+        const portrait = portraits.get(character);
+        const image = characterSelect.querySelector<HTMLImageElement>(`.roster-card[data-character="${character}"] .roster-card-portrait`);
+        if (portrait && image) image.src = portrait;
+      }
+    }).catch((error) => console.warn('Detailed racer portraits unavailable.', error));
     this.refreshCharacterSelect();
   }
 

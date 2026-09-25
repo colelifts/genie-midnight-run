@@ -2,6 +2,12 @@ import * as THREE from 'three';
 import { CharacterKartVisual, type RaceVisual } from './characterKart';
 import { CHARACTER_BY_ID, type CharacterId } from './characters';
 import { KartVisual } from './kart';
+import { ImportedKartVisual } from './importedKart';
+
+const makeVisual = (character: CharacterId): RaceVisual =>
+  character === 'genie' ? new KartVisual('gold')
+    : character === 'mickey' || character === 'stitch' ? new ImportedKartVisual(character)
+    : new CharacterKartVisual(character);
 
 export class RacerShowcase {
   private readonly renderer: THREE.WebGLRenderer;
@@ -74,7 +80,7 @@ export class RacerShowcase {
       this.visual.dispose();
     }
     this.activeCharacter = character;
-    this.visual = character === 'genie' ? new KartVisual('gold') : new CharacterKartVisual(character);
+    this.visual = makeVisual(character);
     this.turntable.add(this.visual.group);
     const color = CHARACTER_BY_ID[character].accent;
     (this.accentRing.material as THREE.MeshBasicMaterial).color.setHex(color);
@@ -99,7 +105,7 @@ export class RacerShowcase {
     this.camera.updateProjectionMatrix();
     try {
       for (const character of characters) {
-        const visual: RaceVisual = character === 'genie' ? new KartVisual('gold') : new CharacterKartVisual(character);
+        const visual = makeVisual(character);
         const driver = visual.driver;
         const originalParent = driver.parent;
         const originalPosition = driver.position.clone();
@@ -109,7 +115,7 @@ export class RacerShowcase {
           driver.removeFromParent();
           driver.position.set(0, 0, 0);
           driver.scale.setScalar(1.13);
-          driver.rotation.set(0, 0, 0);
+          driver.rotation.set(0, character === 'mickey' || character === 'stitch' ? Math.PI : 0, 0);
           this.scene.add(driver);
           const accent = CHARACTER_BY_ID[character].accent;
           this.rimLight.color.setHex(accent);

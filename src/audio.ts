@@ -1,7 +1,8 @@
 /// <reference types="vite/client" />
 import type { CharacterId } from './characters';
+import { STITCH_UFO_INBOUND_DURATION } from './stitchUfo';
 
-type SoundName = 'go' | 'drift' | 'boost' | 'pad' | 'wish' | 'shield' | 'shot' | 'laser' | 'water' | 'cannon' | 'fire' | 'ice' | 'hit' | 'stun' | 'lap' | 'final-lap' | 'ultimate' | 'trick' | 'draft' | 'pickup' | 'cart-warning' | 'birds' | 'crate-hit' | 'market-hit' | 'boulder-hit' | 'urn-hit' | 'cart-hit' | 'field-soul' | 'field-clock' | 'field-anchor' | 'field-star' | 'field-fire' | 'plasma-shot' | 'plasma-hit' | 'ufo-arrival' | 'ufo-siren' | 'ufo-lock' | 'ufo-warning' | 'ufo-beam' | 'ufo-impact';
+type SoundName = 'go' | 'drift' | 'boost' | 'pad' | 'wish' | 'shield' | 'shot' | 'laser' | 'water' | 'cannon' | 'fire' | 'ice' | 'hit' | 'stun' | 'lap' | 'final-lap' | 'ultimate' | 'trick' | 'draft' | 'pickup' | 'cart-warning' | 'birds' | 'crate-hit' | 'market-hit' | 'boulder-hit' | 'urn-hit' | 'cart-hit' | 'field-soul' | 'field-clock' | 'field-anchor' | 'field-star' | 'field-fire' | 'plasma-shot' | 'plasma-hit' | 'ufo-arrival' | 'ufo-siren' | 'ufo-barrage' | 'ufo-lock' | 'ufo-warning' | 'ufo-beam' | 'ufo-impact';
 
 // Sources, licenses, and processing notes are documented in AUDIO_CREDITS.md.
 const ASSETS = {
@@ -19,7 +20,7 @@ const ASSETS = {
   ufoArrival: 'rampage-arrival.ogg', ufoInbound: 'rampage-inbound.ogg', ufoLock: 'rampage-lock.ogg', ufoSiren: 'ufo-siren.ogg', stitchTheme: 'stitch-ultimate-theme.ogg',
   plasmaCast: 'plasma-cast.ogg', plasmaImpact: 'plasma-impact.ogg',
 } as const;
-const AUDIO_REVISION = '15';
+const AUDIO_REVISION = '16';
 type AssetName = keyof typeof ASSETS;
 type Loop = { source: AudioBufferSourceNode; gain: GainNode };
 type RivalEngine = { id: number; position: { x: number; y: number; z: number }; speed: number };
@@ -54,6 +55,7 @@ export class GameAudio {
   private readonly loops = new Map<AssetName, Loop>();
   private ufoDrone: Loop | null = null;
   private ufoTheme: Loop | null = null;
+  private ufoThemeFilter: BiquadFilterNode | null = null;
   private assetsReady = false;
   private readonly rivalVoices: RivalVoice[] = [];
   private rivalsAudible = 0;
@@ -377,8 +379,13 @@ export class GameAudio {
     if (!context) return;
     const now = context.currentTime;
     const running = active && !this.paused;
-    this.setUfoDrone(running && atmosphere === 'ufo');
+    this.setUfoDrone(running && atmosphere === 'ufo' && ufoAge < STITCH_UFO_INBOUND_DURATION);
     this.setUfoTheme(running && atmosphere === 'ufo', ufoAge);
+    if (this.ufoThemeFilter && this.ufoTheme) {
+      const reveal = Math.min(1, ufoAge / STITCH_UFO_INBOUND_DURATION);
+      this.ufoThemeFilter.frequency.setTargetAtTime(280 + 17500 * reveal ** 3, now, 0.11);
+      this.ufoTheme.gain.gain.setTargetAtTime(0.34 + 0.62 * reveal, now, 0.11);
+    }
     const engine = this.loops.get('engine');
     if (engine) {
       engine.source.playbackRate.setTargetAtTime(0.48 + Math.min(speed, 70) * (ultimate ? 0.0128 : 0.011), now, 0.16);
@@ -448,19 +455,25 @@ export class GameAudio {
       this.ufoTheme.gain.gain.setTargetAtTime(0, context.currentTime, 0.2);
       this.ufoTheme.source.stop(context.currentTime + 0.75);
       this.ufoTheme = null;
+      this.ufoThemeFilter = null;
     }
     if (!active || this.ufoTheme) return;
     const buffer = this.buffers.get('stitchTheme');
     if (!buffer) return;
     const source = context.createBufferSource();
     const gain = context.createGain();
+    const filter = context.createBiquadFilter();
     source.buffer = buffer;
-    source.loop = true;
+    source.loop = false;
+    filter.type = 'lowpass';
+    filter.frequency.value = 280 + 17500 * Math.min(1, age / STITCH_UFO_INBOUND_DURATION) ** 3;
+    filter.Q.value = 0.5;
     gain.gain.value = 0;
-    source.connect(gain).connect(this.musicBus);
-    source.start(context.currentTime, age % buffer.duration);
-    gain.gain.setTargetAtTime(0.82, context.currentTime, 0.32);
+    source.connect(filter).connect(gain).connect(this.musicBus);
+    source.start(context.currentTime, Math.min(age, Math.max(0, buffer.duration - 0.05)));
+    gain.gain.setTargetAtTime(0.34 + 0.62 * Math.min(1, age / STITCH_UFO_INBOUND_DURATION), context.currentTime, 0.32);
     this.ufoTheme = { source, gain };
+    this.ufoThemeFilter = filter;
   }
 
   private sample(name: AssetName, volume: number, rate = 1, delay = 0, duration?: number, pan = 0) {
@@ -522,12 +535,13 @@ export class GameAudio {
       case 'lap': this.sample('grand', 0.38, 1.15); break;
       case 'final-lap': this.sample('grand', 0.52, 1.35); this.sample('whoosh', 0.32, 1.1); break;
       case 'ultimate': this.sample('grand', 0.52, 0.91); this.sample('whoosh', 0.38, 0.83); break;
-      case 'ufo-arrival': this.sample('ufoInbound', 0.43, 1); this.sample('ufoArrival', 0.28, 0.94); break;
-      case 'ufo-siren': this.sample('ufoSiren', 0.68, 1, 0.05); break;
-      case 'ufo-lock': this.sample('ufoLock', 0.46, 1); break;
+      case 'ufo-arrival': this.sample('ufoInbound', 0.45, 0.79); this.sample('ufoArrival', 0.3, 0.73, 1.15); this.sample('ufoInbound', 0.32, 0.92, 2.8); break;
+      case 'ufo-siren': this.sample('ufoSiren', 0.56, 1, 0.15); break;
+      case 'ufo-barrage': this.sample('plasmaCast', 0.42, 0.57, 0, 0.7); this.sample('cannon', 0.42, 0.82, 0.05, 1.2); this.sample('whoosh', 0.3, 0.8); break;
+      case 'ufo-lock': this.sample('ufoLock', 0.38, 0.93 + Math.random() * 0.12); break;
       case 'ufo-warning': this.sample('ufoLock', 0.57, 0.76); this.sample('time', 0.27, 0.77); break;
-      case 'ufo-beam': this.sample('plasmaCast', 0.38, 0.62, 0, 1.1); this.sample('surge', 0.33, 0.69, 0.12, 1.45); break;
-      case 'ufo-impact': this.sample('plasmaImpact', 0.36, 0.78, 0, 0.45); this.sample('heavy', 0.2, 0.9); break;
+      case 'ufo-beam': this.sample('plasmaCast', 0.52, 0.58, 0, 1.1); this.sample('surge', 0.42, 0.69, 0.12, 1.45); this.sample('whoosh', 0.24, 0.7, 0.07); break;
+      case 'ufo-impact': this.sample('plasmaImpact', 0.48, 0.78 + Math.random() * 0.18, 0, 0.52); this.sample('heavy', 0.28, 0.65 + Math.random() * 0.18); this.sample('cannon', 0.14, 0.75, 0.035, 0.38); break;
       case 'trick': this.sample('spark', 0.3, 1.37); this.sample('whoosh', 0.18, 1.4); break;
       case 'draft': this.sample('whoosh', 0.33, 1.34); break;
       case 'pickup': this.sample('spark', 0.27, 1.3); break;
@@ -575,7 +589,7 @@ export class GameAudio {
     if (character === 'stitch') {
       this.play('ufo-arrival');
       this.play('ufo-siren');
-      if (this.context) this.duckUntil = this.context.currentTime + 2.35;
+      if (this.context) this.duckUntil = this.context.currentTime + STITCH_UFO_INBOUND_DURATION;
       return;
     }
     const dark = character === 'maleficent' || character === 'hades';

@@ -8,7 +8,7 @@ import { CharacterKartVisual, type RaceVisual } from './characterKart';
 import { ImportedKartVisual, loadImportedKarts } from './importedKart';
 import { CHARACTERS, CHARACTER_BY_ID, type CharacterId } from './characters';
 import { KartVisual, makeProjectile } from './kart';
-import { StitchUfo, STITCH_UFO_DURATION } from './stitchUfo';
+import { StitchUfo, STITCH_UFO_DURATION, STITCH_UFO_INBOUND_DURATION } from './stitchUfo';
 import { RacerShowcase } from './showcase';
 import { ITEMS, rollItem, type ItemId } from './items';
 import { BOOST_PAD_LAYOUT, GARDEN_ROUTE_END, MARKET_CROSSING_PROGRESS, MARKET_CROSSING_TRAVEL, marketCartState, PICKUP_LAYOUT, RaceTrack, START_GRID_BASE_PROGRESS, START_GRID_LANES, startGridProgress, touchesBoostPad, type RoadHit, type RoadPoint, type RouteName } from './track';
@@ -1180,7 +1180,7 @@ class GenieRace {
     if (racer.character === 'stitch') {
       this.announcementTime = 0;
       ultimateAnnouncement.classList.add('hidden');
-      this.stitchIntroTime = 2.6;
+      this.stitchIntroTime = 4.2;
       stitchIntro.classList.remove('hidden');
     } else {
       this.announcementTime = 1.35;
@@ -1237,6 +1237,7 @@ class GenieRace {
     const previousPhase = this.ufoPhase;
     const { impacts, locks, phase } = this.ufo.update(dt, this.racers);
     this.ufoPhase = this.ufo.active ? phase : 'none';
+    if (phase === 'tracking' && previousPhase === 'inbound') this.audio.play('ufo-barrage');
     if (locks > 0) this.audio.play('ufo-lock');
     if (phase === 'sweep' && previousPhase !== 'sweep') this.audio.play('ufo-warning');
     if (phase === 'beam' && previousPhase !== 'beam') this.audio.play('ufo-beam');
@@ -1672,9 +1673,9 @@ class GenieRace {
     const ultimateAtmosphere = this.mode === 'race' ? this.ufo.active ? 'ufo' : this.racers.some((racer) => racer.ultimateTime > 0) ? 'ultimate' : 'none' : 'none';
     if (this.mode !== 'paused') {
       const targetStorm = ultimateAtmosphere === 'ufo' ? 1 : 0;
-      const nextStorm = this.stormBlend + (targetStorm - this.stormBlend) * (1 - Math.exp(-dt * (targetStorm ? 1.35 : 1.25)));
+      const nextStorm = this.stormBlend + (targetStorm - this.stormBlend) * (1 - Math.exp(-dt * (targetStorm ? 0.48 : 1.25)));
       if (Math.abs(nextStorm - this.stormBlend) > 0.001) this.setStorm(nextStorm);
-      atmosphereShade.classList.toggle('siren', this.ufo.active && this.ufo.elapsed < 2.8);
+      atmosphereShade.classList.toggle('siren', this.ufo.active && this.ufo.elapsed < STITCH_UFO_INBOUND_DURATION);
       const targetAmbient = ultimateAtmosphere === 'ultimate' ? 1 : 0;
       this.ambientUltBlend += (targetAmbient - this.ambientUltBlend) * (1 - Math.exp(-dt * (targetAmbient ? 3 : 1.8)));
       this.sunlight.intensity = 2.15 - this.stormBlend * 1.03 - this.ambientUltBlend * 0.19;

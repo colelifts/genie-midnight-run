@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 // Original synthesized warning cue. Run from the repository root with Node and FFmpeg.
 const sampleRate = 48000;
-const duration = 2.8;
+const duration = 5;
 const samples = Math.round(sampleRate * duration);
 const wav = Buffer.alloc(44 + samples * 4);
 wav.write('RIFF', 0);
@@ -25,11 +25,11 @@ const delayRight = new Float64Array(Math.round(sampleRate * 0.131));
 let phase = 0;
 for (let i = 0; i < samples; i++) {
   const t = i / sampleRate;
-  const sweep = Math.sin(2 * Math.PI * (1.0 * t + 0.11 * t * t) - Math.PI / 2);
-  const frequency = 410 + 185 * sweep + 30 * Math.min(1, t / 1.6);
+  const sweep = Math.sin(2 * Math.PI * (0.68 * t + 0.045 * t * t) - Math.PI / 2);
+  const frequency = 350 + 170 * sweep + 75 * Math.min(1, t / 4.5);
   phase += 2 * Math.PI * frequency / sampleRate;
-  const pulse = 0.7 + 0.3 * Math.max(0, Math.sin(2 * Math.PI * 2.4 * t));
-  const envelope = Math.min(1, t / 0.11) * Math.min(1, (duration - t) / 0.38);
+  const pulse = 0.63 + 0.37 * Math.max(0, Math.sin(2 * Math.PI * (1.3 + t * 0.12) * t));
+  const envelope = Math.min(1, t / 0.5) * Math.min(1, (duration - t) / 0.4);
   const lead = (0.64 * Math.sin(phase) + 0.2 * Math.sin(2 * phase + 0.3) + 0.07 * Math.sin(3 * phase)) * pulse * envelope;
   const hum = 0.09 * Math.sin(2 * Math.PI * 82 * t) * envelope;
   const leftIndex = i % delayLeft.length;

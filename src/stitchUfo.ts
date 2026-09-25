@@ -37,9 +37,13 @@ interface WarningMark {
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const wrap = (value: number) => ((value % 1) + 1) % 1;
 const BOMB_RADIUS = 6.2;
-export const STITCH_UFO_DURATION = 9.6;
-const INBOUND_DURATION = 2;
-const BOMB_INTERVAL = 0.68;
+export const STITCH_UFO_DURATION = 20;
+export const STITCH_UFO_INBOUND_DURATION = 5;
+const INBOUND_DURATION = STITCH_UFO_INBOUND_DURATION;
+const BOMB_INTERVAL = 1;
+const BOMB_WAVES = 10;
+const SWEEP_WARNING_AT = 16;
+const BEAM_FIRE_AT = 17.15;
 
 export function frontmostRival<T extends Pick<UfoRacer, 'id' | 'lap' | 'progress'>>(racers: readonly T[], ownerId: number): T | undefined {
   return racers.filter((racer) => racer.id !== ownerId)
@@ -218,7 +222,7 @@ export class StitchUfo {
     this.age = 0;
     this.ship.visible = true;
     const right = new THREE.Vector3(Math.cos(caster.moveYaw), 0, -Math.sin(caster.moveYaw));
-    this.ship.position.copy(caster.position).addScaledVector(right, 58).add(new THREE.Vector3(0, 36, -22));
+    this.ship.position.copy(caster.position).addScaledVector(right, 18).add(new THREE.Vector3(0, 42, -22));
     return true;
   }
 
@@ -233,19 +237,23 @@ export class StitchUfo {
     const caster = racers[this.ownerId];
     if (!caster) return;
     const beamTarget = this.beamWarned ? racers.find((racer) => racer.id === this.beamTargetId) : undefined;
-    let leader = caster;
-    let lead = 0;
-    if (!beamTarget) {
-      for (const peer of racers) {
-        if (peer.id === caster.id) continue;
-        const ahead = wrap(peer.progress - caster.progress) * this.track.length;
-        if (ahead > lead && ahead < 120) { lead = ahead; leader = peer; }
-      }
+    const forward = new THREE.Vector3(Math.sin(caster.moveYaw), 0, Math.cos(caster.moveYaw));
+    const beamPoint = beamTarget ? this.track.at(wrap(beamTarget.progress + 20 / this.track.length)) : null;
+    const desired = beamPoint ? beamPoint.position.clone().add(new THREE.Vector3(0, 22, 0)) : caster.position.clone().addScaledVector(forward, 30).add(new THREE.Vector3(0, 22, 0));
+    if (this.age < INBOUND_DURATION) {
+      const progress = clamp(this.age / INBOUND_DURATION, 0, 1);
+      const approach = progress * progress * (3 - 2 * progress);
+      // Approach relative to the moving race, so the UFO cannot fall behind a
+      // fast kart and disappear from the camera during its long entrance.
+      this.ship.position.copy(caster.position).addScaledVector(forward, 30 + (1 - approach) * 38);
+      this.ship.position.y += 22;
+      this.ship.position.y += (1 - approach) * 20;
+      this.ship.scale.setScalar(0.8 + approach * 0.5);
+    } else {
+      this.ship.position.lerp(desired, 1 - Math.exp(-dt * 4));
+      this.ship.scale.setScalar(1.3);
     }
-    const point = this.track.at(wrap((beamTarget?.progress ?? caster.progress) + (beamTarget ? 20 : lead + 32 + Math.min(leader.speed, 80) * 0.45) / this.track.length));
-    const desired = point.position.clone().add(new THREE.Vector3(0, 18, 0));
-    this.ship.position.lerp(desired, 1 - Math.exp(-dt * (this.age < INBOUND_DURATION ? 2.8 : 4)));
-    const desiredYaw = Math.atan2(point.tangent.x, point.tangent.z);
+    const desiredYaw = beamPoint ? Math.atan2(beamPoint.tangent.x, beamPoint.tangent.z) : caster.moveYaw;
     const deltaYaw = Math.atan2(Math.sin(desiredYaw - this.ship.rotation.y), Math.cos(desiredYaw - this.ship.rotation.y));
     this.ship.rotation.y += deltaYaw * (1 - Math.exp(-dt * 5));
     this.ship.rotation.z = Math.sin(this.age * 1.7) * 0.025;
@@ -256,8 +264,10 @@ export class StitchUfo {
     const caster = racers[this.ownerId];
     if (!caster) return;
     const rivals = racers.filter((racer) => racer.id !== this.ownerId).sort((a, b) => a.position.distanceToSquared(caster.position) - b.position.distanceToSquared(caster.position));
-    for (let slot = 0; slot < rivals.length; slot++) {
-      const target = rivals[(wave + slot) % rivals.length];
+    // Rotate the targeted racers across waves. The track fills with plasma,
+    // but each individual racer has roughly the same dodge pressure as before.
+    for (let slot = 0; slot < Math.min(4, rivals.length); slot++) {
+      const target = rivals[(wave * 4 + slot) % rivals.length];
       const impactAt = INBOUND_DURATION + wave * BOMB_INTERVAL + 1.2;
       const mark = makeWarning(this.roadPoint(target, 1.4), target.id, impactAt);
       this.marks.push(mark);
@@ -273,7 +283,7 @@ export class StitchUfo {
     this.beamPrevious.copy(this.beamCenter).addScaledVector(this.beamRight, -this.beamHalfWidth);
     this.sweep.visible = true;
     this.beamWarned = true;
-    this.beamFireAt = 6.05;
+    this.beamFireAt = BEAM_FIRE_AT;
   }
 
   private followBeamTarget(target: UfoRacer, lead: number) {
@@ -320,7 +330,7 @@ export class StitchUfo {
     if (!this.active) return { impacts: [], locks: 0, phase: 'none' };
     this.age += dt;
     this.updateShip(dt, racers);
-    while (this.nextWave < 3 && this.age >= INBOUND_DURATION + this.nextWave * BOMB_INTERVAL) this.addWave(racers, this.nextWave++);
+    while (this.nextWave < BOMB_WAVES && this.age >= INBOUND_DURATION + this.nextWave * BOMB_INTERVAL) this.addWave(racers, this.nextWave++);
     const impacts: UfoImpact[] = [];
     let locks = 0;
     let anyLocked = false;
@@ -342,9 +352,9 @@ export class StitchUfo {
       anyLocked ||= mark.locked && remaining > 0;
       mark.group.position.copy(mark.position);
       mark.ring.scale.setScalar(1 + Math.sin(this.age * 10 + index) * 0.025);
-      mark.bolt.visible = remaining > 0 && remaining < 0.35;
+      mark.bolt.visible = remaining > 0 && remaining < 0.6;
       if (mark.bolt.visible) {
-        mark.bolt.position.copy(this.ship.position).lerp(mark.position.clone().add(new THREE.Vector3(0, 0.45, 0)), 1 - remaining / 0.35);
+        mark.bolt.position.copy(this.ship.position).lerp(mark.position.clone().add(new THREE.Vector3(0, 0.45, 0)), 1 - remaining / 0.6);
         mark.bolt.scale.setScalar(0.75 + Math.sin(this.age * 27) * 0.1);
       }
       if (remaining > 0) continue;
@@ -355,7 +365,7 @@ export class StitchUfo {
       for (const material of mark.materials) material.dispose();
       this.marks.splice(index, 1);
     }
-    if (!this.beamWarned && this.age >= 4.85) this.beginSweep(racers);
+    if (!this.beamWarned && this.age >= SWEEP_WARNING_AT) this.beginSweep(racers);
     if (this.beamWarned && !this.beamDone) {
       const target = racers.find((racer) => racer.id === this.beamTargetId);
       if (target) this.followBeamTarget(target, this.age < this.beamFireAt ? 0.3 : 0);

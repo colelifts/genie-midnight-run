@@ -16,7 +16,7 @@ const ASSETS = {
   urnShatter: 'urn-shatter.mp3', cartClank: 'cart-clank.mp3',
   wind: 'wind-ambience.mp3', fountain: 'fountain-ambience.mp3',
 } as const;
-const AUDIO_REVISION = '9';
+const AUDIO_REVISION = '10';
 type AssetName = keyof typeof ASSETS;
 type Loop = { source: AudioBufferSourceNode; gain: GainNode };
 type RivalEngine = { id: number; position: { x: number; y: number; z: number }; speed: number };
@@ -475,7 +475,7 @@ export class GameAudio {
     if (!this.context || !this.buffers.has('spark')) return;
     this.driftCueCount++;
     this.lastDriftCue = stage;
-    // Short recorded magic accents mark the blue, gold, and cosmic sparks.
+    // Short layered magic accents mark the blue, gold, and cosmic sparks.
     this.sample('spark', 0.24 + stage * 0.06, 1.08 + stage * 0.18, 0, 0.5);
     if (stage === 2) this.sample('surge', 0.16, 1.25, 0.04, 0.55);
     if (stage === 3) {

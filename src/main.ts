@@ -120,7 +120,7 @@ interface Projectile {
 
 interface PowerField {
   owner: number;
-  kind: 'ice' | 'soul' | 'dragonfire' | 'clock' | 'anchor';
+  kind: 'ice' | 'soul' | 'star' | 'dragonfire' | 'clock' | 'anchor';
   mesh: THREE.Group;
   life: number;
   radius: number;
@@ -264,6 +264,7 @@ class GenieRace {
   readonly touch = new Set<string>();
   readonly demoMode = new URLSearchParams(window.location.search).has('demo');
   readonly debugPowers = window.location.hostname === '127.0.0.1' && new URLSearchParams(window.location.search).has('debugPowers');
+  readonly debugBrake = this.debugPowers && new URLSearchParams(window.location.search).has('debugBrake');
   mode: GameMode = 'menu';
   private elapsed = 0;
   private countdownElapsed = 0;
@@ -850,7 +851,7 @@ class GenieRace {
     const def = CHARACTER_BY_ID[racer.character];
     racer.signatureCooldown = def.signatureCooldown;
     const forward = new THREE.Vector3(Math.sin(racer.yaw), 0, Math.cos(racer.yaw));
-    const braking = racer.id === 0 && (this.keys.has('KeyS') || this.keys.has('ArrowDown') || this.gamepadBrake > 0.2);
+    const braking = racer.id === 0 && (this.keys.has('KeyS') || this.keys.has('ArrowDown') || this.gamepadBrake > 0.2 || this.debugBrake);
     const origin = racer.position.clone().add(new THREE.Vector3(0, 1.4, 0));
     this.makeFlash(origin, def.accent, 4.8, 0.38);
     this.burst(origin, def.color, def.accent, 20);
@@ -862,7 +863,7 @@ class GenieRace {
         this.useWish(racer, 'boost');
         break;
       case 'mickey':
-        if (braking) this.dropField(racer, 'soul', 0xffda6f, 4.5, 8, -3.2);
+        if (braking) this.dropField(racer, 'star', 0xffda6f, 4.5, 8, -3.2);
         else this.launchPower(racer, 'star', 0xffd866, 42, 2.8);
         break;
       case 'stitch':
@@ -1124,7 +1125,23 @@ class GenieRace {
       crown.position.y = 2.9;
       mesh.add(shaft, hook, crown);
     }
-    for (let shard = 0; shard < (kind === 'ice' ? 6 : 5); shard++) {
+    if (kind === 'star') {
+      const shape = new THREE.Shape();
+      for (let point = 0; point < 10; point++) {
+        const angle = point * Math.PI / 5 - Math.PI / 2;
+        const size = point % 2 ? 0.62 : 1.35;
+        const x = Math.cos(angle) * size;
+        const y = Math.sin(angle) * size;
+        if (point === 0) shape.moveTo(x, y); else shape.lineTo(x, y);
+      }
+      shape.closePath();
+      const star = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: 0.16, bevelEnabled: true, bevelSegments: 2, bevelSize: 0.08, bevelThickness: 0.06 }), new THREE.MeshBasicMaterial({ color: 0xffdf74, toneMapped: false }));
+      star.position.y = 1.45;
+      mesh.add(star);
+      const core = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }));
+      core.position.set(0, 1.45, 0.25);
+      mesh.add(core);
+    } else for (let shard = 0; shard < (kind === 'ice' ? 6 : 5); shard++) {
       const angle = shard * Math.PI * 2 / (kind === 'ice' ? 6 : 5);
       const spike = new THREE.Mesh(new THREE.ConeGeometry(kind === 'ice' ? 0.34 : 0.48, kind === 'ice' ? 1.2 : 1.5, kind === 'ice' ? 5 : 7), new THREE.MeshBasicMaterial({ color: shard % 2 ? color : 0xffffff, transparent: true, opacity: kind === 'ice' ? 0.67 : 0.52, depthWrite: false, side: THREE.DoubleSide }));
       spike.position.set(Math.cos(angle) * radius * 0.62, kind === 'ice' ? 0.5 : 0.64, Math.sin(angle) * radius * 0.62);
@@ -1132,6 +1149,7 @@ class GenieRace {
       mesh.add(spike);
     }
     mesh.position.set(position.x, ground + 0.18, position.z);
+    if (kind === 'star') mesh.rotation.y = racer.yaw + Math.PI;
     this.scene.add(mesh);
     this.powerFields.push({ owner: racer.id, kind, mesh, life, radius, victims: new Set() });
     if (this.powerFields.length > 90) {
@@ -1163,7 +1181,7 @@ class GenieRace {
     for (let i = this.powerFields.length - 1; i >= 0; i--) {
       const field = this.powerFields[i];
       field.life -= dt;
-      field.mesh.rotation.y += dt * (field.kind === 'ice' || field.kind === 'anchor' ? 0.2 : 1.3);
+      field.mesh.rotation.y += dt * (field.kind === 'ice' || field.kind === 'anchor' ? 0.2 : field.kind === 'star' ? 0.7 : 1.3);
       field.mesh.scale.setScalar(0.9 + Math.sin(this.elapsed * 5 + i) * 0.06);
       for (const racer of this.racers) {
         if (racer.id === field.owner || racer.ultimateTime > 0 || racer.hitCooldown > 0 || field.victims.has(racer.id)) continue;
@@ -1176,6 +1194,9 @@ class GenieRace {
         } else if (field.kind === 'soul') {
           racer.wobbleTime = Math.max(racer.wobbleTime, 1.25);
           racer.speed *= 0.73;
+        } else if (field.kind === 'star') {
+          this.stun(racer, 0.7);
+          this.burst(racer.position.clone().add(new THREE.Vector3(0, 1.5, 0)), 0xffdd6e, 0xffffff, 18);
         } else if (field.kind === 'clock') {
           racer.curseTime = Math.max(racer.curseTime, 3.2);
           racer.speed *= 0.52;
@@ -1187,7 +1208,7 @@ class GenieRace {
           this.stun(racer, 0.55);
         } else this.stun(racer, 0.7);
         racer.hitCooldown = Math.max(racer.hitCooldown, 0.75);
-        this.makeFlash(racer.position.clone().add(new THREE.Vector3(0, 1, 0)), field.kind === 'ice' ? 0xa5f4ff : 0x87a4ff, 3.5, 0.32);
+        this.makeFlash(racer.position.clone().add(new THREE.Vector3(0, 1, 0)), field.kind === 'ice' ? 0xa5f4ff : field.kind === 'star' ? 0xffd978 : 0x87a4ff, 3.5, 0.32);
         const owner = this.racers[field.owner];
         owner.ultimateMeter = Math.min(100, owner.ultimateMeter + 5);
       }
@@ -1912,7 +1933,6 @@ class GenieRace {
         racer.position.addScaledVector(normal, obstacle.radius + (obstacle.kind === 'boulder' ? 3.5 : 2.05) - distance);
         racer.position.addScaledVector(forward, -0.75);
         this.keepOnCourse(racer);
-        racer.hitCooldown = obstacle.kind === 'boulder' ? 1.7 : 1.45;
         if (obstacle.kind === 'crate') {
           obstacle.broken = true;
           obstacle.respawn = 12;
@@ -1935,6 +1955,7 @@ class GenieRace {
           if (obstacle.kind === 'boulder') this.stun(racer, 0.38);
           if (racer.id === 0) this.showBanner(obstacle.kind === 'boulder' ? 'BOULDER HIT!' : obstacle.kind === 'urn' ? 'PALACE URN HIT!' : obstacle.kind === 'marketIsland' ? 'MARKET ISLAND HIT!' : 'CART HIT!', 0.8);
         }
+        racer.hitCooldown = Math.max(racer.hitCooldown, obstacle.kind === 'boulder' ? 1.7 : 1.45);
         this.audio.play('hit');
       }
     }
@@ -2133,6 +2154,7 @@ class GenieRace {
   private updateHUD() {
     const player = this.racers[0];
     hud.dataset.state = JSON.stringify(this.racers.map((racer) => ({ id: racer.id, character: racer.character, lap: racer.lap, p: Number(racer.progress.toFixed(3)), x: Number(racer.position.x.toFixed(2)), y: Number(racer.position.y.toFixed(2)), z: Number(racer.position.z.toFixed(2)), yaw: Number(racer.yaw.toFixed(3)), route: this.track.nearest(racer.position, racer.progress).point.route, aiRoute: racer.aiRoute, aiLine: Number(racer.aiLine.toFixed(1)), speed: Math.round(racer.speed), drift: Number(racer.driftCharge.toFixed(2)), jump: Number(racer.jumpTime.toFixed(2)), trickReady: racer.trickReady, trickBoost: racer.trickBoost, tricks: racer.tricksLanded, drafts: racer.draftBoosts, slip: Number(racer.slipCharge.toFixed(2)), padBoost: Number(racer.padBoostTime.toFixed(2)), stun: Number(racer.stunTime.toFixed(2)), hitGrace: Number(racer.hitCooldown.toFixed(2)), ultimate: Number(racer.ultimateTime.toFixed(2)), meter: Math.round(racer.ultimateMeter), signatureCooldown: Number(racer.signatureCooldown.toFixed(1)), item: racer.item, tripleSparks: racer.tripleSparks })));
+    if (this.debugPowers) hud.dataset.effects = JSON.stringify({ projectiles: this.projectiles.map((projectile) => projectile.kind), fields: this.powerFields.map((field) => field.kind) });
     const standings = [...this.racers].sort((a, b) => (b.lap - 1 + b.progress) - (a.lap - 1 + a.progress));
     const rank = standings.findIndex((racer) => racer.id === 0) + 1;
     const suffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th';

@@ -31,16 +31,22 @@ export function advanceHeading(state: HeadingState, input: HeadingInput): Headin
   const boostTurnScale = Math.max(1, Math.min(1.35, Math.abs(speed) / raceSpeed(31)));
   const turnRate = (1.34 - speedFraction * 0.19) * (drifting ? 1.72 : 1)
     * boostTurnScale * boostHandling * handling;
-  // The held drift button never supplies steering. Countersteer can open the
-  // line, with a little less authority than steering into the corner.
-  const driftSteer = drifting && steer * driftDirection < -0.1 ? steer * 0.72 : steer;
+  // The held drift button never supplies steering. Opposite input trims the
+  // drift instead of instantly throwing the kart into a reverse turn.
+  const countersteering = drifting && steer * driftDirection < -0.1;
+  const driftSteer = countersteering ? steer * 0.62 : steer;
   // Positive yaw turns the kart toward +X (right), matching D/right input.
   const desiredYawRate = (driftSteer + wobble) * turnRate * Math.min(1, Math.abs(speed) / raceSpeed(6));
-  const turnResponse = Math.abs(driftSteer) < 0.05 ? 11 : drifting ? 8.5 : 9;
+  const turnResponse = Math.abs(driftSteer) < 0.05 ? 11 : countersteering ? 7 : drifting ? 5 : 7;
   const yawRate = state.yawRate + (desiredYawRate - state.yawRate) * (1 - Math.exp(-dt * turnResponse));
-  const yaw = state.yaw + yawRate * dt;
+  let yaw = state.yaw + yawRate * dt;
   const travelResponse = drifting ? 9.5 + (boostTurnScale - 1) * 5 : 12;
-  const moveYaw = state.moveYaw + angleDiff(yaw, state.moveYaw) * (1 - Math.exp(-dt * travelResponse));
+  // When the wheel is released, the kart settles onto its current travel
+  // line; its visual drift angle unwinds instead of dragging the trajectory
+  // farther toward the edge of the road.
+  const coasting = !drifting && Math.abs(steer) < 0.05 && Math.abs(wobble) < 0.05;
+  const moveYaw = coasting ? state.moveYaw : state.moveYaw + angleDiff(yaw, state.moveYaw) * (1 - Math.exp(-dt * travelResponse));
+  if (coasting) yaw += angleDiff(moveYaw, yaw) * (1 - Math.exp(-dt * 12));
   return { yaw, moveYaw, yawRate };
 }
 

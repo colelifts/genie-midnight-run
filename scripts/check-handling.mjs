@@ -64,10 +64,21 @@ let openingDrift = { yaw: 0, moveYaw: 0, yawRate: 0 };
 for (let frame = 0; frame < 30; frame++) openingDrift = advanceHeading(openingDrift, { steer: 1, speed: raceSpeed(31), handling: 1,
   drifting: true, driftDirection: 1, boostHandling: 1, wobble: 0, dt: 1 / 60 });
 const beforeCounter = openingDrift.moveYaw;
+const beforeCounterYaw = openingDrift.yaw;
 for (let frame = 0; frame < 30; frame++) openingDrift = advanceHeading(openingDrift, { steer: -1, speed: raceSpeed(31), handling: 1,
   drifting: true, driftDirection: 1, boostHandling: 1, wobble: 0, dt: 1 / 60 });
-assert.ok(openingDrift.yawRate < -1 && openingDrift.moveYaw < beforeCounter,
-  'Countersteering an established drift must visibly open the line within half a second');
+assert.ok(openingDrift.yawRate < -0.8 && openingDrift.yaw < beforeCounterYaw && openingDrift.moveYaw < beforeCounter + 0.08,
+  'Countersteering must open an established drift without flinging the kart into an opposite turn');
+let shortDrift = { yaw: 0, moveYaw: 0, yawRate: 0 };
+for (let frame = 0; frame < 33; frame++) shortDrift = advanceHeading(shortDrift, { steer: 1, speed: raceSpeed(31), handling: 1,
+  drifting: true, driftDirection: 1, boostHandling: 1, wobble: 0, dt: 1 / 60 });
+assert.ok(shortDrift.moveYaw > 0.5 && shortDrift.moveYaw < 0.65,
+  'A half-second keyboard drift must turn decisively without crossing most of a wide road');
+const exitLine = shortDrift.moveYaw;
+for (let frame = 0; frame < 18; frame++) shortDrift = advanceHeading(shortDrift, { steer: 0, speed: raceSpeed(40), handling: 1,
+  drifting: false, driftDirection: 0, boostHandling: 1, wobble: 0, dt: 1 / 60 });
+assert.ok(Math.abs(shortDrift.moveYaw - exitLine) < 1e-9 && angle(shortDrift.yaw, exitLine) < 0.04,
+  'Drift release must hold the chosen travel line while the kart settles straight');
 const straight = { yaw: Math.PI / 4, moveYaw: Math.PI / 4, yawRate: 0.7 };
 const railRight = { x: 1, z: 0 };
 const railTangent = { x: 0, z: 1 };

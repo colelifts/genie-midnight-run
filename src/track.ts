@@ -52,6 +52,43 @@ export function roadArrowRotation(tangent: THREE.Vector3) {
   return new THREE.Euler(Math.PI / 2, Math.atan2(tangent.x, tangent.z), 0, 'YXZ');
 }
 
+export function overMainPavement(main: RoadPoint[], position: THREE.Vector3, padding = 0) {
+  for (const point of main) {
+    if (Math.abs(point.position.y - position.y) > 1.3) continue;
+    const dx = point.position.x - position.x;
+    const dz = point.position.z - position.z;
+    const clearance = point.width / 2 + padding;
+    if (dx * dx + dz * dz < clearance * clearance) return true;
+  }
+  return false;
+}
+
+export function branchCoversMainEdge(branches: RoadPoint[][], position: THREE.Vector3) {
+  for (const branch of branches) {
+    for (const point of branch) {
+      if (Math.abs(point.position.y - position.y) > 2.7) continue;
+      const dx = point.position.x - position.x;
+      const dz = point.position.z - position.z;
+      const clearance = point.width / 2 + 2.4;
+      if (dx * dx + dz * dz < clearance * clearance) return true;
+    }
+  }
+  return false;
+}
+
+export const MARKET_BANNER_SPANS = [0.025, 0.08, 0.17, 0.235, 0.29, 0.89, 0.93, 0.97];
+
+export function clearOfOtherRoutes(samples: RoadPoint[], position: THREE.Vector3, radius: number, excludedRoute: RouteName) {
+  for (const point of samples) {
+    if (point.route === excludedRoute) continue;
+    const dx = position.x - point.position.x;
+    const dz = position.z - point.position.z;
+    const clearance = point.width * 0.5 + radius + 0.6;
+    if (dx * dx + dz * dz < clearance * clearance) return false;
+  }
+  return true;
+}
+
 const sand = new THREE.MeshStandardMaterial({ color: 0xb77b5c, roughness: 1, flatShading: true });
 const stone = new THREE.MeshStandardMaterial({ color: 0xc48b66, roughness: 0.92 });
 const stoneLight = new THREE.MeshStandardMaterial({ color: 0xd7a476, roughness: 0.9 });
@@ -287,16 +324,19 @@ export class RaceTrack {
   private makeEdgeBarriers(points: RoadPoint[], closed: boolean) {
     const placements: THREE.Matrix4[] = [];
     const dummy = new THREE.Object3D();
+    const branches = [this.alleySamples, this.roofSamples];
     for (const side of [-1, 1]) {
       for (let i = 0; i < points.length - (closed ? 0 : 1); i += 3) {
         if (!closed && (i < 18 || i > points.length - 21)) continue;
         const a = points[i];
         const b = points[(i + 3) % points.length];
         if (!closed && i + 3 >= points.length) continue;
-        if (closed && side === -1 && ((a.progress > 0.035 && a.progress < 0.09) || (a.progress > 0.135 && a.progress < 0.175) || (a.progress > 0.18 && a.progress < 0.225) || (a.progress > 0.305 && a.progress < 0.35))) continue;
         const edgeA = a.position.clone().addScaledVector(a.right, side * (a.width / 2 + 0.26));
         const edgeB = b.position.clone().addScaledVector(b.right, side * (b.width / 2 + 0.26));
         const middle = edgeA.clone().add(edgeB).multiplyScalar(0.5);
+        if (closed) {
+          if (branchCoversMainEdge(branches, edgeA) || branchCoversMainEdge(branches, middle) || branchCoversMainEdge(branches, edgeB)) continue;
+        } else if (overMainPavement(this.mainSamples, edgeA, 1) || overMainPavement(this.mainSamples, middle, 1) || overMainPavement(this.mainSamples, edgeB, 1)) continue;
         middle.y += 0.31;
         const heading = Math.atan2(edgeB.x - edgeA.x, edgeB.z - edgeA.z);
         dummy.position.copy(middle);
@@ -318,6 +358,7 @@ export class RaceTrack {
       const vertices: number[] = [];
       const colors: number[] = [];
       const indices: number[] = [];
+      const coveredByMain: boolean[] = [];
       const count = points.length;
       for (let i = 0; i < count; i++) {
         const point = points[i];
@@ -326,11 +367,13 @@ export class RaceTrack {
         inner.y += 0.035;
         outer.y += 0.035;
         vertices.push(inner.x, inner.y, inner.z, outer.x, outer.y, outer.z);
+        coveredByMain.push(!closed && (overMainPavement(this.mainSamples, inner, 1) || overMainPavement(this.mainSamples, outer, 1)));
         const color = Math.floor(i / 6) % 2 === 0 ? new THREE.Color(0xe8dcce) : new THREE.Color(0xc85d65);
         colors.push(color.r, color.g, color.b, color.r, color.g, color.b);
       }
       for (let i = 0; i < (closed ? count : count - 1); i++) {
         const j = (i + 1) % count;
+        if (coveredByMain[i] || coveredByMain[j]) continue;
         indices.push(i * 2, i * 2 + 1, j * 2, i * 2 + 1, j * 2 + 1, j * 2);
       }
       const geometry = new THREE.BufferGeometry();
@@ -366,6 +409,30 @@ export class RaceTrack {
   }
 
   private makeRoofRails(points: RoadPoint[]) {
+    for (const side of [-1, 1]) {
+      for (let i = 18; i < points.length - 19; i += 3) {
+        const a = points[i];
+        const b = points[Math.min(i + 3, points.length - 19)];
+        const edgeA = a.position.clone().addScaledVector(a.right, side * (a.width / 2 + 0.85));
+        const edgeB = b.position.clone().addScaledVector(b.right, side * (b.width / 2 + 0.85));
+        const rail = box(0.22, 0.2, edgeA.distanceTo(edgeB) + 0.12, gold);
+        rail.position.copy(edgeA).add(edgeB).multiplyScalar(0.5);
+        rail.position.y += 1.25;
+        rail.rotation.y = Math.atan2(edgeB.x - edgeA.x, edgeB.z - edgeA.z);
+        this.group.add(rail);
+      }
+      for (let i = 18; i <= points.length - 19; i += 9) {
+        const sample = points[i];
+        const post = box(0.34, 1.52, 0.34, stoneDark);
+        post.position.copy(sample.position).addScaledVector(sample.right, side * (sample.width / 2 + 0.85));
+        post.position.y += 0.76;
+        this.group.add(post);
+        const cap = box(0.55, 0.17, 0.55, stoneLight);
+        cap.position.copy(post.position);
+        cap.position.y += 0.81;
+        this.group.add(cap);
+      }
+    }
     for (let i = 26; i < points.length - 25; i += 12) {
       const sample = points[i];
       for (const side of [-1, 1]) {
@@ -426,6 +493,8 @@ export class RaceTrack {
       if (progress > 0.58 && progress < 0.85) continue;
       const point = this.at(progress);
       const side = i % 2 === 0 ? -1 : 1;
+      const lampPosition = point.position.clone().addScaledVector(point.right, side * (point.width / 2 + 3.8));
+      if (!this.clearOfOtherRoad(lampPosition, 1.5, 'main')) continue;
       const group = new THREE.Group();
       const post = box(0.28, 4.2, 0.28, wood);
       post.position.y = 2.1;
@@ -448,19 +517,20 @@ export class RaceTrack {
       cap.position.y = 5.6;
       cap.rotation.y = Math.PI / 4;
       group.add(cap);
-      group.position.copy(point.position).addScaledVector(point.right, side * (point.width / 2 + 3.8));
+      group.position.copy(lampPosition);
       group.position.y = 0;
       this.group.add(group);
     }
   }
 
   private makeMarketBanners() {
-    const spans = [0.025, 0.08, 0.17, 0.235, 0.29, 0.89, 0.93, 0.97];
-    for (let span = 0; span < spans.length; span++) {
-      const progress = spans[span];
+    for (let span = 0; span < MARKET_BANNER_SPANS.length; span++) {
+      const progress = MARKET_BANNER_SPANS[span];
       const point = this.at(progress);
       const group = new THREE.Group();
       const spanWidth = point.width + 6;
+      const poleClear = [-1, 1].every((side) => this.clearOfOtherRoad(point.position.clone().addScaledVector(point.right, side * spanWidth / 2), 1, 'main'));
+      if (!poleClear) continue;
       const rope = box(spanWidth, 0.1, 0.1, wood);
       rope.position.y = 7.5;
       group.add(rope);
@@ -626,14 +696,7 @@ export class RaceTrack {
   }
 
   private clearOfOtherRoad(position: THREE.Vector3, radius: number, excludedRoute: RouteName) {
-    for (const point of this.samples) {
-      if (point.route === excludedRoute) continue;
-      const dx = position.x - point.position.x;
-      const dz = position.z - point.position.z;
-      const clearance = point.width * 0.5 + radius + 0.6;
-      if (dx * dx + dz * dz < clearance * clearance) return false;
-    }
-    return true;
+    return clearOfOtherRoutes(this.samples, position, radius, excludedRoute);
   }
 
   private makeBuilding(position: THREE.Vector3, width: number, height: number, depth: number, seed: number, yaw: number) {

@@ -317,6 +317,7 @@ class GenieRace {
   private makeRacers() {
     const starts = [0.006, 0.021, 0.037];
     const accents: Array<'gold' | 'cyan' | 'violet'> = ['gold', 'cyan', 'violet'];
+    const demoRoute = new URLSearchParams(window.location.search).get('demoRoute');
     for (let i = 0; i < 3; i++) {
       const start = this.track.at(starts[i]);
       const yaw = Math.atan2(start.tangent.x, start.tangent.z);
@@ -328,7 +329,7 @@ class GenieRace {
         id: i, visual, position: start.position.clone(), yaw, moveYaw: yaw, speed: 0, progress: starts[i], lap: 1,
         boostTime: 0, shieldTime: 0, ultimateTime: 0, stunTime: 0, hitCooldown: 0, offTrackTime: 0, lastPad: 0,
         drifting: false, driftCharge: 0, jumpTime: 0, jumpDuration: 0, jumpPower: 0,
-        lastSafe: start.position.clone(), lastSafeProgress: starts[i], aiRoute: i === 1 ? 'alley' : i === 2 ? 'roof' : 'main',
+        lastSafe: start.position.clone(), lastSafeProgress: starts[i], aiRoute: i === 0 && this.demoMode && (demoRoute === 'alley' || demoRoute === 'roof') ? demoRoute : i === 1 ? 'alley' : i === 2 ? 'roof' : 'main',
         aiAbilityTimer: 10 + i * 5, aiUltimateTimer: 48 + i * 13, ultimateHit: new Set<number>(), steerVisual: 0,
       };
       this.racers.push(racer);

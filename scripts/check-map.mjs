@@ -213,9 +213,13 @@ for (const pad of BOOST_PAD_LAYOUT) {
   const halfWidth = (pad.width ?? point.width * 0.78) / 2;
   assert.ok(Math.abs(pad.lateral ?? 0) + halfWidth + 1.2 < point.width / 2, `Boost carpet at ${pad.progress} runs off the road`);
   if (pad.width) {
-    const upcoming = curve.getTangentAt(pad.progress + 0.02).normalize();
-    assert.ok(Math.abs(upcoming.dot(point.right)) > 0.2, `Precision boost at ${pad.progress} is not on a turn`);
-    assert.ok(Math.sign(pad.lateral) === Math.sign(upcoming.dot(point.right)), `Precision boost at ${pad.progress} is outside the turn`);
+    if (pad.route === 'main') {
+      const upcoming = curve.getTangentAt(pad.progress + 0.02).normalize();
+      assert.ok(Math.abs(upcoming.dot(point.right)) > 0.2, `Precision boost at ${pad.progress} is not on a turn`);
+      assert.ok(Math.sign(pad.lateral) === Math.sign(upcoming.dot(point.right)), `Precision boost at ${pad.progress} is outside the turn`);
+    } else {
+      assert.ok(pad.width <= 10 && Math.abs(pad.lateral) >= 4, `Shortcut boost at ${pad.progress} should require an intentional line`);
+    }
   }
   for (const obstacle of obstacles) {
     if (Math.abs(padPosition.y - obstacle.position.y) > 3) continue;

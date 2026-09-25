@@ -1628,9 +1628,9 @@ class GenieRace {
     }
     const laneLimit = target.width / 2 - 2.6;
     let desiredLane = clamp(racer.aiLane + clamp(bend * 4, -2.4, 2.4), -laneLimit, laneLimit);
-    if (route === 'main' && (racer.id === 0 || (racer.id + racer.lap) % 3 !== 0)) {
+    if (route !== 'main' || racer.id === 0 || (racer.id + racer.lap) % 3 !== 0) {
       for (const pad of BOOST_PAD_LAYOUT) {
-        if (pad.route !== 'main' || !pad.width) continue;
+        if (pad.route !== route || !pad.width) continue;
         const distance = wrap(pad.progress - racer.progress) * this.track.length;
         if (distance > 80) continue;
         desiredLane += (pad.lateral! - desiredLane) * clamp((80 - distance) / 40, 0, 1);

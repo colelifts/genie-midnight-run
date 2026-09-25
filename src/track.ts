@@ -86,12 +86,13 @@ export const MARKET_BANNER_SPANS = [0.025, 0.08, 0.17, 0.235, 0.29, 0.89, 0.93, 
 export const MARKET_GATE_SPANS = [0.175, 0.91];
 export const CAVE_ARCH_SPANS = [0.684, 0.721, 0.758];
 export const CAVE_ARCH_SHAPE = { pillarOutset: 8, pillarHalfWidth: 7.4, crystalOutset: 5.5, crystalRadius: 1.7, ceilingY: 16.5, ceilingHalfHeight: 4.8 };
-export const COURSE_SCALE = 2.5;
-export const MAIN_ROAD_WIDTH = 84;
-export const ALLEY_ROAD_WIDTH = 40;
-export const ROOF_ROAD_WIDTH = 42;
-export const ALLEY_OFFSET = -80;
-export const ROOF_OFFSET = -103;
+export const CAVE_TUNNEL_SHAPE = { wallOutset: 20, wallRadius: 14, roofCenterY: 19, roofEdgeY: 9 };
+export const COURSE_SCALE = 2.1;
+export const MAIN_ROAD_WIDTH = 62;
+export const ALLEY_ROAD_WIDTH = 32;
+export const ROOF_ROAD_WIDTH = 34;
+export const ALLEY_OFFSET = -67;
+export const ROOF_OFFSET = -85;
 
 export function clearOfOtherRoutes(samples: RoadPoint[], position: THREE.Vector3, radius: number, excludedRoute: RouteName) {
   for (const point of samples) {
@@ -283,7 +284,7 @@ export class RaceTrack {
     const duneGeo = new THREE.IcosahedronGeometry(1, 0);
     for (let i = 0; i < 45; i++) {
       const angle = (i / 45) * Math.PI * 2;
-      const distance = 460 + this.rng() * 120;
+      const distance = 380 + this.rng() * 100;
       const dune = new THREE.Mesh(duneGeo, i % 3 === 0 ? stoneDark : stone);
       dune.scale.set(20 + this.rng() * 28, 9 + this.rng() * 14, 18 + this.rng() * 25);
       dune.position.set(Math.sin(angle) * distance, -6, Math.cos(angle) * distance);
@@ -292,7 +293,7 @@ export class RaceTrack {
     const distantStone = new THREE.MeshStandardMaterial({ color: 0x5f536d, roughness: 1, flatShading: true });
     for (let i = 0; i < 18; i++) {
       const angle = i / 18 * Math.PI * 2;
-      const distance = 570 + this.rng() * 120;
+      const distance = 480 + this.rng() * 100;
       const mountain = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 0), distantStone);
       mountain.scale.set(34 + this.rng() * 32, 19 + this.rng() * 22, 34 + this.rng() * 31);
       mountain.position.set(Math.sin(angle) * distance, -7, Math.cos(angle) * distance);
@@ -1084,14 +1085,60 @@ export class RaceTrack {
   }
 
   private makeCave() {
-    const rockGeometry = new THREE.IcosahedronGeometry(1, 1);
-    const caveStone = new THREE.MeshStandardMaterial({ color: 0x66596c, roughness: 0.97, flatShading: true });
+    const rockGeometry = new THREE.IcosahedronGeometry(1, 2);
+    const caveStone = new THREE.MeshStandardMaterial({ color: 0x66596c, roughness: 0.97, flatShading: true, emissive: 0x18213a, emissiveIntensity: 0.3 });
+    const caveStoneLight = new THREE.MeshStandardMaterial({ color: 0x786679, roughness: 0.98, flatShading: true, emissive: 0x18213a, emissiveIntensity: 0.28 });
     const crystal = new THREE.MeshBasicMaterial({ color: 0x67dbed, toneMapped: false });
+    for (let i = 0; i < 18; i++) {
+      const sample = this.at(0.667 + i * 0.006);
+      for (const side of [-1, 1]) {
+        const wall = new THREE.Mesh(rockGeometry, i % 4 === 0 ? caveStoneLight : caveStone);
+        wall.scale.set(10 + this.rng() * 2, 10 + this.rng() * 2.5, 12 + this.rng() * 2);
+        wall.position.copy(sample.position).addScaledVector(sample.right, side * (sample.width / 2 + CAVE_TUNNEL_SHAPE.wallOutset));
+        wall.position.y = 7.2 + this.rng() * 1.3;
+        wall.rotation.y = Math.atan2(sample.tangent.x, sample.tangent.z) + this.rng() * 0.15;
+        wall.castShadow = true;
+        wall.receiveShadow = true;
+        this.group.add(wall);
+      }
+    }
+    const roofPositions: number[] = [];
+    const roofColors: number[] = [];
+    const roofIndices: number[] = [];
+    const roofSteps = 56;
+    const roofBands = 10;
+    for (let i = 0; i <= roofSteps; i++) {
+      const sample = this.at(0.665 + i * 0.002);
+      for (let j = 0; j <= roofBands; j++) {
+        const across = j / roofBands * 2 - 1;
+        const width = sample.width / 2 + 17;
+        const vertex = sample.position.clone().addScaledVector(sample.right, across * width);
+        const arch = Math.pow(1 - across * across, 0.78);
+        vertex.y = CAVE_TUNNEL_SHAPE.roofEdgeY + (CAVE_TUNNEL_SHAPE.roofCenterY - CAVE_TUNNEL_SHAPE.roofEdgeY) * arch
+          + Math.sin(i * 1.79 + j * 2.3) * 0.28;
+        roofPositions.push(vertex.x, vertex.y, vertex.z);
+        const shade = 0.77 + 0.1 * Math.sin(i * 1.3 + j * 2.7);
+        roofColors.push(shade, shade * 0.91, shade * 1.06);
+        if (i > 0 && j > 0) {
+          const a = (i - 1) * (roofBands + 1) + j - 1;
+          const b = i * (roofBands + 1) + j - 1;
+          roofIndices.push(a, a + 1, b, a + 1, b + 1, b);
+        }
+      }
+    }
+    const roofGeometry = new THREE.BufferGeometry();
+    roofGeometry.setAttribute('position', new THREE.Float32BufferAttribute(roofPositions, 3));
+    roofGeometry.setAttribute('color', new THREE.Float32BufferAttribute(roofColors, 3));
+    roofGeometry.setIndex(roofIndices);
+    roofGeometry.computeVertexNormals();
+    const roof = new THREE.Mesh(roofGeometry, new THREE.MeshStandardMaterial({ color: 0x897b91, vertexColors: true, roughness: 1, side: THREE.DoubleSide, emissive: 0x655672, emissiveIntensity: 0.55 }));
+    roof.receiveShadow = true;
+    this.group.add(roof);
     for (let i = 0; i < 12; i++) {
       const sample = this.mainSamples[Math.floor((0.665 + i * 0.01) * this.mainSamples.length)];
       for (const side of [-1, 1]) {
         const size = 3.4 + this.rng() * 2.1;
-        const rock = new THREE.Mesh(rockGeometry, i % 3 === 0 ? stoneDark : stone);
+        const rock = new THREE.Mesh(rockGeometry, i % 3 === 0 ? caveStoneLight : caveStone);
         rock.scale.set(size * 1.05, size * (1.15 + this.rng() * 0.65), size * 1.35);
         rock.position.copy(sample.position).addScaledVector(sample.right, side * (sample.width / 2 + 6.5 + this.rng() * 3.2));
         rock.position.y = rock.scale.y * 0.62 - 0.1;
@@ -1127,6 +1174,13 @@ export class RaceTrack {
         crown.castShadow = true;
         arch.add(crown);
       }
+      const hangingCrystal = new THREE.Mesh(new THREE.OctahedronGeometry(1, 0), crystal);
+      hangingCrystal.scale.set(1.45, 2.15, 1.45);
+      hangingCrystal.position.y = 11.5;
+      arch.add(hangingCrystal);
+      const crystalGlow = lanternHalo(8, 0x68eaff);
+      crystalGlow.position.copy(hangingCrystal.position);
+      arch.add(crystalGlow);
       arch.position.copy(sample.position);
       arch.position.y = 0;
       arch.rotation.y = Math.atan2(sample.tangent.x, sample.tangent.z);

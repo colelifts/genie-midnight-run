@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { ALLEY_OFFSET, ALLEY_ROAD_WIDTH, branchCoversMainEdge, CAVE_ARCH_SHAPE, CAVE_ARCH_SPANS, clearOfOtherRoutes, MAIN_ROAD_WIDTH, makeBranchSamples, makeMainCurve, MARKET_BANNER_SPANS, MARKET_GATE_SPANS, overMainPavement, roadArrowRotation, roadTurnSignRotation, ROOF_OFFSET, ROOF_ROAD_WIDTH, touchesBoostPad } from '../src/track.ts';
+import { ALLEY_OFFSET, ALLEY_ROAD_WIDTH, branchCoversMainEdge, CAVE_ARCH_SHAPE, CAVE_ARCH_SPANS, CAVE_TUNNEL_SHAPE, clearOfOtherRoutes, MAIN_ROAD_WIDTH, makeBranchSamples, makeMainCurve, MARKET_BANNER_SPANS, MARKET_GATE_SPANS, overMainPavement, roadArrowRotation, roadTurnSignRotation, ROOF_OFFSET, ROOF_ROAD_WIDTH, touchesBoostPad } from '../src/track.ts';
 
 const curve = makeMainCurve();
 const count = 640;
@@ -44,7 +44,8 @@ for (let i = 0; i < count; i++) {
     }
   }
 }
-assert.ok(MAIN_ROAD_WIDTH >= 80, 'The main road is not wide enough for the new map');
+assert.ok(MAIN_ROAD_WIDTH >= 56 && MAIN_ROAD_WIDTH <= 68, 'The main road should feel wide enough for racing without becoming an empty plaza');
+assert.ok(curve.getLength() >= 1500 && curve.getLength() <= 1750, 'The lap is outside the intended course length');
 assert.ok(smallestMainRadius > MAIN_ROAD_WIDTH / 2 + 20, `Main road is too wide for its tightest turn: ${smallestMainRadius.toFixed(1)}m radius`);
 assert.ok(closestSeparateRoad > MAIN_ROAD_WIDTH + 4, `Separate ${MAIN_ROAD_WIDTH}m road sections overlap: ${closestSeparateRoad.toFixed(1)}m between centers`);
 
@@ -142,6 +143,8 @@ assert.ok(!touchesBoostPad(pad, new THREE.Vector3(0, 0, 0), 'roof'), 'Boost acti
 assert.ok(CAVE_ARCH_SHAPE.pillarOutset - CAVE_ARCH_SHAPE.pillarHalfWidth > 0.4, 'Cave pillar clips the road edge');
 assert.ok(CAVE_ARCH_SHAPE.crystalOutset - CAVE_ARCH_SHAPE.crystalRadius > 2, 'Cave crystal clips the road edge');
 assert.ok(CAVE_ARCH_SHAPE.ceilingY - CAVE_ARCH_SHAPE.ceilingHalfHeight > 9, 'Cave ceiling is too low');
+assert.ok(CAVE_TUNNEL_SHAPE.wallOutset - CAVE_TUNNEL_SHAPE.wallRadius > 3, 'Cave wall clips the road edge');
+assert.ok(CAVE_TUNNEL_SHAPE.roofCenterY > 17 && CAVE_TUNNEL_SHAPE.roofEdgeY > 7, 'Cave roof is too low');
 assert.ok(CAVE_ARCH_SPANS.every((progress) => progress > 0.665 && progress < 0.78), 'Cave arch is outside the cave');
 for (const progress of [0.668, 0.705, 0.742]) {
   const tangent = curve.getTangentAt(progress).normalize();

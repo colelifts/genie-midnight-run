@@ -10,6 +10,7 @@ const ASSETS = {
   whoosh: 'boost-whoosh.mp3', time: 'time-whoosh.mp3',
   light: 'impact-light.mp3', mid: 'impact-mid.mp3', heavy: 'impact-heavy.mp3', birds: 'birds.mp3',
 } as const;
+const AUDIO_REVISION = '2';
 type AssetName = keyof typeof ASSETS;
 type Loop = { source: AudioBufferSourceNode; gain: GainNode };
 const level = (key: string, fallback: number) => {
@@ -48,7 +49,7 @@ export class GameAudio {
   constructor() {
     // Fetch during the menu so the first countdown and engine have time to arrive.
     for (const [name, file] of Object.entries(ASSETS) as [AssetName, string][]) {
-      this.downloads.set(name, fetch(`${import.meta.env.BASE_URL}audio/${file}`)
+      this.downloads.set(name, fetch(`${import.meta.env.BASE_URL}audio/${file}?v=${AUDIO_REVISION}`)
         .then((response) => {
           if (!response.ok) throw new Error(`Audio ${file}: HTTP ${response.status}`);
           return response.arrayBuffer();

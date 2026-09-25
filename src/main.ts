@@ -1628,7 +1628,9 @@ class GenieRace {
     const right = this.keys.has('KeyD') || this.keys.has('ArrowRight') || this.touch.has('right');
     const accel = this.debugDrive || this.keys.has('KeyW') || this.keys.has('ArrowUp') || this.touch.has('accel') ? 1 : this.gamepadAccel;
     const brake = !this.debugDrive && (this.keys.has('KeyS') || this.keys.has('ArrowDown')) ? 1 : this.gamepadBrake;
-    const scriptedSteer = scriptedTurn ? chargeScript && this.raceClock >= 2.85 ? -1 : 1 : 0;
+    const scriptedSteer = scriptedTurn ? chargeScript
+      ? this.raceClock < 2.55 ? 0.3 : this.raceClock < 3.1 ? -0.22 : this.raceClock < 3.7 ? 0.22 : -0.22
+      : 1 : 0;
     const steer = this.debugDrive ? scriptedSteer : clamp((right ? 1 : 0) - (left ? 1 : 0) + this.gamepadSteer, -1, 1);
     const driftPressed = this.debugDrive ? (this.debugDrive === 'corner' || chargeScript) && scriptedTurn : this.keys.has('Space') || this.touch.has('drift') || this.gamepadDrift;
     player.steerVisual = steer;
@@ -1657,7 +1659,7 @@ class GenieRace {
       if (!player.drifting) {
         player.drifting = true;
         player.driftDirection = Math.sign(steer);
-        this.startJump(player, 0.42, 0.42);
+        this.startJump(player, 0.19, 0.24);
         this.audio.play('drift');
       }
       if (Math.abs(steer) > 0.18) {
@@ -1716,7 +1718,7 @@ class GenieRace {
     if (Math.abs(bend) > 0.2 && racer.speed > 17) {
       if (!racer.drifting) {
         racer.drifting = true;
-        this.startJump(racer, 0.32, 0.28);
+        this.startJump(racer, 0.19, 0.24);
       }
       racer.driftCharge += dt;
       if (Math.random() < dt * 12) this.emitDriftSparks(racer);

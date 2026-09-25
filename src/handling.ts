@@ -22,30 +22,30 @@ export interface HeadingInput {
 
 const angleDiff = (target: number, current: number) => Math.atan2(Math.sin(target - current), Math.cos(target - current));
 
-/** Speed-aware arcade steering with a committed, countersteerable drift. */
+/** Speed-aware arcade steering with a controllable, weighty drift. */
 export function advanceHeading(state: HeadingState, input: HeadingInput): HeadingState {
   const { steer, speed, handling, drifting, driftDirection, boostHandling, wobble, dt } = input;
-  // Normal racing speed stays calm. Above it, scale steering only enough to
-  // keep a boost from making the kart too wide for the course's sharp bends.
+  // A full drift at racing speed follows the course's tightest ~21m corners.
+  // Boost steering scales with speed so a pad does not force a wide exit.
   const speedFraction = Math.min(Math.abs(speed) / raceSpeed(53), 1);
   const boostTurnScale = Math.max(1, Math.min(1.35, Math.abs(speed) / raceSpeed(31)));
-  const turnRate = (1.24 - speedFraction * 0.24) * (drifting ? 1.5 : 1)
+  const turnRate = (1.34 - speedFraction * 0.19) * (drifting ? 1.72 : 1)
     * boostTurnScale * boostHandling * handling;
-  // Holding drift keeps a gentle arc; steering into it tightens the turn,
-  // and steering against it opens the line without an abrupt reversal.
-  const driftSteer = drifting ? 0.4 * driftDirection + 0.6 * steer : steer;
+  // The held drift button never supplies steering. Countersteer can open the
+  // line, with a little less authority than steering into the corner.
+  const driftSteer = drifting && steer * driftDirection < -0.1 ? steer * 0.72 : steer;
   // Positive yaw turns the kart toward +X (right), matching D/right input.
   const desiredYawRate = (driftSteer + wobble) * turnRate * Math.min(1, Math.abs(speed) / raceSpeed(6));
-  const turnResponse = Math.abs(driftSteer) < 0.05 ? 11 : drifting ? 8 : 9;
+  const turnResponse = Math.abs(driftSteer) < 0.05 ? 11 : drifting ? 8.5 : 9;
   const yawRate = state.yawRate + (desiredYawRate - state.yawRate) * (1 - Math.exp(-dt * turnResponse));
   const yaw = state.yaw + yawRate * dt;
-  const travelResponse = drifting ? 7.6 : 12;
+  const travelResponse = drifting ? 9.5 + (boostTurnScale - 1) * 5 : 12;
   const moveYaw = state.moveYaw + angleDiff(yaw, state.moveYaw) * (1 - Math.exp(-dt * travelResponse));
   return { yaw, moveYaw, yawRate };
 }
 
 export function advanceChaseYaw(cameraYaw: number, moveYaw: number, drifting: boolean, dt: number) {
-  return cameraYaw + angleDiff(moveYaw, cameraYaw) * (1 - Math.exp(-dt * (drifting ? 7 : 8)));
+  return cameraYaw + angleDiff(moveYaw, cameraYaw) * (1 - Math.exp(-dt * (drifting ? 10 : 8)));
 }
 
 /** Ease a kart into a rail slide without instantly replacing the driver's heading. */

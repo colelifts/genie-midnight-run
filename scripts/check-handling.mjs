@@ -33,13 +33,15 @@ const leftDrift = run(60, true, raceSpeed(31), -1);
 assert.ok(normal.turnAtRelease > 0 && drift.moveYaw > 0, 'Right input must turn and travel right');
 assert.ok(leftDrift.moveYaw < 0, 'Left input must turn and travel left');
 assert.ok(drift.turnAtRelease > normal.turnAtRelease * 1.3, 'Drifting must turn substantially more than regular steering');
-assert.ok(drift.turnAtRelease < 1.05, 'A short drift must not snap the kart across the road');
+assert.ok(drift.turnAtRelease < 1.15, 'A short drift must not snap the kart across the road');
 assert.ok(drift.maxSlip > normal.maxSlip && drift.maxSlip < 0.28, 'Drift should show weight without sending travel sideways');
 assert.ok(drift.maxCameraAngle < 0.62, 'Camera must keep the road visible during a drift');
 assert.ok(Math.abs(drift.yawRate) < 0.08, 'The kart must stop rotating soon after steer release');
 assert.ok(Math.abs(drift.turnAtRelease - drift30.turnAtRelease) < 0.06, 'Steering must remain stable at 30 and 60 fps');
 assert.ok(boosted.maxSlip < 0.3 && boosted.maxCameraAngle < 0.65, 'Boost speed must remain controllable');
-assert.ok(raceSpeed(53) / boosted.rateAtRelease > 25 && raceSpeed(53) / boosted.rateAtRelease < 32,
+assert.ok(raceSpeed(31) / drift.rateAtRelease > 18 && raceSpeed(31) / drift.rateAtRelease < 23,
+  'A full racing-speed drift must fit the tightest main-course bend');
+assert.ok(raceSpeed(53) / boosted.rateAtRelease > 19 && raceSpeed(53) / boosted.rateAtRelease < 25,
   'A pad boost drift must still fit the course bends without snapping');
 assert.ok(Math.abs(drift.turnAtRelease - leftDrift.turnAtRelease) < 1e-6, 'Left and right drift must be symmetric');
 const idle = advanceHeading({ yaw: 0, moveYaw: 0, yawRate: 0 }, { steer: 0, speed: raceSpeed(31), handling: 1,
@@ -56,8 +58,16 @@ for (let frame = 0; frame < 42; frame++) {
   counterDrift = advanceHeading(counterDrift, { steer: -1, speed: raceSpeed(31), handling: 1,
     drifting: true, driftDirection: 1, boostHandling: 1, wobble: 0, dt: 1 / 60 });
 }
-assert.ok(neutralDrift.moveYaw > 0.25, 'A held drift must keep a controllable corner arc');
+assert.deepEqual(neutralDrift, { yaw: 0, moveYaw: 0, yawRate: 0 }, 'Holding drift without steering must not turn the kart');
 assert.ok(counterDrift.moveYaw < 0, 'Countersteering must open the corner and eventually change direction');
+let openingDrift = { yaw: 0, moveYaw: 0, yawRate: 0 };
+for (let frame = 0; frame < 30; frame++) openingDrift = advanceHeading(openingDrift, { steer: 1, speed: raceSpeed(31), handling: 1,
+  drifting: true, driftDirection: 1, boostHandling: 1, wobble: 0, dt: 1 / 60 });
+const beforeCounter = openingDrift.moveYaw;
+for (let frame = 0; frame < 30; frame++) openingDrift = advanceHeading(openingDrift, { steer: -1, speed: raceSpeed(31), handling: 1,
+  drifting: true, driftDirection: 1, boostHandling: 1, wobble: 0, dt: 1 / 60 });
+assert.ok(openingDrift.yawRate < -1 && openingDrift.moveYaw < beforeCounter,
+  'Countersteering an established drift must visibly open the line within half a second');
 const straight = { yaw: Math.PI / 4, moveYaw: Math.PI / 4, yawRate: 0.7 };
 const railRight = { x: 1, z: 0 };
 const railTangent = { x: 0, z: 1 };

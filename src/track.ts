@@ -102,15 +102,18 @@ export function marketCartState(time: number) {
   if (phase < 14) return { lateral: -1, direction: 1, crossing: false, warning: phase >= 12 };
   return { lateral: -1 + (phase - 14) / 2, direction: 1, crossing: true, warning: true };
 }
-export const BOOST_PAD_LAYOUT: Array<{ route: RouteName; progress: number; boostSeconds: number }> = [
+export const BOOST_PAD_LAYOUT: Array<{ route: RouteName; progress: number; boostSeconds: number; lateral?: number; width?: number }> = [
   { route: 'main', progress: 0.08, boostSeconds: 3.3 },
   { route: 'alley', progress: 0.08, boostSeconds: 5.3 },
   { route: 'alley', progress: 0.128, boostSeconds: 5.3 },
   { route: 'roof', progress: 0.22, boostSeconds: 5.3 },
   { route: 'roof', progress: 0.266, boostSeconds: 5.3 },
   { route: 'roof', progress: 0.311, boostSeconds: 5.3 },
+  { route: 'main', progress: 0.43, boostSeconds: 2.4, lateral: 10, width: 9 },
   { route: 'garden', progress: 0.487, boostSeconds: 3.1 },
   { route: 'main', progress: 0.535, boostSeconds: 3.3 },
+  { route: 'main', progress: 0.62, boostSeconds: 2.4, lateral: -10, width: 9 },
+  { route: 'main', progress: 0.88, boostSeconds: 2.4, lateral: 10, width: 9 },
   { route: 'main', progress: 0.975, boostSeconds: 3.3 },
 ];
 export const OBSTACLE_LAYOUT: Array<{ kind: Obstacle['kind']; route: RouteName; progress: number; lateral: number; phase?: number }> = [
@@ -160,6 +163,8 @@ const roadMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9
 const gardenRoadMat = new THREE.MeshStandardMaterial({ color: 0xe6d5ba, roughness: 0.96, side: THREE.DoubleSide });
 const red = new THREE.MeshStandardMaterial({ color: 0xd65b62, roughness: 0.93, side: THREE.DoubleSide });
 const blue = new THREE.MeshStandardMaterial({ color: 0x4669a3, roughness: 0.93, side: THREE.DoubleSide });
+const redFabric = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.94, side: THREE.DoubleSide });
+const blueFabric = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.94, side: THREE.DoubleSide });
 const leaf = new THREE.MeshStandardMaterial({ color: 0x477653, roughness: 0.92, flatShading: true, side: THREE.DoubleSide });
 const wood = new THREE.MeshStandardMaterial({ color: 0x705142, roughness: 0.95 });
 const water = new THREE.MeshBasicMaterial({ color: 0x51c1db, transparent: true, opacity: 0.9 });
@@ -168,6 +173,20 @@ const gold = new THREE.MeshStandardMaterial({ color: 0xdfaf63, metalness: 0.38, 
 
 const box = (w: number, h: number, d: number, material: THREE.Material) =>
   new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+
+function pointedDoorGeometry(width: number, height: number) {
+  const shape = new THREE.Shape();
+  shape.moveTo(-width / 2, 0);
+  shape.lineTo(width / 2, 0);
+  shape.lineTo(width / 2, height * 0.7);
+  shape.quadraticCurveTo(width / 2, height * 0.88, 0, height);
+  shape.quadraticCurveTo(-width / 2, height * 0.88, -width / 2, height * 0.7);
+  shape.closePath();
+  return new THREE.ShapeGeometry(shape, 12);
+}
+
+const doorFrameGeometry = pointedDoorGeometry(3, 4.1);
+const doorInsetGeometry = pointedDoorGeometry(2.42, 3.72);
 
 let lanternHaloTexture: THREE.CanvasTexture | undefined;
 function lanternHalo(size: number, color = 0xffba58) {
@@ -312,6 +331,71 @@ function makeSandTexture() {
   return texture;
 }
 
+function makeStuccoTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 512;
+  const ctx = canvas.getContext('2d')!;
+  const rng = seededRandom(5188);
+  ctx.fillStyle = '#f6efe8';
+  ctx.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 24000; i++) {
+    const x = rng() * 512;
+    const y = rng() * 512;
+    const size = 0.4 + rng() * 2.8;
+    ctx.fillStyle = i % 4 === 0 ? 'rgba(114,81,90,0.11)' : 'rgba(255,255,255,0.16)';
+    ctx.fillRect(x, y, size, size * (0.42 + rng()));
+  }
+  for (let i = 0; i < 18; i++) {
+    const x = rng() * 512;
+    const y = rng() * 512;
+    const radius = 9 + rng() * 26;
+    const stain = ctx.createRadialGradient(x, y, 1, x, y, radius);
+    stain.addColorStop(0, 'rgba(122,85,93,0.08)');
+    stain.addColorStop(1, 'rgba(122,85,93,0)');
+    ctx.fillStyle = stain;
+    ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(2, 2);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  return texture;
+}
+
+function makeFabricTexture(base: string, stripe: string) {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, 256, 256);
+  for (let x = 0; x < 256; x += 64) {
+    ctx.fillStyle = stripe;
+    ctx.fillRect(x + 18, 0, 19, 256);
+    ctx.fillStyle = 'rgba(255,238,185,0.7)';
+    ctx.fillRect(x + 40, 0, 4, 256);
+    ctx.fillStyle = 'rgba(42,36,67,0.28)';
+    ctx.fillRect(x + 13, 0, 4, 256);
+  }
+  for (const y of [25, 225]) {
+    ctx.fillStyle = 'rgba(255,224,165,0.68)';
+    ctx.fillRect(0, y, 256, 5);
+    for (let x = 15; x < 256; x += 32) {
+      ctx.beginPath();
+      ctx.moveTo(x, y - 10);
+      ctx.lineTo(x + 8, y - 2);
+      ctx.lineTo(x, y + 6);
+      ctx.lineTo(x - 8, y - 2);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  return texture;
+}
+
 export class RaceTrack {
   readonly mainWidth = MAIN_ROAD_WIDTH;
   readonly group = new THREE.Group();
@@ -333,6 +417,8 @@ export class RaceTrack {
   private readonly roofPerches: THREE.Vector3[] = [];
   private readonly clouds: Array<{ sprite: THREE.Sprite; baseX: number; speed: number }> = [];
   private readonly fireflies: Array<{ sprite: THREE.Sprite; base: THREE.Vector3; phase: number }> = [];
+  private readonly fountainRipples: Array<{ mesh: THREE.Mesh; material: THREE.MeshBasicMaterial; phase: number }> = [];
+  private caveCrystalMaterial: THREE.MeshBasicMaterial | null = null;
   private readonly birds: Array<{ group: THREE.Group; leftWing: THREE.Group; rightWing: THREE.Group; base: THREE.Vector3; phase: number; launchTime: number; direction: THREE.Vector3 }> = [];
   private readonly skyBirds: Array<{ group: THREE.Group; leftWing: THREE.Group; rightWing: THREE.Group; center: THREE.Vector3; phase: number; radius: number }> = [];
   private marketCart: Obstacle | null = null;
@@ -344,6 +430,13 @@ export class RaceTrack {
     roadMat.needsUpdate = true;
     gardenRoadMat.map = roadMat.map;
     gardenRoadMat.needsUpdate = true;
+    const stucco = makeStuccoTexture();
+    stone.map = stucco;
+    stoneLight.map = stucco;
+    stone.needsUpdate = stoneLight.needsUpdate = true;
+    redFabric.map = makeFabricTexture('#bb4559', '#e9aa76');
+    blueFabric.map = makeFabricTexture('#385b91', '#91bfd3');
+    redFabric.needsUpdate = blueFabric.needsUpdate = true;
     this.mainCurve = makeMainCurve();
     this.length = this.mainCurve.getLength();
     this.makeSamples();
@@ -397,7 +490,11 @@ export class RaceTrack {
       const distance = 380 + this.rng() * 100;
       const dune = new THREE.Mesh(duneGeo, i % 7 === 0 ? duneShadow : i % 2 === 0 ? duneLight : duneWarm);
       dune.scale.set(20 + this.rng() * 28, 9 + this.rng() * 14, 18 + this.rng() * 25);
-      dune.position.set(Math.sin(angle) * distance, -6, Math.cos(angle) * distance);
+      const outward = new THREE.Vector3(Math.sin(angle), 0, Math.cos(angle));
+      dune.position.set(outward.x * distance, -6, outward.z * distance);
+      const clearance = Math.max(dune.scale.x, dune.scale.z) + 9;
+      for (let step = 0; step < 6 && !this.clearOfRoad(dune.position, clearance); step++) dune.position.addScaledVector(outward, 36);
+      if (!this.clearOfRoad(dune.position, clearance)) continue;
       dune.rotation.y = this.rng() * Math.PI;
       dune.receiveShadow = true;
       this.group.add(dune);
@@ -1037,18 +1134,20 @@ export class RaceTrack {
         group.add(halo);
       }
     }
-    const doorway = box(2.5, 3.6, 0.1, stoneDark);
-    doorway.position.set(0, 1.8, depth / 2 + 0.1);
+    const doorFrame = new THREE.Mesh(doorFrameGeometry, seed % 4 === 0 ? gold : stoneDark);
+    doorFrame.position.set(0, 0.05, depth / 2 + 0.12);
+    group.add(doorFrame);
+    const doorway = new THREE.Mesh(doorInsetGeometry, wood);
+    doorway.position.set(0, 0.06, depth / 2 + 0.15);
     group.add(doorway);
-    const doorArch = new THREE.Mesh(new THREE.SphereGeometry(1.25, 8, 4, 0, Math.PI, 0, Math.PI / 2), stoneDark);
-    doorArch.position.set(0, 3.55, depth / 2 + 0.11);
-    doorArch.scale.set(1, 0.35, 0.15);
-    group.add(doorArch);
+    const handle = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 6), gold);
+    handle.position.set(0.58, 1.55, depth / 2 + 0.22);
+    group.add(handle);
     const lintel = box(width * 0.7, 0.15, 0.22, roofMat);
     lintel.position.set(0, height * 0.78, depth / 2 + 0.12);
     group.add(lintel);
     if (seed % 3 !== 1) {
-      const fabric = Math.floor(seed / 2) % 2 === 0 ? red : blue;
+      const fabric = Math.floor(seed / 2) % 2 === 0 ? redFabric : blueFabric;
       const awningWidth = width * 0.83;
       const awningHeight = Math.min(height * 0.48, 6);
       const roof = new THREE.BufferGeometry();
@@ -1058,6 +1157,7 @@ export class RaceTrack {
         -awningWidth / 2, awningHeight - 0.45, depth / 2 + 3.65,
         awningWidth / 2, awningHeight - 0.45, depth / 2 + 3.65,
       ], 3));
+      roof.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 1, 1], 2));
       roof.setIndex([0, 2, 1, 1, 2, 3]);
       roof.computeVertexNormals();
       group.add(new THREE.Mesh(roof, fabric));
@@ -1103,7 +1203,7 @@ export class RaceTrack {
       frontPole.position.set(x, 1.8, 2.15);
       group.add(frontPole);
     }
-    const fabric = Math.floor(seed / 4) % 2 === 0 ? red : blue;
+    const fabric = Math.floor(seed / 4) % 2 === 0 ? redFabric : blueFabric;
     const canopy = new THREE.Mesh(new THREE.PlaneGeometry(7, 5.6), fabric);
     canopy.rotation.x = -Math.PI / 2 + 0.35;
     canopy.position.set(0, 4.23, 0);
@@ -1375,6 +1475,26 @@ export class RaceTrack {
     spout.position.copy(position);
     spout.position.y = 6.1;
     this.group.add(spout);
+    const sprayMaterial = new THREE.MeshBasicMaterial({ color: 0x9defff, transparent: true, opacity: 0.72, depthWrite: false });
+    for (let i = 0; i < 8; i++) {
+      const angle = i / 8 * Math.PI * 2;
+      const outward = new THREE.Vector3(Math.sin(angle), 0, Math.cos(angle));
+      const arc = new THREE.QuadraticBezierCurve3(
+        position.clone().add(new THREE.Vector3(0, 7.35, 0)),
+        position.clone().addScaledVector(outward, 4.1).add(new THREE.Vector3(0, 7.8, 0)),
+        position.clone().addScaledVector(outward, 6.25).add(new THREE.Vector3(0, 1.32, 0)),
+      );
+      this.group.add(new THREE.Mesh(new THREE.TubeGeometry(arc, 22, 0.095, 5, false), sprayMaterial));
+    }
+    for (let i = 0; i < 3; i++) {
+      const material = new THREE.MeshBasicMaterial({ color: 0xb8f7ff, transparent: true, opacity: 0.45, depthWrite: false });
+      const mesh = new THREE.Mesh(new THREE.TorusGeometry(1, 0.055, 5, 48), material);
+      mesh.rotation.x = Math.PI / 2;
+      mesh.position.copy(position);
+      mesh.position.y = 1.31;
+      this.group.add(mesh);
+      this.fountainRipples.push({ mesh, material, phase: i / 3 });
+    }
   }
 
   private makeCave() {
@@ -1382,6 +1502,7 @@ export class RaceTrack {
     const caveStone = new THREE.MeshStandardMaterial({ color: 0x66596c, roughness: 0.97, flatShading: true, emissive: 0x18213a, emissiveIntensity: 0.3 });
     const caveStoneLight = new THREE.MeshStandardMaterial({ color: 0x786679, roughness: 0.98, flatShading: true, emissive: 0x18213a, emissiveIntensity: 0.28 });
     const crystal = new THREE.MeshBasicMaterial({ color: 0x67dbed, toneMapped: false });
+    this.caveCrystalMaterial = crystal;
     for (let i = 0; i < 18; i++) {
       const sample = this.at(0.667 + i * 0.006);
       for (const side of [-1, 1]) {
@@ -1682,7 +1803,7 @@ export class RaceTrack {
       halo.position.y = 4.22;
       halo.material.opacity = 0.12;
       signal.add(halo);
-      signal.position.copy(point.position).addScaledVector(point.right, side * (point.width / 2 + 2.8));
+      signal.position.copy(point.position).addScaledVector(point.right, side * (point.width / 2 + 1.6));
       signal.position.y = 0;
       this.group.add(signal);
       this.marketCrossingSignals.push({ bulb: bulbMaterial, halo });
@@ -1765,23 +1886,24 @@ export class RaceTrack {
     const carpetFace = new THREE.MeshBasicMaterial({ map: carpetTexture, side: THREE.DoubleSide, toneMapped: false });
     const glowMat = new THREE.MeshBasicMaterial({ map: lanternHaloTexture, color: 0x59e7ff, transparent: true, opacity: 0.32, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
     const edgeGemMat = new THREE.MeshBasicMaterial({ color: 0x9af7ff, toneMapped: false });
-    for (const { route, progress, boostSeconds } of BOOST_PAD_LAYOUT) {
+    for (const { route, progress, boostSeconds, lateral = 0, width } of BOOST_PAD_LAYOUT) {
       const point = this.routeAt(route, progress);
+      const carpetWidth = width ?? point.width * 0.78;
       const group = new THREE.Group();
-      const base = box(point.width * 0.78, 0.055, BOOST_PAD_LENGTH, new THREE.MeshBasicMaterial({ color: 0x3d205d }));
+      const base = box(carpetWidth, 0.055, BOOST_PAD_LENGTH, new THREE.MeshBasicMaterial({ color: 0x3d205d }));
       base.position.y = 0.04;
       group.add(base);
       const mat = new THREE.MeshBasicMaterial({ color: 0xf2bd57 });
       this.carpetMaterials.push(mat);
-      const glowPlane = new THREE.Mesh(new THREE.PlaneGeometry(point.width * 0.95, BOOST_PAD_LENGTH * 1.25), glowMat);
+      const glowPlane = new THREE.Mesh(new THREE.PlaneGeometry(carpetWidth * 1.2, BOOST_PAD_LENGTH * 1.25), glowMat);
       glowPlane.rotation.x = -Math.PI / 2;
       glowPlane.position.y = 0.09;
       group.add(glowPlane);
-      const face = new THREE.Mesh(new THREE.PlaneGeometry(point.width * 0.73, BOOST_PAD_LENGTH * 0.95), carpetFace);
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(carpetWidth * 0.94, BOOST_PAD_LENGTH * 0.95), carpetFace);
       face.rotation.x = -Math.PI / 2;
       face.position.y = 0.105;
       group.add(face);
-      for (const x of [-point.width * 0.36, point.width * 0.36]) {
+      for (const x of [-carpetWidth * 0.46, carpetWidth * 0.46]) {
         const edge = box(0.28, 0.09, BOOST_PAD_LENGTH * 0.98, mat);
         edge.position.set(x, 0.15, 0);
         group.add(edge);
@@ -1791,11 +1913,11 @@ export class RaceTrack {
           group.add(gem);
         }
       }
-      group.position.copy(point.position);
+      group.position.copy(point.position).addScaledVector(point.right, lateral);
       group.position.y += 0.08;
       group.rotation.y = Math.atan2(point.tangent.x, point.tangent.z);
       this.group.add(group);
-      this.boostPads.push({ position: group.position, tangent: point.tangent.clone(), right: point.right.clone(), halfWidth: point.width * 0.39, halfLength: BOOST_PAD_LENGTH / 2, boostSeconds, route: point.route, mesh: group });
+      this.boostPads.push({ position: group.position, tangent: point.tangent.clone(), right: point.right.clone(), halfWidth: carpetWidth / 2, halfLength: BOOST_PAD_LENGTH / 2, boostSeconds, route: point.route, mesh: group });
     }
   }
 
@@ -1879,6 +2001,15 @@ export class RaceTrack {
     for (const firefly of this.fireflies) {
       firefly.sprite.position.x = firefly.base.x + Math.sin(time * 0.8 + firefly.phase) * 0.8;
       firefly.sprite.position.y = firefly.base.y + Math.sin(time * 1.3 + firefly.phase) * 0.55;
+    }
+    for (const ripple of this.fountainRipples) {
+      const wave = (time * 0.42 + ripple.phase) % 1;
+      ripple.mesh.scale.setScalar(0.7 + wave * 5.8);
+      ripple.material.opacity = (1 - wave) * 0.42;
+    }
+    if (this.caveCrystalMaterial) {
+      const glimmer = 0.9 + 0.1 * Math.sin(time * 2.2);
+      this.caveCrystalMaterial.color.setRGB(0.43 * glimmer, 0.9 * glimmer, 0.99 * glimmer);
     }
     for (const flag of this.marketFlags) flag.mesh.rotation.z = Math.PI + Math.sin(time * 1.4 + flag.phase) * 0.08;
     for (const bird of this.birds) {

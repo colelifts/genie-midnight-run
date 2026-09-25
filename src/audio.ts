@@ -1,4 +1,4 @@
-type SoundName = 'count' | 'go' | 'drift' | 'boost' | 'wish' | 'shield' | 'shot' | 'hit' | 'stun' | 'lap' | 'ultimate' | 'pickup' | 'cart-warning' | 'birds';
+type SoundName = 'count' | 'go' | 'drift' | 'boost' | 'pad' | 'wish' | 'shield' | 'shot' | 'hit' | 'stun' | 'lap' | 'ultimate' | 'pickup' | 'cart-warning' | 'birds';
 
 export class GameAudio {
   private context: AudioContext | null = null;
@@ -8,6 +8,7 @@ export class GameAudio {
   private windGain: GainNode | null = null;
   private windFilter: BiquadFilterNode | null = null;
   private skidGain: GainNode | null = null;
+  private hatGain: GainNode | null = null;
   private nextBeat = 0;
   private beat = 0;
   muted = false;
@@ -56,6 +57,14 @@ export class GameAudio {
     noiseSource.connect(skidFilter);
     skidFilter.connect(skidGain);
     skidGain.connect(master);
+    const hatFilter = context.createBiquadFilter();
+    hatFilter.type = 'highpass';
+    hatFilter.frequency.value = 5200;
+    const hatGain = context.createGain();
+    hatGain.gain.value = 0;
+    noiseSource.connect(hatFilter);
+    hatFilter.connect(hatGain);
+    hatGain.connect(master);
     noiseSource.start();
     this.context = context;
     this.master = master;
@@ -64,6 +73,7 @@ export class GameAudio {
     this.windGain = windGain;
     this.windFilter = windFilter;
     this.skidGain = skidGain;
+    this.hatGain = hatGain;
     this.nextBeat = context.currentTime + 0.1;
   }
 
@@ -83,13 +93,24 @@ export class GameAudio {
     this.windFilter?.frequency.setTargetAtTime(cave ? 300 : garden ? 710 : 480 + Math.min(speed, 45) * 9, now, 0.4);
     this.skidGain?.gain.setTargetAtTime(active && drifting ? 0.055 + Math.min(speed, 40) * 0.0014 : 0, now, 0.075);
     if (!active || this.muted) return;
+    if (this.nextBeat < now - 0.25) this.nextBeat = now + 0.03;
     // Small original four-bar arpeggio; scheduled ahead so frames do not affect timing.
     const notes = [196, 246.94, 293.66, 392, 293.66, 246.94, 220, 293.66,
       174.61, 220, 261.63, 349.23, 261.63, 220, 196, 261.63];
     while (this.nextBeat < now + 0.1) {
       const note = notes[this.beat % notes.length];
       this.tone(note, 0.075, 'triangle', this.nextBeat, 0.13);
-      if (this.beat % 4 === 0) this.tone(note / 2, 0.045, 'sine', this.nextBeat, 0.28);
+      if (this.beat % 4 === 0) {
+        this.tone(note / 4, 0.085, 'triangle', this.nextBeat, 0.28);
+        this.kick(this.nextBeat);
+      }
+      if (this.beat % 4 === 2) this.tone(155, 0.028, 'triangle', this.nextBeat, 0.09);
+      if (garden && this.beat % 4 === 3) this.tone(note * 2, 0.025, 'sine', this.nextBeat, 0.2);
+      if (this.hatGain) {
+        this.hatGain.gain.setValueAtTime(0, this.nextBeat);
+        this.hatGain.gain.linearRampToValueAtTime(cave ? 0.018 : 0.033, this.nextBeat + 0.003);
+        this.hatGain.gain.exponentialRampToValueAtTime(0.0001, this.nextBeat + 0.055);
+      }
       this.beat++;
       this.nextBeat += 0.25;
     }
@@ -103,6 +124,7 @@ export class GameAudio {
       case 'go': this.chime([523, 659, 784], now, 0.14, 0.22); break;
       case 'drift': this.chime([400, 550], now, 0.1, 0.08); break;
       case 'boost': this.sweep(350, 920, 0.28, now, 0.14); break;
+      case 'pad': this.sweep(250, 1150, 0.42, now, 0.16); this.chime([523, 784, 1046], now + 0.04, 0.085, 0.2); break;
       case 'wish': this.chime([600, 800, 1000], now, 0.07, 0.12); break;
       case 'shield': this.chime([390, 587, 783], now, 0.06, 0.2); break;
       case 'shot': this.sweep(960, 330, 0.16, now, 0.12); break;
@@ -118,6 +140,21 @@ export class GameAudio {
 
   private chime(notes: number[], time: number, gap: number, length: number) {
     notes.forEach((note, i) => this.tone(note, 0.13, 'sine', time + i * gap, length));
+  }
+
+  private kick(start: number) {
+    if (!this.context || !this.master) return;
+    const osc = this.context.createOscillator();
+    const gain = this.context.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(115, start);
+    osc.frequency.exponentialRampToValueAtTime(48, start + 0.16);
+    gain.gain.setValueAtTime(0.085, start);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.17);
+    osc.connect(gain);
+    gain.connect(this.master);
+    osc.start(start);
+    osc.stop(start + 0.18);
   }
 
   private tone(frequency: number, volume: number, type: OscillatorType, start: number, duration: number) {

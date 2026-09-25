@@ -178,14 +178,22 @@ for (let i = 0; i < obstacles.length; i++) {
   }
 }
 for (const pad of BOOST_PAD_LAYOUT) {
-  assert.ok(pad.boostSeconds >= (pad.route === 'main' || pad.route === 'garden' ? 3 : 5), `Boost at ${pad.progress} is too short`);
+  assert.ok(pad.boostSeconds >= (pad.width ? 2.3 : pad.route === 'main' || pad.route === 'garden' ? 3 : 5), `Boost at ${pad.progress} is too short`);
   const point = pointFor(pad);
+  const padPosition = point.position.clone().addScaledVector(point.right, pad.lateral ?? 0);
+  const halfWidth = (pad.width ?? point.width * 0.78) / 2;
+  assert.ok(Math.abs(pad.lateral ?? 0) + halfWidth + 1.2 < point.width / 2, `Boost carpet at ${pad.progress} runs off the road`);
+  if (pad.width) {
+    const upcoming = curve.getTangentAt(pad.progress + 0.02).normalize();
+    assert.ok(Math.abs(upcoming.dot(point.right)) > 0.2, `Precision boost at ${pad.progress} is not on a turn`);
+    assert.ok(Math.sign(pad.lateral) === Math.sign(upcoming.dot(point.right)), `Precision boost at ${pad.progress} is outside the turn`);
+  }
   for (const obstacle of obstacles) {
-    if (Math.abs(point.position.y - obstacle.position.y) > 3) continue;
-    const toObstacle = obstacle.position.clone().sub(point.position);
+    if (Math.abs(padPosition.y - obstacle.position.y) > 3) continue;
+    const toObstacle = obstacle.position.clone().sub(padPosition);
     const lateral = Math.abs(toObstacle.dot(point.right));
     const longitudinal = Math.abs(toObstacle.dot(point.tangent));
-    assert.ok(lateral > point.width * 0.39 + obstacle.radius + 1.7 || longitudinal > BOOST_PAD_LENGTH / 2 + obstacle.radius + 2, `Boost carpet at ${pad.progress} overlaps ${obstacle.kind} at ${obstacle.progress}`);
+    assert.ok(lateral > halfWidth + obstacle.radius + 1.7 || longitudinal > BOOST_PAD_LENGTH / 2 + obstacle.radius + 2, `Boost carpet at ${pad.progress} overlaps ${obstacle.kind} at ${obstacle.progress}`);
   }
 }
 const clearBanners = MARKET_BANNER_SPANS.filter((progress) => {

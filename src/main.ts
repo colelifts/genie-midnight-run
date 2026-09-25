@@ -15,6 +15,7 @@ const countdown = el<HTMLDivElement>('countdown');
 const positionText = el<HTMLDivElement>('position');
 const lapText = el<HTMLDivElement>('lap');
 const zoneText = el<HTMLDivElement>('zone');
+const lapTimeText = el<HTMLDivElement>('lap-time');
 const speedText = el<HTMLElement>('speed');
 const surfaceText = el<HTMLDivElement>('surface');
 const boostFill = el<HTMLDivElement>('boost-fill');
@@ -26,6 +27,7 @@ const banner = el<HTMLDivElement>('banner');
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const wrap = (value: number) => ((value % 1) + 1) % 1;
 const angleDiff = (target: number, current: number) => Math.atan2(Math.sin(target - current), Math.cos(target - current));
+const formatLapTime = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${(seconds % 60).toFixed(2).padStart(5, '0')}`;
 
 type GameMode = 'menu' | 'countdown' | 'race' | 'paused';
 type Wish = 'boost' | 'shield' | 'shot';
@@ -208,6 +210,8 @@ class GenieRace {
   private lastMagicTrailTick = -1;
   private lastCartWarningCycle = -1;
   private lastBirdSound = -10;
+  private lapClock = 0;
+  private bestLap = Infinity;
   private cameraLook = new THREE.Vector3();
   private cameraDistance = 13.1;
   private cameraReady = false;
@@ -216,6 +220,10 @@ class GenieRace {
   private lastFrame = performance.now();
 
   constructor() {
+    try {
+      const saved = Number(localStorage.getItem('genie-midnight-best-lap'));
+      if (saved > 0 && Number.isFinite(saved)) this.bestLap = saved;
+    } catch { /* Racing still works when browser storage is unavailable. */ }
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -446,6 +454,7 @@ class GenieRace {
   }
 
   private resetRace() {
+    this.lapClock = 0;
     const starts = this.raceStarts();
     this.racers.forEach((racer, i) => {
       const point = this.track.at(starts[i]);
@@ -625,7 +634,7 @@ class GenieRace {
     if (this.mode !== 'paused') this.elapsed += dt;
     this.syncGamepad();
     if (this.mode === 'countdown') this.updateCountdown(dt);
-    if (this.mode === 'race') this.updateRace(dt);
+    if (this.mode === 'race') { this.lapClock += dt; this.updateRace(dt); }
     if (this.mode === 'race' && !countdown.classList.contains('hidden')) {
       this.countdownElapsed += dt;
       if (this.countdownElapsed > 3.75) countdown.classList.add('hidden');
@@ -916,7 +925,7 @@ class GenieRace {
         this.startJump(racer, 0.7, 1.15);
         this.makePulse(racer.position, 0x6feeff, 0.65, 5.2);
         this.burst(racer.position.clone().add(new THREE.Vector3(0, 0.8, 0)), 0x75edff, 0xffd675, 22);
-        if (racer.id === 0) { this.showBanner('MAGIC CARPET BOOST', 1.1); this.audio.play('boost'); }
+        if (racer.id === 0) { this.showBanner(pad.halfWidth < 8 ? 'APEX CARPET BOOST!' : 'MAGIC CARPET BOOST', 1.1); this.audio.play('pad'); }
         break;
       }
     }
@@ -936,7 +945,17 @@ class GenieRace {
     const before = racer.progress;
     if (before > 0.84 && progress < 0.16 && racer.speed > 0) {
       racer.lap++;
-      if (racer.id === 0) { this.showBanner(`LAP ${racer.lap} · KEEP RACING!`, 2); this.audio.play('lap'); }
+      if (racer.id === 0) {
+        const lapTime = this.lapClock;
+        this.lapClock = 0;
+        const isBest = !this.demoMode && lapTime < this.bestLap;
+        if (isBest) {
+          this.bestLap = lapTime;
+          try { localStorage.setItem('genie-midnight-best-lap', String(lapTime)); } catch { /* Storage is optional. */ }
+        }
+        this.showBanner(isBest ? `NEW BEST LAP · ${formatLapTime(lapTime)}` : `LAP ${racer.lap} · ${formatLapTime(lapTime)}`, 2);
+        this.audio.play('lap');
+      }
     } else if (before < 0.16 && progress > 0.84 && racer.speed < 0) {
       racer.lap = Math.max(1, racer.lap - 1);
     }
@@ -1203,6 +1222,7 @@ class GenieRace {
     positionText.innerHTML = `${rank}<span>${suffix}</span><em> / 3</em>`;
     lapText.textContent = `LAP ${player.lap} · ENDLESS`;
     zoneText.textContent = this.track.zone(player.progress);
+    lapTimeText.textContent = `${formatLapTime(this.lapClock)} · BEST ${Number.isFinite(this.bestLap) ? formatLapTime(this.bestLap) : '--:--.--'}`;
     speedText.textContent = String(Math.round(Math.max(0, player.speed) * 3.6));
     const road = this.track.nearest(player.position, player.progress);
     if (player.drifting) {

@@ -69,7 +69,7 @@ export const CHARACTERS: CharacterDefinition[] = [
     speed: 1.04, acceleration: 0.96, handling: 0.98, weight: 1.05,
     passiveName: 'Dark Thorns', passive: 'Rear impacts recoil against the attacker.',
     signatureName: 'Cursed Flame', signature: 'Green fire weakens a rival’s acceleration.', signatureCooldown: 11,
-    ultimateName: "Dragon's Wrath", ultimate: 'A dragon spirit breathes fire over the racing line while the kart surges.',
+    ultimateName: "Dragon's Wrath", ultimate: 'Surge with a dragon spirit, leave green fire, and press E to breathe fire forward.',
   },
   {
     id: 'hades', name: 'Hades', title: 'Underworld Trickster', icon: '♠', color: 0x6eaaff, accent: 0xc087ef, kartColor: 0x242c52,

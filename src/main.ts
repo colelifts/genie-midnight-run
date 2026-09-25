@@ -848,6 +848,15 @@ class GenieRace {
   private useSignature(racer: Racer) {
     if (this.mode !== 'race' || racer.stunTime > 0 || racer.signatureCooldown > 0) return;
     if (racer.character === 'genie' && racer.id === 0) { this.beginWish(); return; }
+    if (racer.character === 'maleficent' && racer.ultimateTime > 0) {
+      racer.signatureCooldown = 1.35;
+      for (const side of [-0.95, 0, 0.95]) this.launchPower(racer, 'dragonfire', 0x9bfa72, 42, 0.9, -1, side, side === 0);
+      const mouth = racer.position.clone().add(new THREE.Vector3(Math.sin(racer.yaw) * 4.2, 2.2, Math.cos(racer.yaw) * 4.2));
+      this.makeFlash(mouth, 0x7dff60, 5.6, 0.38);
+      this.burst(mouth, 0xa3ff76, 0xdffff0, 24);
+      if (racer.id === 0) this.showBanner('DRAGON BREATH!', 0.9);
+      return;
+    }
     const def = CHARACTER_BY_ID[racer.character];
     racer.signatureCooldown = def.signatureCooldown;
     const forward = new THREE.Vector3(Math.sin(racer.yaw), 0, Math.cos(racer.yaw));
@@ -971,6 +980,7 @@ class GenieRace {
     racer.ultimateTime = racer.character === 'genie' ? 5 : 4.6;
     racer.shieldTime = Math.max(racer.shieldTime, racer.ultimateTime);
     racer.boostTime = Math.max(racer.boostTime, racer.ultimateTime);
+    if (racer.character === 'maleficent') racer.signatureCooldown = 0;
     racer.speed = Math.max(racer.speed, 34);
     racer.ultimateHit.clear();
     racer.powerTick = 0;
@@ -995,12 +1005,12 @@ class GenieRace {
     else this.audio.play('ultimate');
   }
 
-  private launchPower(racer: Racer, kind: Projectile['kind'], color: number, speed: number, life: number, target = -1, side = 0) {
+  private launchPower(racer: Racer, kind: Projectile['kind'], color: number, speed: number, life: number, target = -1, side = 0, playSound = true) {
     const direction = new THREE.Vector3(Math.sin(racer.yaw), 0, Math.cos(racer.yaw));
     const right = new THREE.Vector3(direction.z, 0, -direction.x);
     const mesh = new THREE.Group();
     const bright = new THREE.MeshBasicMaterial({ color, toneMapped: false });
-    const pale = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
+    const pale = new THREE.MeshBasicMaterial({ color: kind === 'dragonfire' ? 0xe5ff9a : 0xffffff, toneMapped: false });
     let coreGeometry: THREE.BufferGeometry = kind === 'tornado' ? new THREE.ConeGeometry(1.45, 3.4, 12, 1, true) : new THREE.IcosahedronGeometry(kind === 'dragon' ? 1.05 : kind === 'cannon' ? 0.66 : 0.75, 1);
     if (kind === 'star') {
       const star = new THREE.Shape();
@@ -1021,8 +1031,16 @@ class GenieRace {
     if (kind === 'laser') core.rotation.x = Math.PI / 2;
     if (kind === 'dragonfire') { core.rotation.x = Math.PI / 2; core.position.z = 0.65; }
     if (kind === 'wave') core.rotation.z = 0.15;
-    const halo = new THREE.Mesh(new THREE.TorusGeometry(kind === 'dragon' ? 1.55 : 1.05, 0.12, 6, 24), new THREE.MeshBasicMaterial({ color: kind === 'cannon' ? color : 0xffffff, transparent: true, opacity: 0.82, depthWrite: false, toneMapped: false }));
-    mesh.add(core, halo);
+    mesh.add(core);
+    if (kind === 'dragonfire') {
+      const outerFlame = new THREE.Mesh(new THREE.ConeGeometry(1.12, 3.25, 16, 4), new THREE.MeshBasicMaterial({ color: 0x73ee68, transparent: true, opacity: 0.42, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }));
+      outerFlame.rotation.x = Math.PI / 2;
+      outerFlame.position.z = 0.26;
+      mesh.add(outerFlame);
+    } else {
+      const halo = new THREE.Mesh(new THREE.TorusGeometry(kind === 'dragon' ? 1.55 : 1.05, 0.12, 6, 24), new THREE.MeshBasicMaterial({ color: kind === 'cannon' ? color : 0xffffff, transparent: true, opacity: 0.82, depthWrite: false, toneMapped: false }));
+      mesh.add(halo);
+    }
     if (kind === 'tornado') {
       core.position.y = 0.7;
       for (let n = 0; n < 3; n++) {
@@ -1109,8 +1127,8 @@ class GenieRace {
     mesh.rotation.y = racer.yaw;
     this.scene.add(mesh);
     this.projectiles.push({ owner: racer.id, mesh, velocity: direction.multiplyScalar(speed).addScaledVector(right, side * 10), life, kind, color, bounces: kind === 'star' ? 2 : kind === 'plasma' ? 1 : 0, target });
-    this.makePulse(mesh.position, color, 0.35, 1.6);
-    this.audio.play(kind === 'dragonfire' ? 'fire' : 'shot');
+    if (kind !== 'dragonfire') this.makePulse(mesh.position, color, 0.35, 1.6);
+    if (playSound) this.audio.play(kind === 'dragonfire' ? 'fire' : 'shot');
   }
 
   private dropField(racer: Racer, kind: PowerField['kind'], color: number, radius: number, life: number, back = -2.6) {
@@ -1653,9 +1671,16 @@ class GenieRace {
     if (tick === this.lastMagicTrailTick) return;
     this.lastMagicTrailTick = tick;
     for (const racer of this.racers) {
-      if (racer.boostTime <= 0 && racer.ultimateTime <= 0 && racer.fogTime <= 0 && racer.featherTime <= 0 && racer.tripleSparks <= 0) continue;
+      if (racer.boostTime <= 0 && racer.ultimateTime <= 0 && racer.fogTime <= 0 && racer.featherTime <= 0 && racer.tripleSparks <= 0 && racer.curseTime <= 0) continue;
       const forward = new THREE.Vector3(Math.sin(racer.yaw), 0, Math.cos(racer.yaw));
       const side = new THREE.Vector3(Math.cos(racer.yaw), 0, -Math.sin(racer.yaw));
+      if (racer.curseTime > 0) {
+        for (const lateral of [-1.43, 1.43]) {
+          const tireFlame = racer.position.clone().addScaledVector(forward, -1.18).addScaledVector(side, lateral);
+          tireFlame.y += 0.65;
+          this.sparks.spawn(tireFlame, new THREE.Vector3(side.x * lateral * 0.45, 1.8 + Math.random(), side.z * lateral * 0.45), tick % 2 ? 0xa5ff67 : 0x62e968, 0.4);
+        }
+      }
       if (racer.fogTime > 0 && tick % 3 === 0) {
         for (let n = 0; n < 4; n++) {
           const angle = tick * 0.22 + n * Math.PI / 2;
@@ -1752,7 +1777,6 @@ class GenieRace {
       case 'buzz': this.launchPower(racer, 'laser', 0xa6ff76, 58, 1.25); racer.powerTick = 0.9; break;
       case 'maleficent':
         this.dropField(racer, 'dragonfire', 0xa1f576, 4.5, 6, -3);
-        this.launchPower(racer, 'dragonfire', 0x9bfa72, 42, 1.05);
         racer.powerTick = 0.68;
         break;
       case 'hades': this.dropField(racer, 'soul', 0x77b6ff, 4.1, 5.2, -2.7); racer.powerTick = 0.52; break;
@@ -2049,7 +2073,10 @@ class GenieRace {
           this.makePulse(projectile.mesh.position, projectile.color, 0.32, 1.7);
           const owner = this.racers[projectile.owner];
           if (!rearGuard) owner.ultimateMeter = Math.min(100, owner.ultimateMeter + 8);
-          if (projectile.owner === 0) this.showBanner(rearGuard ? `${projectile.kind.toUpperCase()} BLOCKED!` : `${projectile.kind.toUpperCase()} HIT!`, 1);
+          if (projectile.owner === 0) {
+            const powerName = projectile.kind === 'dragonfire' ? 'DRAGON BREATH' : projectile.kind.toUpperCase();
+            this.showBanner(rearGuard ? `${powerName} BLOCKED!` : `${powerName} HIT!`, 1);
+          }
           remove = true;
           break;
         }
@@ -2196,9 +2223,10 @@ class GenieRace {
       boostFill.style.background = '';
     }
     const def = CHARACTER_BY_ID[player.character];
-    wishTile.querySelector('strong')!.textContent = def.signatureName.toUpperCase();
+    const dragonBreath = player.character === 'maleficent' && player.ultimateTime > 0;
+    wishTile.querySelector('strong')!.textContent = dragonBreath ? 'DRAGON BREATH' : def.signatureName.toUpperCase();
     wishTile.querySelector('small')!.textContent = this.wishHolding ? 'CHOOSE · RELEASE E' : player.signatureCooldown > 0 ? `RECHARGING · ${player.signatureCooldown.toFixed(1)}s` : player.character === 'genie' ? 'READY · HOLD E TO CHOOSE' : 'READY · PRESS E';
-    signatureFill.style.width = `${clamp(1 - player.signatureCooldown / def.signatureCooldown, 0, 1) * 100}%`;
+    signatureFill.style.width = `${clamp(1 - player.signatureCooldown / (dragonBreath ? 1.35 : def.signatureCooldown), 0, 1) * 100}%`;
     wishTile.classList.toggle('cooling', player.signatureCooldown > 0);
     wishTile.classList.toggle('ready', player.signatureCooldown <= 0);
     ultimateTile.querySelector('strong')!.textContent = def.ultimateName.toUpperCase();

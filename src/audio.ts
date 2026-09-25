@@ -6,13 +6,14 @@ type SoundName = 'count' | 'go' | 'drift' | 'boost' | 'pad' | 'wish' | 'shield' 
 // Sources, licenses, and processing notes are documented in AUDIO_CREDITS.md.
 const ASSETS = {
   menu: 'desert-menu.mp3', race: 'desert-race.mp3', engine: 'engine.wav', skid: 'skid.wav',
+  boostStart: 'boost-start.wav', boostLoop: 'boost-loop.wav', boostEnd: 'boost-end.wav',
   spark: 'spell-spark.mp3', surge: 'spell-surge.mp3', grand: 'spell-grand.mp3',
   whoosh: 'boost-whoosh.mp3', time: 'time-whoosh.mp3',
   light: 'impact-light.mp3', mid: 'impact-mid.mp3', heavy: 'impact-heavy.mp3', birds: 'birds.mp3',
   water: 'water-splash.mp3', laser: 'laser-shot.mp3', fire: 'fire-blast.mp3', cannon: 'cannon-blast.mp3',
   ice: 'ice-crackle.mp3',
 } as const;
-const AUDIO_REVISION = '5';
+const AUDIO_REVISION = '6';
 type AssetName = keyof typeof ASSETS;
 type Loop = { source: AudioBufferSourceNode; gain: GainNode };
 const level = (key: string, fallback: number) => {
@@ -46,6 +47,7 @@ export class GameAudio {
   private listenerYaw = 0;
   private eventScale = 1;
   private eventPan = 0;
+  private boostAudible = false;
   muted = false;
 
   constructor() {
@@ -129,15 +131,15 @@ export class GameAudio {
       try {
         const buffer = await context.decodeAudioData(raw);
         this.buffers.set(name, buffer);
-        if (name === 'menu' || name === 'race' || name === 'engine' || name === 'skid') this.startLoop(name);
+        if (name === 'menu' || name === 'race' || name === 'engine' || name === 'skid' || name === 'boostLoop') this.startLoop(name);
       } catch (error) { console.warn(`Could not decode ${ASSETS[name]}`, error); }
     }));
   }
 
-  private startLoop(name: 'menu' | 'race' | 'engine' | 'skid') {
+  private startLoop(name: 'menu' | 'race' | 'engine' | 'skid' | 'boostLoop') {
     const context = this.context;
     const buffer = this.buffers.get(name);
-    const bus = name === 'menu' || name === 'race' ? this.musicBus : this.motorBus;
+    const bus = name === 'menu' || name === 'race' ? this.musicBus : name === 'boostLoop' ? this.effectsBus : this.motorBus;
     if (!context || !buffer || !bus || this.loops.has(name)) return;
     const source = context.createBufferSource();
     const gain = context.createGain();
@@ -178,6 +180,8 @@ export class GameAudio {
     this.loops.get('race')?.gain.gain.setTargetAtTime(value ? 0.08 : 0.65, now, 0.22);
     this.loops.get('engine')?.gain.gain.setTargetAtTime(value ? 0 : 0.2, now, 0.08);
     this.loops.get('skid')?.gain.gain.setTargetAtTime(0, now, 0.06);
+    this.loops.get('boostLoop')?.gain.gain.setTargetAtTime(0, now, 0.06);
+    if (value) this.boostAudible = false;
   }
 
   getStatus() {
@@ -186,6 +190,7 @@ export class GameAudio {
       samplesLoaded: this.buffers.size,
       samplesExpected: Object.keys(ASSETS).length,
       loops: [...this.loops.keys()],
+      boostActive: this.boostAudible,
       muted: this.muted,
       musicLevel: this.musicLevel,
       effectsLevel: this.effectsLevel,
@@ -210,7 +215,7 @@ export class GameAudio {
     this.eventPan = 0;
   }
 
-  update(speed: number, drifting: boolean, ultimate: boolean, active: boolean, zone: string, finalLap = false, progress = 0) {
+  update(speed: number, drifting: boolean, ultimate: boolean, boosting: boolean, active: boolean, zone: string, finalLap = false, progress = 0) {
     const context = this.context;
     if (!context) return;
     const now = context.currentTime;
@@ -224,6 +229,17 @@ export class GameAudio {
     if (skid) {
       skid.source.playbackRate.setTargetAtTime(0.84 + Math.min(speed, 70) * 0.0065, now, 0.14);
       skid.gain.gain.setTargetAtTime(running && drifting ? 0.15 + Math.min(speed, 65) * 0.004 : 0, now, 0.085);
+    }
+    const boostNow = running && boosting;
+    if (boostNow !== this.boostAudible) {
+      if (boostNow) this.sample('boostStart', 0.25);
+      else if (running) this.sample('boostEnd', 0.19);
+      this.boostAudible = boostNow;
+    }
+    const boostLoop = this.loops.get('boostLoop');
+    if (boostLoop) {
+      boostLoop.source.playbackRate.setTargetAtTime(0.9 + Math.min(speed, 70) * 0.003, now, 0.14);
+      boostLoop.gain.gain.setTargetAtTime(boostNow ? (ultimate ? 0.16 : 0.19) : 0, now, boostNow ? 0.18 : 0.07);
     }
     const duck = now < this.duckUntil ? 0.5 : 1;
     this.loops.get('menu')?.gain.gain.setTargetAtTime(!active && !this.paused ? 0.52 : 0, now, 0.32);

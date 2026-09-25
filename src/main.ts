@@ -671,6 +671,7 @@ class GenieRace {
     this.flashes.length = 0;
     this.pickups.forEach((pickup) => { pickup.collected = false; pickup.mesh.visible = true; pickup.respawn = 0; });
     this.wishHolding = false;
+    if (this.racers[0].visual instanceof KartVisual) this.racers[0].visual.setWishPicker(false, 0);
     this.lastCartWarningCycle = -1;
     this.lastBirdSound = -10;
     this.announcementTime = 0;
@@ -685,6 +686,7 @@ class GenieRace {
     pause.classList.remove('hidden');
     this.keys.clear();
     this.wishHolding = false;
+    if (this.racers[0].visual instanceof KartVisual) this.racers[0].visual.setWishPicker(false, 0);
     wishPicker.classList.add('hidden');
   }
 
@@ -734,12 +736,14 @@ class GenieRace {
   private updateWishPicker() {
     const choices = wishPicker.querySelectorAll<HTMLElement>('.wish-option');
     choices.forEach((choice, index) => choice.classList.toggle('active', index === this.wishIndex));
+    if (this.racers[0].visual instanceof KartVisual) this.racers[0].visual.setWishPicker(this.wishHolding, this.wishIndex);
   }
 
   private castWish() {
     if (!this.wishHolding) return;
     this.wishHolding = false;
     wishPicker.classList.add('hidden');
+    if (this.racers[0].visual instanceof KartVisual) this.racers[0].visual.setWishPicker(false, 0);
     const choices: Wish[] = ['boost', 'shield', 'shot'];
     this.racers[0].signatureCooldown = CHARACTER_BY_ID.genie.signatureCooldown;
     this.useWish(this.racers[0], choices[this.wishIndex]);
@@ -935,8 +939,9 @@ class GenieRace {
     racer.powerTick = 0;
     racer.visual.setUltimate(true);
     const def = CHARACTER_BY_ID[racer.character];
-    if (racer.id === 0) this.showBanner(`${def.ultimateName.toUpperCase()}!`, 1);
     if (racer.id === 0) {
+      this.bannerTime = 0;
+      banner.classList.add('hidden');
       this.announcementTime = 1.35;
       ultimateAnnouncement.innerHTML = `<span>${def.icon}</span><div><small>${def.name.toUpperCase()} ULTIMATE</small><strong>${def.ultimateName.toUpperCase()}</strong></div>`;
       ultimateAnnouncement.style.setProperty('--ultimate-color', `#${def.accent.toString(16).padStart(6, '0')}`);
@@ -1655,6 +1660,7 @@ class GenieRace {
     this.mode = 'finished';
     this.wishHolding = false;
     wishPicker.classList.add('hidden');
+    if (player.visual instanceof KartVisual) player.visual.setWishPicker(false, 0);
     results.classList.remove('hidden');
     el<HTMLElement>('results-place').textContent = rank === 1 ? 'FIRST PLACE!' : rank === 2 ? 'SECOND PLACE!' : rank === 3 ? 'THIRD PLACE!' : `${rank}TH PLACE!`;
     el<HTMLElement>('results-summary').textContent = `${CHARACTER_BY_ID[player.character].name} finished Agrabah Circuit · ${player.tricksLanded} trick boost${player.tricksLanded === 1 ? '' : 's'} · ${player.draftBoosts} slipstream${player.draftBoosts === 1 ? '' : 's'}.`;

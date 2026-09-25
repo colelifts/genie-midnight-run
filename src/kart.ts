@@ -242,6 +242,9 @@ export class KartVisual {
   readonly shield: THREE.Group;
   readonly ghost: THREE.Group;
   readonly stunHalo = new THREE.Group();
+  private readonly wishHalo = new THREE.Group();
+  private readonly wishGems: THREE.Group[] = [];
+  private wishChoice = 0;
   readonly driver: THREE.Group;
   private readonly exhaust: THREE.Mesh[] = [];
   private readonly boostFlames: THREE.Mesh[] = [];
@@ -470,6 +473,21 @@ export class KartVisual {
     this.ghost.visible = false;
     this.group.add(this.ghost);
 
+    for (const [index, color] of [0x5cdbff, 0xffd679, 0xff827b].entries()) {
+      const gem = new THREE.Group();
+      const ring = mesh(new THREE.TorusGeometry(0.55, 0.08, 8, 24), new THREE.MeshBasicMaterial({ color, toneMapped: false }));
+      const core = mesh(new THREE.OctahedronGeometry(0.29, 0), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }));
+      const halo = glowSprite(color, 1.35, 0.45);
+      gem.add(ring, core, halo);
+      const angle = index * Math.PI * 2 / 3;
+      gem.position.set(Math.sin(angle) * 2.7, 0, Math.cos(angle) * 2.7);
+      this.wishGems.push(gem);
+      this.wishHalo.add(gem);
+    }
+    this.wishHalo.position.y = 3.2;
+    this.wishHalo.visible = false;
+    this.group.add(this.wishHalo);
+
     const starGeo = starGeometry(0.34, 0.14);
     const starMat = new THREE.MeshBasicMaterial({ color: 0xffdf69, side: THREE.DoubleSide });
     for (let i = 0; i < 3; i++) {
@@ -491,6 +509,7 @@ export class KartVisual {
   setShield(active: boolean) { this.shield.visible = active; }
   setUltimate(active: boolean) { this.ghost.visible = active; }
   setStunned(active: boolean) { this.stunHalo.visible = active; }
+  setWishPicker(active: boolean, choice: number) { this.wishHalo.visible = active; this.wishChoice = choice; }
   setGroundOffset(offset: number) {
     const jump = Math.max(0, -offset);
     this.contactShadow.position.y = offset + 0.085;
@@ -508,6 +527,11 @@ export class KartVisual {
     this.driver.rotation.z += ((stunned ? Math.sin(this.elapsed * 13) * 0.2 : -steer * (drifting ? 0.12 : 0.05)) - this.driver.rotation.z) * Math.min(1, dt * 8);
     this.driver.rotation.x += ((boosting ? -0.09 : 0.02) - this.driver.rotation.x) * Math.min(1, dt * 6);
     this.ghost.position.y = Math.sin(this.elapsed * 3.2) * 0.13;
+    if (this.wishHalo.visible) {
+      this.wishHalo.rotation.y += dt * 1.5;
+      this.wishHalo.position.y = 3.2 + Math.sin(this.elapsed * 5) * 0.12;
+      this.wishGems.forEach((gem, index) => gem.scale.setScalar(index === this.wishChoice ? 1.28 + Math.sin(this.elapsed * 12) * 0.08 : 0.75));
+    }
     this.ghost.rotation.y = Math.sin(this.elapsed * 0.85) * 0.045;
     this.ultimateRings[0].scale.setScalar(1 + Math.sin(this.elapsed * 7) * 0.025);
     this.ultimateRings[1].scale.setScalar(1 + Math.cos(this.elapsed * 7) * 0.035);

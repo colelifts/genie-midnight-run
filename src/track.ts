@@ -82,7 +82,7 @@ export function branchCoversMainEdge(branches: RoadPoint[][], position: THREE.Ve
 
 export const MARKET_BANNER_SPANS = [0.025, 0.08, 0.17, 0.235, 0.29, 0.89, 0.93, 0.97];
 export const MARKET_GATE_SPANS = [0.175, 0.91];
-export const TURN_SIGN_SPANS = [0.035, 0.09, 0.12, 0.15, 0.235, 0.265, 0.315, 0.345, 0.435, 0.475, 0.535, 0.595, 0.65, 0.722, 0.785, 0.865, 0.91, 0.935];
+export const TURN_SIGN_SPANS = [0.035, 0.09, 0.12, 0.15, 0.235, 0.265, 0.315, 0.345, 0.435, 0.475, 0.535, 0.595, 0.65, 0.735, 0.785, 0.865, 0.91, 0.935];
 export const CAVE_ARCH_SPANS = [0.684, 0.721, 0.758];
 export const CAVE_ARCH_SHAPE = { pillarOutset: 8, pillarHalfWidth: 7.4, crystalOutset: 5.5, crystalRadius: 1.7, ceilingY: 16.5, ceilingHalfHeight: 4.8 };
 export const CAVE_TUNNEL_SHAPE = { wallOutset: 20, wallRadius: 14, roofCenterY: 19, roofEdgeY: 9 };
@@ -94,7 +94,7 @@ export function mainRoadWidth(progress: number) {
     return clamped * clamped * (3 - 2 * clamped);
   };
   const corner = (start: number, end: number) => smooth((progress - start) / 0.012) * smooth((end - progress) / 0.012);
-  return MAIN_ROAD_WIDTH - 3 * Math.max(corner(0.018, 0.066), corner(0.083, 0.17), corner(0.527, 0.638), corner(0.695, 0.815), corner(0.855, 0.963));
+  return MAIN_ROAD_WIDTH - Math.max(3 * Math.max(corner(0.018, 0.066), corner(0.083, 0.17), corner(0.527, 0.638), corner(0.855, 0.963)), 5 * corner(0.67, 0.815));
 }
 export const ALLEY_ROAD_WIDTH = 26;
 export const ROOF_ROAD_WIDTH = 26;
@@ -123,7 +123,7 @@ export const BOOST_PAD_LAYOUT: Array<{ route: RouteName; progress: number; boost
   { route: 'main', progress: 0.418, boostSeconds: 2.4, lateral: 10, width: 9 },
   { route: 'garden', progress: 0.487, boostSeconds: 3.1 },
   { route: 'main', progress: 0.535, boostSeconds: 3.3 },
-  { route: 'main', progress: 0.582, boostSeconds: 2.4, lateral: 10, width: 9 },
+  { route: 'main', progress: 0.576, boostSeconds: 2.4, lateral: 10, width: 9 },
   { route: 'main', progress: 0.612, boostSeconds: 2.4, lateral: -10, width: 9 },
   { route: 'main', progress: 0.88, boostSeconds: 2.4, lateral: 10, width: 9 },
   { route: 'main', progress: 0.975, boostSeconds: 3.3 },
@@ -288,7 +288,9 @@ export function makeMainCurve() {
     new THREE.Vector3(-58, 0, -2.5),
     new THREE.Vector3(-86, 0, 30),
     new THREE.Vector3(-112, 0, 40),
-    new THREE.Vector3(-148, 0, 66),
+    new THREE.Vector3(-128.4, 0, 60.5),
+    new THREE.Vector3(-145.8, 0, 61.2),
+    new THREE.Vector3(-163.8, 0, 60.8),
     new THREE.Vector3(-189, 0, 31),
     new THREE.Vector3(-168, 0, -12),
     new THREE.Vector3(-178.5, 0, -48.5),

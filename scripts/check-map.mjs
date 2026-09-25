@@ -36,7 +36,7 @@ for (let i = 0; i < count; i++) {
   if (radius < smallestMainRadius) {
     smallestMainRadius = radius;
   }
-  assert.ok(radius > mainSamples[i].width / 2 + 4, `Main road folds at ${(i / count).toFixed(3)}: ${radius.toFixed(1)}m radius`);
+  assert.ok(radius > mainSamples[i].width / 2 + 5, `Main road folds at ${(i / count).toFixed(3)}: ${radius.toFixed(1)}m radius`);
   for (let j = i + 1; j < count; j++) {
     const gap = Math.min(j - i, count - j + i);
     if (gap < 32) continue;
@@ -48,6 +48,7 @@ for (let i = 0; i < count; i++) {
 }
 assert.ok(MAIN_ROAD_WIDTH >= 34 && MAIN_ROAD_WIDTH <= 40, 'The main road should hold several racers without becoming an empty plaza');
 assert.ok(mainRoadWidth(0.60) >= 32 && mainRoadWidth(0.60) < MAIN_ROAD_WIDTH, 'Drift corners should narrow without crowding the karts');
+assert.ok(mainRoadWidth(0.72) >= 30 && mainRoadWidth(0.72) <= 32, 'Cave chicane should be narrower while leaving passing room');
 assert.equal(mainRoadWidth(0.2), MAIN_ROAD_WIDTH, 'Straight sections should keep the full racing width');
 assert.ok(curve.getLength() >= 1500 && curve.getLength() <= 1950, 'The lap is outside the intended course length');
 assert.ok(closestSeparateRoad > MAIN_ROAD_WIDTH + 4, `Separate ${MAIN_ROAD_WIDTH}m road sections overlap: ${closestSeparateRoad.toFixed(1)}m between centers`);
@@ -61,14 +62,14 @@ for (let i = 0; i < 200; i++) {
   if (turnDirections.at(-1) !== direction) turnDirections.push(direction);
 }
 if (turnDirections[0] === turnDirections.at(-1)) turnDirections.pop();
-assert.ok(turnDirections.length >= 22, `Course needs at least 22 alternating drift turns; found ${turnDirections.length}`);
+assert.ok(turnDirections.length >= 24, `Course needs at least 24 alternating drift turns; found ${turnDirections.length}`);
 let pronouncedBends = 0;
 for (let i = 0; i < 40; i++) {
   const entry = curve.getTangentAt(i / 40).normalize();
   const exit = curve.getTangentAt((i + 1) / 40).normalize();
   if (entry.angleTo(exit) > Math.PI / 6) pronouncedBends++;
 }
-assert.ok(pronouncedBends >= 18, `Course needs more pronounced corners for drifting; found ${pronouncedBends}`);
+assert.ok(pronouncedBends >= 19, `Course needs more pronounced corners for drifting; found ${pronouncedBends}`);
 
 const branches = [];
 for (const [route, start, end, offset, height, width] of [

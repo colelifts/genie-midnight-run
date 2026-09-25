@@ -1040,11 +1040,38 @@ class GenieRace {
     } else if (kind === 'dragon') {
       const snout = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.8, 9), bright);
       snout.rotation.x = Math.PI / 2; snout.position.z = 1.02; mesh.add(snout);
+      const bodyPath = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0, 0, -0.2),
+        new THREE.Vector3(-0.42, -0.14, -1.14),
+        new THREE.Vector3(0.38, 0.12, -2.25),
+        new THREE.Vector3(-0.25, 0.05, -3.32),
+        new THREE.Vector3(0, 0.23, -4.12),
+      ]);
+      const body = new THREE.Mesh(new THREE.TubeGeometry(bodyPath, 26, 0.43, 9, false), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.82, depthWrite: false, toneMapped: false }));
+      mesh.add(body);
+      for (let n = 0; n < 4; n++) {
+        const along = bodyPath.getPoint((n + 1) / 5);
+        const spine = new THREE.Mesh(new THREE.ConeGeometry(0.21 - n * 0.025, 0.72 - n * 0.08, 6), pale);
+        spine.position.set(along.x, along.y + 0.45, along.z);
+        spine.rotation.z = -0.23;
+        mesh.add(spine);
+        if (n < 3) {
+          const pearl = new THREE.Mesh(new THREE.SphereGeometry(0.23 - n * 0.035, 8, 6), pale);
+          pearl.position.set(along.x, along.y - 0.1, along.z);
+          mesh.add(pearl);
+        }
+      }
       for (const side of [-1, 1]) {
         const horn = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.9, 7), pale);
         horn.position.set(side * 0.66, 0.73, -0.25); horn.rotation.z = side * -0.34; mesh.add(horn);
         const eyeDot = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), pale);
         eyeDot.position.set(side * 0.65, 0.17, 0.48); mesh.add(eyeDot);
+        const finShape = new THREE.Shape();
+        finShape.moveTo(0, 0); finShape.lineTo(side * 1.2, 0.67); finShape.lineTo(side * 0.54, -0.46); finShape.closePath();
+        const fin = new THREE.Mesh(new THREE.ShapeGeometry(finShape), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.67, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }));
+        fin.position.set(0, 0.16, -1.2);
+        fin.rotation.y = side * 0.24;
+        mesh.add(fin);
       }
     } else if (kind === 'cannon') {
       const band = new THREE.Mesh(new THREE.TorusGeometry(0.77, 0.11, 6, 18), pale);

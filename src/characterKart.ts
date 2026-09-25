@@ -34,6 +34,7 @@ function curvedFlame(parent: THREE.Group, material: THREE.Material, x: number, b
   const flame = add(parent, geometry, material, x, baseY + height / 2, z);
   flame.castShadow = false;
   flame.receiveShadow = false;
+  flame.userData.hadesFlamePhase = x * 7 + z * 11 + height * 2;
   return flame;
 }
 
@@ -436,6 +437,8 @@ export class CharacterKartVisual implements RaceVisual {
   readonly body = new THREE.Group();
   private readonly wheels: THREE.Group[] = [];
   private readonly flames: THREE.Mesh[] = [];
+  private readonly hairFlames: THREE.Mesh[] = [];
+  private readonly hairEmbers: THREE.Mesh[] = [];
   private readonly shield: THREE.Mesh;
   private readonly aura = new THREE.Group();
   private readonly ultimateLight: THREE.PointLight;
@@ -467,6 +470,17 @@ export class CharacterKartVisual implements RaceVisual {
     }
     kartDecorations(id, this.body, primary, accent);
     this.driver = figure(id);
+    if (id === 'hades') {
+      this.driver.traverse((part) => {
+        if (part instanceof THREE.Mesh && typeof part.userData.hadesFlamePhase === 'number') this.hairFlames.push(part);
+      });
+      for (let i = 0; i < 7; i++) {
+        const ember = ball(this.driver, 0.055 + (i % 3) * 0.018, glow(i % 2 ? 0x7deaff : 0xd2ffff, 0.78), 0, 3.3, 0);
+        ember.castShadow = false;
+        ember.receiveShadow = false;
+        this.hairEmbers.push(ember);
+      }
+    }
     this.driver.position.set(0, 1.75, -0.52);
     this.driver.scale.setScalar(0.82);
     this.body.add(this.driver);
@@ -536,6 +550,20 @@ export class CharacterKartVisual implements RaceVisual {
     this.aura.position.y = Math.sin(this.elapsed * 3) * 0.13;
     this.aura.rotation.y = Math.sin(this.elapsed * 0.8) * 0.07;
     this.stunHalo.rotation.y += dt * 4;
+    for (let i = 0; i < this.hairFlames.length; i++) {
+      const flame = this.hairFlames[i];
+      const phase = flame.userData.hadesFlamePhase as number;
+      flame.scale.set(1 + Math.sin(this.elapsed * 7 + phase) * 0.045, 0.96 + Math.sin(this.elapsed * 8.5 + phase) * 0.11, 1);
+      flame.rotation.z = Math.sin(this.elapsed * 4.2 + phase) * 0.095;
+      flame.rotation.x = Math.cos(this.elapsed * 3.5 + phase) * 0.055;
+    }
+    for (let i = 0; i < this.hairEmbers.length; i++) {
+      const ember = this.hairEmbers[i];
+      const rise = (this.elapsed * (0.75 + i * 0.08) + i / this.hairEmbers.length) % 1;
+      const angle = i * 2.4 + rise * 1.7;
+      ember.position.set(Math.sin(angle) * (0.17 + rise * 0.36), 3.12 + rise * 1.24, Math.cos(angle) * (0.13 + rise * 0.24));
+      ember.scale.setScalar(0.65 + Math.sin(rise * Math.PI) * 0.9);
+    }
     for (const flame of this.flames) {
       flame.visible = boosting;
       flame.scale.y = 0.8 + Math.sin(this.elapsed * 21) * 0.18;

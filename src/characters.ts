@@ -1,0 +1,97 @@
+export type CharacterId = 'genie' | 'mickey' | 'stitch' | 'elsa' | 'moana' | 'buzz' | 'maleficent' | 'hades' | 'jack' | 'mulan';
+
+export interface CharacterDefinition {
+  id: CharacterId;
+  name: string;
+  title: string;
+  icon: string;
+  color: number;
+  accent: number;
+  kartColor: number;
+  speed: number;
+  acceleration: number;
+  handling: number;
+  weight: number;
+  passiveName: string;
+  passive: string;
+  signatureName: string;
+  signature: string;
+  signatureCooldown: number;
+  ultimateName: string;
+  ultimate: string;
+}
+
+export const CHARACTERS: CharacterDefinition[] = [
+  {
+    id: 'genie', name: 'Genie', title: 'Wild Card Magic', icon: '✦', color: 0x54adf2, accent: 0xffcf72, kartColor: 0xc69044,
+    speed: 1, acceleration: 1, handling: 1, weight: 1,
+    passiveName: 'Phenomenal Power', passive: 'Wish sparks can upgrade your next wish.',
+    signatureName: 'Three Wishes', signature: 'Time the cycling choice: boost, shield, or star shot.', signatureCooldown: 9,
+    ultimateName: 'Cosmic Showstopper', ultimate: 'Surge forward shielded; a giant spirit knocks rivals out on contact.',
+  },
+  {
+    id: 'mickey', name: 'Mickey Mouse', title: 'Balanced Magic', icon: '★', color: 0xe64453, accent: 0xffd66f, kartColor: 0xc63543,
+    speed: 1, acceleration: 1.02, handling: 1.02, weight: 0.95,
+    passiveName: 'Magic Momentum', passive: 'Drift boosts charge more ultimate energy.',
+    signatureName: 'Magic Spark', signature: 'Fire a star forward, or drop it behind while braking.', signatureCooldown: 9,
+    ultimateName: "Sorcerer's Surge", ultimate: 'A star shockwave pushes nearby racers; magic shields and speeds the kart.',
+  },
+  {
+    id: 'stitch', name: 'Stitch', title: 'Chaotic Aggressor', icon: 'ϟ', color: 0x4b86ed, accent: 0xbce7ff, kartColor: 0x344fb0,
+    speed: 1.01, acceleration: 1.02, handling: 0.98, weight: 1.05,
+    passiveName: 'Experiment 626', passive: 'Collisions slow Stitch less.',
+    signatureName: 'Plasma Pulse', signature: 'A bouncing plasma orb stuns the first rival it touches.', signatureCooldown: 10,
+    ultimateName: 'Chaos Mode', ultimate: 'Alien thrusters accelerate; electric contact throws rivals sideways.',
+  },
+  {
+    id: 'elsa', name: 'Elsa', title: 'Technical Control', icon: '❄', color: 0x95eaff, accent: 0xe4fbff, kartColor: 0x9adceb,
+    speed: 0.99, acceleration: 1, handling: 1.08, weight: 0.94,
+    passiveName: 'Frozen Grip', passive: 'Ice has less effect on Elsa’s handling.',
+    signatureName: 'Frost Trail', signature: 'Leave a slick ice ribbon that slides rivals outward.', signatureCooldown: 11,
+    ultimateName: 'Into the Storm', ultimate: 'Ride a fast snowstorm that chills nearby rivals and paints the road with ice.',
+  },
+  {
+    id: 'moana', name: 'Moana', title: 'Momentum Wayfinder', icon: '≈', color: 0x35c9be, accent: 0xffd58b, kartColor: 0x705b42,
+    speed: 1.01, acceleration: 1.02, handling: 1, weight: 1,
+    passiveName: 'Wayfinder', passive: 'Shortcuts charge extra ultimate energy.',
+    signatureName: 'Ocean Push', signature: 'Push rivals with a forward wave, or raise a rear barrier while braking.', signatureCooldown: 10,
+    ultimateName: "Ocean's Chosen", ultimate: 'Ride a fast wave that sweeps rivals aside and ignores rough ground.',
+  },
+  {
+    id: 'buzz', name: 'Buzz Lightyear', title: 'Precision Pilot', icon: '✧', color: 0x9cdb72, accent: 0xcba4ff, kartColor: 0xeff1e4,
+    speed: 1.02, acceleration: 0.99, handling: 1.02, weight: 0.97,
+    passiveName: 'Star Command', passive: 'Jumping from boost carpets improves the next laser lock.',
+    signatureName: 'Laser Lock', signature: 'Mark a racer ahead and fire a dodgable green laser.', signatureCooldown: 11,
+    ultimateName: 'To Infinity', ultimate: 'Deploy wings, skim small hazards, and fire quick mini lasers while speeding up.',
+  },
+  {
+    id: 'maleficent', name: 'Maleficent', title: 'Dark Power', icon: '♜', color: 0x9b67d6, accent: 0x81ef80, kartColor: 0x252036,
+    speed: 1.04, acceleration: 0.96, handling: 0.98, weight: 1.05,
+    passiveName: 'Dark Thorns', passive: 'Rear impacts recoil against the attacker.',
+    signatureName: 'Cursed Flame', signature: 'Green fire weakens a rival’s acceleration.', signatureCooldown: 11,
+    ultimateName: "Dragon's Wrath", ultimate: 'A dragon spirit breathes fire over the racing line while the kart surges.',
+  },
+  {
+    id: 'hades', name: 'Hades', title: 'Underworld Trickster', icon: '♠', color: 0x6eaaff, accent: 0xc087ef, kartColor: 0x242c52,
+    speed: 1.02, acceleration: 1, handling: 0.99, weight: 0.99,
+    passiveName: 'Hot Head', passive: 'A hit briefly boosts acceleration.',
+    signatureName: 'Soul Flame', signature: 'Drop blue fire that haunts and unsteadies the next rival.', signatureCooldown: 10,
+    ultimateName: 'Underworld Unleashed', ultimate: 'Blue flame speed, immunity to light hazards, and a trail of soul fire.',
+  },
+  {
+    id: 'jack', name: 'Jack Sparrow', title: 'Pirate Trickster', icon: '☠', color: 0xc49a69, accent: 0xffd47e, kartColor: 0x604736,
+    speed: 1, acceleration: 1.01, handling: 1.03, weight: 0.96,
+    passiveName: 'Lucky Escape', passive: 'A rare projectile glances off instead of fully stunning Jack.',
+    signatureName: 'Cursed Compass', signature: 'Reveal the next shortcut or pickup and gain a small burst of speed.', signatureCooldown: 9,
+    ultimateName: "Dead Man's Chest", ultimate: 'Ghostly cannons fire to both sides while the pirate kart speeds on.',
+  },
+  {
+    id: 'mulan', name: 'Mulan', title: 'Agile Strategist', icon: '◇', color: 0xd95154, accent: 0x76dbc4, kartColor: 0x9d373d,
+    speed: 1.02, acceleration: 1.01, handling: 1.06, weight: 0.95,
+    passiveName: 'Discipline', passive: 'Clean drift boosts last a little longer.',
+    signatureName: 'Dragon Dash', signature: 'Dash forward through a corner without cancelling your drift.', signatureCooldown: 10,
+    ultimateName: 'Honor Guardian', ultimate: 'A dragon spirit races ahead, knocking rivals aside along its path.',
+  },
+];
+
+export const CHARACTER_BY_ID = Object.fromEntries(CHARACTERS.map((character) => [character.id, character])) as Record<CharacterId, CharacterDefinition>;

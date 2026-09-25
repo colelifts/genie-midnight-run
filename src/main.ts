@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import './style.css';
 import { GameAudio } from './audio';
+import { CharacterKartVisual, type RaceVisual } from './characterKart';
+import { CHARACTERS, CHARACTER_BY_ID, type CharacterId } from './characters';
 import { KartVisual, makeProjectile } from './kart';
 import { MARKET_CROSSING_PROGRESS, marketCartState, PICKUP_LAYOUT, RaceTrack, touchesBoostPad, type RoadHit, type RoadPoint, type RouteName } from './track';
 
@@ -11,6 +13,7 @@ const mapContext = minimap.getContext('2d')!;
 const hud = el<HTMLDivElement>('hud');
 const menu = el<HTMLDivElement>('menu');
 const pause = el<HTMLDivElement>('pause');
+const results = el<HTMLDivElement>('results');
 const countdown = el<HTMLDivElement>('countdown');
 const positionText = el<HTMLDivElement>('position');
 const lapText = el<HTMLDivElement>('lap');
@@ -22,29 +25,45 @@ const boostFill = el<HTMLDivElement>('boost-fill');
 const wishPicker = el<HTMLDivElement>('wish-picker');
 const wishTile = el<HTMLDivElement>('wish-tile');
 const ultimateTile = el<HTMLDivElement>('ultimate-tile');
+const signatureFill = el<HTMLDivElement>('signature-fill');
+const ultimateFill = el<HTMLDivElement>('ultimate-fill');
 const banner = el<HTMLDivElement>('banner');
+const characterSelect = el<HTMLDivElement>('character-select');
+const characterDetail = el<HTMLDivElement>('character-detail');
+const itemCaption = document.querySelector<HTMLElement>('.item-caption')!;
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const wrap = (value: number) => ((value % 1) + 1) % 1;
 const angleDiff = (target: number, current: number) => Math.atan2(Math.sin(target - current), Math.cos(target - current));
 const formatLapTime = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${(seconds % 60).toFixed(2).padStart(5, '0')}`;
 
-type GameMode = 'menu' | 'countdown' | 'race' | 'paused';
+type GameMode = 'menu' | 'countdown' | 'race' | 'paused' | 'finished';
 type Wish = 'boost' | 'shield' | 'shot';
 
 interface Racer {
   id: number;
-  visual: KartVisual;
+  character: CharacterId;
+  visual: RaceVisual;
   position: THREE.Vector3;
   yaw: number;
   moveYaw: number;
   speed: number;
   progress: number;
   lap: number;
+  finishPlace: number;
   boostTime: number;
   padBoostTime: number;
   shieldTime: number;
   ultimateTime: number;
+  ultimateMeter: number;
+  signatureCooldown: number;
+  itemCharges: number;
+  wishUpgrade: boolean;
+  curseTime: number;
+  wobbleTime: number;
+  hotHeadTime: number;
+  laserReadyTime: number;
+  powerTick: number;
   stunTime: number;
   hitCooldown: number;
   offTrackTime: number;
@@ -68,6 +87,19 @@ interface Projectile {
   mesh: THREE.Group;
   velocity: THREE.Vector3;
   life: number;
+  kind: 'star' | 'plasma' | 'laser' | 'curse' | 'dragon' | 'cannon';
+  color: number;
+  bounces: number;
+  target: number;
+}
+
+interface PowerField {
+  owner: number;
+  kind: 'ice' | 'soul' | 'dragonfire';
+  mesh: THREE.Group;
+  life: number;
+  radius: number;
+  victims: Set<number>;
 }
 
 interface Pickup {
@@ -118,6 +150,16 @@ function makeFlashTexture() {
 }
 
 const flashTexture = makeFlashTexture();
+
+function disposeTransient(object: THREE.Object3D) {
+  object.traverse((part) => {
+    if (part instanceof THREE.Mesh) part.geometry.dispose();
+    if (part instanceof THREE.Mesh || part instanceof THREE.Sprite) {
+      const materials = Array.isArray(part.material) ? part.material : [part.material];
+      materials.forEach((material) => material.dispose());
+    }
+  });
+}
 
 interface Particle {
   position: THREE.Vector3;
@@ -186,6 +228,7 @@ class GenieRace {
   readonly sparks: Sparks;
   readonly audio = new GameAudio();
   readonly projectiles: Projectile[] = [];
+  readonly powerFields: PowerField[] = [];
   readonly pickups: Pickup[] = [];
   readonly pulses: Pulse[] = [];
   readonly flashes: Flash[] = [];
@@ -211,6 +254,8 @@ class GenieRace {
   private lastCartWarningCycle = -1;
   private lastBirdSound = -10;
   private lapClock = 0;
+  private raceClock = 0;
+  private finishCount = 0;
   private bestLap = Infinity;
   private cameraLook = new THREE.Vector3();
   private cameraDistance = 13.1;
@@ -218,12 +263,17 @@ class GenieRace {
   private mapTransform = { centerX: 0, centerZ: 0, scale: 0.25 };
   private smoothedFps = 60;
   private lastFrame = performance.now();
+  private selectedCharacter: CharacterId = 'genie';
 
   constructor() {
     try {
       const saved = Number(localStorage.getItem('genie-midnight-best-lap'));
-      if (saved > 0 && Number.isFinite(saved)) this.bestLap = saved;
+      if (saved >= 25 && Number.isFinite(saved)) this.bestLap = saved;
     } catch { /* Racing still works when browser storage is unavailable. */ }
+    try {
+      const saved = localStorage.getItem('genie-midnight-character');
+      if (saved && Object.prototype.hasOwnProperty.call(CHARACTER_BY_ID, saved)) this.selectedCharacter = saved as CharacterId;
+    } catch { /* Character selection still works without storage. */ }
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -267,6 +317,7 @@ class GenieRace {
     };
     this.sparks = new Sparks(this.scene);
     this.makeRacers();
+    this.makeCharacterSelect();
     this.makePickups();
     this.bindInput();
     Object.defineProperty(window, '__kartDebug', {
@@ -276,12 +327,16 @@ class GenieRace {
         elapsed: Math.round(this.elapsed * 10) / 10,
         trackLength: Math.round(this.track.length),
         racers: this.racers.map((racer) => ({
-          id: racer.id, lap: racer.lap, progress: Math.round(racer.progress * 1000) / 1000,
+          id: racer.id, character: racer.character, lap: racer.lap, progress: Math.round(racer.progress * 1000) / 1000,
           speed: Math.round(racer.speed),
           position: racer.position.toArray().map((n) => Math.round(n * 10) / 10),
           stun: Math.round(racer.stunTime * 10) / 10,
           ultimate: Math.round(racer.ultimateTime * 10) / 10,
+          meter: Math.round(racer.ultimateMeter),
+          cooldown: Math.round(racer.signatureCooldown * 10) / 10,
         })),
+        projectiles: this.projectiles.length,
+        powerFields: this.powerFields.length,
       }),
     });
     this.onResize();
@@ -347,24 +402,72 @@ class GenieRace {
 
   private makeRacers() {
     const starts = this.raceStarts();
-    const accents: Array<'gold' | 'cyan' | 'violet'> = ['gold', 'cyan', 'violet'];
     const demoRoute = new URLSearchParams(window.location.search).get('demoRoute');
     for (let i = 0; i < 3; i++) {
       const start = this.track.at(starts[i]);
       const yaw = Math.atan2(start.tangent.x, start.tangent.z);
-      const visual = new KartVisual(accents[i]);
+      const character: CharacterId = i === 0 ? this.selectedCharacter : i === 1 ? 'mickey' : 'stitch';
+      const visual = this.makeVisual(character);
       visual.group.position.copy(start.position);
       visual.group.rotation.y = yaw;
       this.scene.add(visual.group);
       const racer: Racer = {
-        id: i, visual, position: start.position.clone(), yaw, moveYaw: yaw, speed: 0, progress: starts[i], lap: 1,
-        boostTime: 0, padBoostTime: 0, shieldTime: 0, ultimateTime: 0, stunTime: 0, hitCooldown: 0, offTrackTime: 0, lastPad: 0,
+        id: i, character, visual, position: start.position.clone(), yaw, moveYaw: yaw, speed: 0, progress: starts[i], lap: 1, finishPlace: 0,
+        boostTime: 0, padBoostTime: 0, shieldTime: 0, ultimateTime: 0, ultimateMeter: 0, signatureCooldown: 0, itemCharges: 1, wishUpgrade: false, curseTime: 0, wobbleTime: 0, hotHeadTime: 0, laserReadyTime: 0, powerTick: 0, stunTime: 0, hitCooldown: 0, offTrackTime: 0, lastPad: 0,
         drifting: false, driftCharge: 0, jumpTime: 0, jumpDuration: 0, jumpPower: 0,
         lastSafe: start.position.clone(), lastSafeProgress: starts[i], aiRoute: i === 0 && this.demoMode && (demoRoute === 'alley' || demoRoute === 'roof' || demoRoute === 'garden') ? demoRoute : i === 1 ? 'alley' : i === 2 ? 'roof' : 'main',
         aiAbilityTimer: 10 + i * 5, aiUltimateTimer: 48 + i * 13, ultimateHit: new Set<number>(), steerVisual: 0,
       };
       this.racers.push(racer);
     }
+  }
+
+  private makeVisual(character: CharacterId): RaceVisual {
+    return character === 'genie' ? new KartVisual('gold') : new CharacterKartVisual(character);
+  }
+
+  private makeCharacterSelect() {
+    for (const character of CHARACTERS) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'character-choice';
+      button.dataset.character = character.id;
+      button.style.setProperty('--racer-accent', `#${character.accent.toString(16).padStart(6, '0')}`);
+      button.innerHTML = `<span class="character-icon">${character.icon}</span><span class="character-name">${character.name}</span>`;
+      button.setAttribute('aria-label', `Select ${character.name}`);
+      button.addEventListener('click', () => this.selectCharacter(character.id));
+      characterSelect.appendChild(button);
+    }
+    this.refreshCharacterSelect();
+  }
+
+  private selectCharacter(character: CharacterId) {
+    if (this.mode !== 'menu' || character === this.selectedCharacter) return;
+    this.selectedCharacter = character;
+    try { localStorage.setItem('genie-midnight-character', character); } catch { /* Optional preference. */ }
+    const player = this.racers[0];
+    this.replaceVisual(player, character);
+    this.refreshCharacterSelect();
+  }
+
+  private replaceVisual(racer: Racer, character: CharacterId) {
+    if (racer.character === character) return;
+    this.scene.remove(racer.visual.group);
+    racer.character = character;
+    racer.visual = this.makeVisual(character);
+    racer.visual.group.position.copy(racer.position);
+    racer.visual.group.rotation.y = racer.yaw;
+    this.scene.add(racer.visual.group);
+  }
+
+  private refreshCharacterSelect() {
+    const character = CHARACTER_BY_ID[this.selectedCharacter];
+    characterSelect.querySelectorAll<HTMLButtonElement>('.character-choice').forEach((button) => {
+      const selected = button.dataset.character === character.id;
+      button.classList.toggle('selected', selected);
+      button.setAttribute('aria-pressed', String(selected));
+    });
+    characterDetail.innerHTML = `<strong>${character.name}</strong><span class="character-role">${character.title}</span><div class="power-line"><b>Passive · ${character.passiveName}:</b> ${character.passive}</div><div class="power-line"><b>E · ${character.signatureName}:</b> ${character.signature}</div><div class="power-line"><b>Q · ${character.ultimateName}:</b> ${character.ultimate}</div>`;
   }
 
   private makePickups() {
@@ -385,7 +488,7 @@ class GenieRace {
   }
 
   private bindInput() {
-    const gameKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyE', 'KeyQ'];
+    const gameKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyE', 'KeyR', 'KeyQ'];
     window.addEventListener('keydown', (event) => {
       if (gameKeys.includes(event.code)) event.preventDefault();
       if (event.repeat) return;
@@ -395,11 +498,9 @@ class GenieRace {
         else if (this.mode === 'paused') this.resumeGame();
       }
       if (this.mode !== 'race') return;
-      if (event.code === 'KeyE') this.beginWish();
+      if (event.code === 'KeyE') this.useSignature(this.racers[0]);
+      if (event.code === 'KeyR') this.useItem(this.racers[0]);
       if (event.code === 'KeyQ') this.activateUltimate(this.racers[0]);
-      if (event.code === 'Digit1') this.useWish(this.racers[0], 'boost');
-      if (event.code === 'Digit2') this.useWish(this.racers[0], 'shield');
-      if (event.code === 'Digit3') this.useWish(this.racers[0], 'shot');
     });
     window.addEventListener('keyup', (event) => {
       this.keys.delete(event.code);
@@ -409,6 +510,15 @@ class GenieRace {
     el<HTMLButtonElement>('play').addEventListener('click', () => this.startRace());
     el<HTMLButtonElement>('resume').addEventListener('click', () => this.resumeGame());
     el<HTMLButtonElement>('restart').addEventListener('click', () => this.startRace());
+    el<HTMLButtonElement>('again').addEventListener('click', () => this.startRace());
+    el<HTMLButtonElement>('back-menu').addEventListener('click', () => {
+      this.resetRace();
+      this.mode = 'menu';
+      this.cameraReady = false;
+      hud.classList.add('hidden');
+      results.classList.add('hidden');
+      menu.classList.remove('hidden');
+    });
     el<HTMLButtonElement>('mute').addEventListener('click', (event) => {
       this.audio.setMuted(!this.audio.muted);
       (event.currentTarget as HTMLButtonElement).textContent = `Sound: ${this.audio.muted ? 'off' : 'on'}`;
@@ -419,7 +529,8 @@ class GenieRace {
         event.preventDefault();
         button.setPointerCapture(event.pointerId);
         this.touch.add(action);
-        if (action === 'wish') this.beginWish();
+        if (action === 'wish') this.useSignature(this.racers[0]);
+        if (action === 'item') this.useItem(this.racers[0]);
         if (action === 'ultimate') this.activateUltimate(this.racers[0]);
       });
       const release = (event: PointerEvent) => {
@@ -448,12 +559,18 @@ class GenieRace {
     hud.classList.remove('hidden');
     menu.classList.add('hidden');
     pause.classList.add('hidden');
+    results.classList.add('hidden');
     countdown.classList.remove('hidden');
     this.showBanner('GET READY', 2.2);
   }
 
   private resetRace() {
     this.lapClock = 0;
+    this.raceClock = 0;
+    this.finishCount = 0;
+    const rivals = CHARACTERS.map((character) => character.id).filter((id) => id !== this.selectedCharacter).sort(() => Math.random() - 0.5);
+    this.replaceVisual(this.racers[1], rivals[0]);
+    this.replaceVisual(this.racers[2], rivals[1]);
     const starts = this.raceStarts();
     this.racers.forEach((racer, i) => {
       const point = this.track.at(starts[i]);
@@ -463,7 +580,11 @@ class GenieRace {
       racer.speed = 0;
       racer.progress = starts[i];
       racer.lap = 1;
+      racer.finishPlace = 0;
       racer.boostTime = racer.padBoostTime = racer.shieldTime = racer.ultimateTime = racer.stunTime = 0;
+      racer.ultimateMeter = racer.signatureCooldown = racer.curseTime = racer.wobbleTime = racer.hotHeadTime = racer.laserReadyTime = racer.powerTick = 0;
+      racer.itemCharges = 1;
+      racer.wishUpgrade = false;
       racer.hitCooldown = racer.offTrackTime = racer.lastPad = 0;
       racer.drifting = false;
       racer.driftCharge = 0;
@@ -479,9 +600,11 @@ class GenieRace {
       racer.visual.setUltimate(false);
       racer.visual.setStunned(false);
     });
-    this.projectiles.forEach((projectile) => this.scene.remove(projectile.mesh));
+    this.projectiles.forEach((projectile) => { this.scene.remove(projectile.mesh); disposeTransient(projectile.mesh); });
     this.projectiles.length = 0;
-    this.pulses.forEach((pulse) => this.scene.remove(pulse.mesh));
+    this.powerFields.forEach((field) => { this.scene.remove(field.mesh); disposeTransient(field.mesh); });
+    this.powerFields.length = 0;
+    this.pulses.forEach((pulse) => { this.scene.remove(pulse.mesh); disposeTransient(pulse.mesh); });
     this.pulses.length = 0;
     this.flashes.forEach((flash) => { this.scene.remove(flash.sprite); flash.sprite.material.dispose(); });
     this.flashes.length = 0;
@@ -527,7 +650,7 @@ class GenieRace {
     const wish = Boolean(gamepad.buttons[1]?.pressed);
     const ultimate = Boolean(gamepad.buttons[3]?.pressed);
     if (this.mode === 'race') {
-      if (wish && !this.gamepadWishHeld) this.beginWish();
+      if (wish && !this.gamepadWishHeld) this.useSignature(this.racers[0]);
       if (!wish && this.gamepadWishHeld && this.wishHolding) this.castWish();
       if (ultimate && !this.gamepadUltimateHeld) this.activateUltimate(this.racers[0]);
     }
@@ -536,7 +659,7 @@ class GenieRace {
   }
 
   private beginWish() {
-    if (this.mode !== 'race' || this.wishHolding || this.racers[0].stunTime > 0) return;
+    if (this.mode !== 'race' || this.wishHolding || this.racers[0].stunTime > 0 || this.racers[0].signatureCooldown > 0) return;
     this.wishHolding = true;
     this.wishElapsed = 0;
     this.wishIndex = 0;
@@ -554,19 +677,88 @@ class GenieRace {
     this.wishHolding = false;
     wishPicker.classList.add('hidden');
     const choices: Wish[] = ['boost', 'shield', 'shot'];
+    this.racers[0].signatureCooldown = CHARACTER_BY_ID.genie.signatureCooldown;
     this.useWish(this.racers[0], choices[this.wishIndex]);
+  }
+
+  private useItem(racer: Racer) {
+    if (this.mode !== 'race' || racer.stunTime > 0 || racer.itemCharges <= 0) return;
+    racer.itemCharges--;
+    const choices: Wish[] = ['boost', 'shield', 'shot'];
+    this.useWish(racer, choices[Math.floor(Math.random() * choices.length)]);
+  }
+
+  private useSignature(racer: Racer) {
+    if (this.mode !== 'race' || racer.stunTime > 0 || racer.signatureCooldown > 0) return;
+    if (racer.character === 'genie' && racer.id === 0) { this.beginWish(); return; }
+    const def = CHARACTER_BY_ID[racer.character];
+    racer.signatureCooldown = def.signatureCooldown;
+    const forward = new THREE.Vector3(Math.sin(racer.yaw), 0, Math.cos(racer.yaw));
+    const braking = racer.id === 0 && (this.keys.has('KeyS') || this.keys.has('ArrowDown'));
+    const origin = racer.position.clone().add(new THREE.Vector3(0, 1.4, 0));
+    this.makeFlash(origin, def.accent, 4.8, 0.38);
+    this.burst(origin, def.color, def.accent, 20);
+    if (racer.id === 0) this.showBanner(def.signatureName.toUpperCase(), 1);
+    this.audio.play('wish');
+    switch (racer.character) {
+      case 'genie':
+        this.useWish(racer, 'boost');
+        break;
+      case 'mickey':
+        if (braking) this.dropField(racer, 'soul', 0xffda6f, 4.5, 8, -3.2);
+        else this.launchPower(racer, 'star', 0xffd866, 42, 2.8);
+        break;
+      case 'stitch':
+        this.launchPower(racer, 'plasma', 0x64b8ff, 46, 3.2);
+        break;
+      case 'elsa':
+        for (let n = 0; n < 4; n++) this.dropField(racer, 'ice', 0x9fefff, 3.6, 8, -2 - n * 2.6);
+        break;
+      case 'moana':
+        if (braking) {
+          racer.shieldTime = Math.max(racer.shieldTime, 2.8);
+          this.makePulse(racer.position, 0x66e9e9, 0.65, 4.5);
+        } else this.pushWave(racer, 14, 0x58e8db);
+        break;
+      case 'buzz': {
+        const targets = this.racers.filter((other) => other.id !== racer.id && other.stunTime <= 0 && other.position.clone().sub(racer.position).dot(forward) > 0 && other.position.distanceTo(racer.position) < 42);
+        targets.sort((a, b) => a.position.distanceTo(racer.position) - b.position.distanceTo(racer.position));
+        this.launchPower(racer, 'laser', 0xb0ff73, racer.laserReadyTime > 0 ? 62 : 52, 1.65, targets[0]?.id ?? -1);
+        racer.laserReadyTime = 0;
+        break;
+      }
+      case 'maleficent':
+        this.launchPower(racer, 'curse', 0x89fa74, 39, 3.5);
+        break;
+      case 'hades':
+        this.dropField(racer, 'soul', 0x55a8ff, 4.8, 9, -3.3);
+        break;
+      case 'jack': {
+        const next = this.pickups.filter((pickup) => !pickup.collected).sort((a, b) => a.mesh.position.distanceTo(racer.position) - b.mesh.position.distanceTo(racer.position))[0];
+        if (next) { this.makePulse(next.mesh.position, 0xffd77d, 1.15, 6); this.makeFlash(next.mesh.position, 0xffdd85, 6, 0.7); }
+        racer.boostTime = Math.max(racer.boostTime, 1.1);
+        break;
+      }
+      case 'mulan':
+        racer.boostTime = Math.max(racer.boostTime, 1.55);
+        racer.speed = Math.max(racer.speed, 39);
+        this.makePulse(racer.position, 0x71e4cf, 0.4, 3.2);
+        break;
+    }
   }
 
   private useWish(racer: Racer, wish: Wish) {
     if (racer.stunTime > 0) return;
+    const upgraded = racer.wishUpgrade;
+    racer.wishUpgrade = false;
     if (wish === 'boost') {
-      racer.boostTime = Math.max(racer.boostTime, 1.8);
+      racer.boostTime = Math.max(racer.boostTime, upgraded ? 2.7 : 1.8);
       const ignition = racer.position.clone().add(new THREE.Vector3(0, 0.7, 0));
       this.burst(ignition, 0x55dfff, 0xffd56c, 18);
       if (racer.id === 0) this.showBanner('WISH: BOOST', 0.9);
       this.audio.play('boost');
     } else if (wish === 'shield') {
-      racer.shieldTime = Math.max(racer.shieldTime, 4);
+      racer.shieldTime = Math.max(racer.shieldTime, upgraded ? 6 : 4);
       this.burst(racer.position.clone().add(new THREE.Vector3(0, 2.3, 0)), 0x71e7ff, 0xc9f6ff, 14);
       if (racer.id === 0) this.showBanner('WISH: SHIELD', 0.9);
       this.audio.play('shield');
@@ -579,22 +771,108 @@ class GenieRace {
       this.makeFlash(mesh.position, 0xff7561, 4.8, 0.4);
       this.burst(mesh.position, 0xffbd66, 0xff4d5b, 16);
       this.scene.add(mesh);
-      this.projectiles.push({ owner: racer.id, mesh, velocity: direction.multiplyScalar(44), life: 3 });
+      this.projectiles.push({ owner: racer.id, mesh, velocity: direction.multiplyScalar(upgraded ? 52 : 44), life: 3, kind: 'star', color: 0xffb35e, bounces: 0, target: -1 });
       if (racer.id === 0) this.showBanner('WISH: STAR SHOT', 0.9);
       this.audio.play('shot');
     }
   }
 
   private activateUltimate(racer: Racer) {
-    if (this.mode !== 'race' || racer.ultimateTime > 0 || racer.stunTime > 0) return;
-    racer.ultimateTime = 5;
-    racer.shieldTime = Math.max(racer.shieldTime, 5);
-    racer.boostTime = Math.max(racer.boostTime, 5);
+    if (this.mode !== 'race' || racer.ultimateTime > 0 || racer.stunTime > 0 || racer.ultimateMeter < 100) return;
+    racer.ultimateMeter = 0;
+    racer.ultimateTime = racer.character === 'genie' ? 5 : 4.6;
+    racer.shieldTime = Math.max(racer.shieldTime, racer.ultimateTime);
+    racer.boostTime = Math.max(racer.boostTime, racer.ultimateTime);
     if (racer.speed > 5) racer.speed = Math.max(racer.speed, 34);
     racer.ultimateHit.clear();
+    racer.powerTick = 0;
     racer.visual.setUltimate(true);
-    if (racer.id === 0) this.showBanner('COSMIC SHOWSTOPPER!', 0.7);
+    const def = CHARACTER_BY_ID[racer.character];
+    if (racer.id === 0) this.showBanner(`${def.ultimateName.toUpperCase()}!`, 1);
+    this.makePulse(racer.position, def.accent, 0.7, 5.8);
+    this.makeFlash(racer.position.clone().add(new THREE.Vector3(0, 2.2, 0)), def.accent, 7, 0.55);
+    this.burst(racer.position.clone().add(new THREE.Vector3(0, 1.7, 0)), def.color, def.accent, 36);
+    if (racer.character === 'mickey') this.pushWave(racer, 13, 0xffd866);
+    if (racer.character === 'mulan') this.launchPower(racer, 'dragon', 0x74e3cf, 54, 5);
     this.audio.play('ultimate');
+  }
+
+  private launchPower(racer: Racer, kind: Projectile['kind'], color: number, speed: number, life: number, target = -1, side = 0) {
+    const direction = new THREE.Vector3(Math.sin(racer.yaw), 0, Math.cos(racer.yaw));
+    const right = new THREE.Vector3(direction.z, 0, -direction.x);
+    const mesh = new THREE.Group();
+    const core = new THREE.Mesh(new THREE.IcosahedronGeometry(kind === 'dragon' ? 1.15 : kind === 'cannon' ? 0.6 : 0.75, 1), new THREE.MeshBasicMaterial({ color, toneMapped: false }));
+    const halo = new THREE.Mesh(new THREE.TorusGeometry(kind === 'dragon' ? 1.55 : 1.05, 0.12, 6, 24), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.82, depthWrite: false }));
+    mesh.add(core, halo);
+    mesh.position.copy(racer.position).addScaledVector(direction, 3.3).addScaledVector(right, side);
+    mesh.position.y += 1.65;
+    this.scene.add(mesh);
+    this.projectiles.push({ owner: racer.id, mesh, velocity: direction.multiplyScalar(speed).addScaledVector(right, side * 10), life, kind, color, bounces: kind === 'plasma' ? 1 : 0, target });
+    this.makePulse(mesh.position, color, 0.35, 1.6);
+    this.audio.play('shot');
+  }
+
+  private dropField(racer: Racer, kind: PowerField['kind'], color: number, radius: number, life: number, back = -2.6) {
+    const forward = new THREE.Vector3(Math.sin(racer.yaw), 0, Math.cos(racer.yaw));
+    const position = racer.position.clone().addScaledVector(forward, back);
+    const ground = this.track.nearest(position, racer.progress).point.position.y;
+    const mesh = new THREE.Group();
+    const disk = new THREE.Mesh(new THREE.CircleGeometry(radius, 32), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.38, depthWrite: false, side: THREE.DoubleSide }));
+    disk.rotation.x = -Math.PI / 2;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(radius * 0.82, 0.14, 6, 32), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthWrite: false }));
+    ring.rotation.x = Math.PI / 2;
+    mesh.add(disk, ring);
+    mesh.position.set(position.x, ground + 0.18, position.z);
+    this.scene.add(mesh);
+    this.powerFields.push({ owner: racer.id, kind, mesh, life, radius, victims: new Set() });
+    if (this.powerFields.length > 90) {
+      const old = this.powerFields.shift()!;
+      this.scene.remove(old.mesh);
+      disposeTransient(old.mesh);
+    }
+  }
+
+  private pushWave(racer: Racer, radius: number, color: number) {
+    const forward = new THREE.Vector3(Math.sin(racer.yaw), 0, Math.cos(racer.yaw));
+    this.makePulse(racer.position.clone().addScaledVector(forward, 4), color, 0.6, radius / 2);
+    for (const other of this.racers) {
+      if (other.id === racer.id || other.ultimateTime > 0) continue;
+      const offset = other.position.clone().sub(racer.position);
+      if (offset.length() > radius || offset.dot(forward) < 0) continue;
+      const right = new THREE.Vector3(forward.z, 0, -forward.x);
+      const side = Math.sign(offset.dot(right)) || 1;
+      other.position.addScaledVector(right, side * 3.8);
+      other.speed *= 0.68;
+      other.wobbleTime = Math.max(other.wobbleTime, 0.9);
+      this.burst(other.position.clone().add(new THREE.Vector3(0, 1.4, 0)), color, 0xffffff, 12);
+      racer.ultimateMeter = Math.min(100, racer.ultimateMeter + 5);
+    }
+  }
+
+  private updatePowerFields(dt: number) {
+    for (let i = this.powerFields.length - 1; i >= 0; i--) {
+      const field = this.powerFields[i];
+      field.life -= dt;
+      field.mesh.rotation.y += dt * (field.kind === 'ice' ? 0.2 : 1.3);
+      field.mesh.scale.setScalar(0.9 + Math.sin(this.elapsed * 5 + i) * 0.06);
+      for (const racer of this.racers) {
+        if (racer.id === field.owner || racer.ultimateTime > 0 || field.victims.has(racer.id)) continue;
+        if (Math.abs(racer.position.y - field.mesh.position.y) > 3) continue;
+        if (Math.hypot(racer.position.x - field.mesh.position.x, racer.position.z - field.mesh.position.z) > field.radius + 1) continue;
+        field.victims.add(racer.id);
+        if (field.kind === 'ice') {
+          racer.wobbleTime = Math.max(racer.wobbleTime, racer.character === 'elsa' ? 0.3 : 1.6);
+          racer.speed *= 0.82;
+        } else if (field.kind === 'soul') {
+          racer.wobbleTime = Math.max(racer.wobbleTime, 1.25);
+          racer.speed *= 0.73;
+        } else this.stun(racer, 0.7);
+        this.makeFlash(racer.position.clone().add(new THREE.Vector3(0, 1, 0)), field.kind === 'ice' ? 0xa5f4ff : 0x87a4ff, 3.5, 0.32);
+        const owner = this.racers[field.owner];
+        owner.ultimateMeter = Math.min(100, owner.ultimateMeter + 5);
+      }
+      if (field.life <= 0) { this.scene.remove(field.mesh); disposeTransient(field.mesh); this.powerFields.splice(i, 1); }
+    }
   }
 
   private makePulse(position: THREE.Vector3, color = 0x72ddf5, duration = 0.75, growth = 3.8) {
@@ -633,7 +911,7 @@ class GenieRace {
     if (this.mode !== 'paused') this.elapsed += dt;
     this.syncGamepad();
     if (this.mode === 'countdown') this.updateCountdown(dt);
-    if (this.mode === 'race') { this.lapClock += dt; this.updateRace(dt); }
+    if (this.mode === 'race') { this.lapClock += dt; this.raceClock += dt; this.updateRace(dt); }
     if (this.mode === 'race' && !countdown.classList.contains('hidden')) {
       this.countdownElapsed += dt;
       if (this.countdownElapsed > 3.75) countdown.classList.add('hidden');
@@ -700,6 +978,7 @@ class GenieRace {
     else this.updatePlayer(dt);
     for (let i = 1; i < this.racers.length; i++) this.updateAI(this.racers[i], dt);
     for (const racer of this.racers) this.updateRacerTimers(racer, dt);
+    this.updatePowerFields(dt);
     this.checkRacerCollisions();
     this.checkObstacleCollisions();
     this.updateProjectiles(dt);
@@ -732,9 +1011,10 @@ class GenieRace {
     }
     const roadBefore = this.track.nearest(player.position, player.progress);
     const offRoad = !roadBefore.onRoad && player.jumpTime <= 0;
-    const maxSpeed = player.padBoostTime > 0 ? 53 : player.ultimateTime > 0 ? 41 : player.boostTime > 0 ? 40 : offRoad ? 20 : 31;
-    if (accel > 0) player.speed += (player.padBoostTime > 0 ? 32 : player.ultimateTime > 0 ? 28 : 19) * accel * dt;
-    else player.speed -= (player.speed > 0 ? 5.3 : 2.5) * dt;
+    const stats = CHARACTER_BY_ID[player.character];
+    const maxSpeed = (player.padBoostTime > 0 ? 53 : player.ultimateTime > 0 ? 43 : player.boostTime > 0 ? 40 : offRoad ? 20 : 31) * stats.speed;
+    if (accel > 0) player.speed += (player.padBoostTime > 0 ? 32 : player.ultimateTime > 0 ? 28 : 19) * (player.curseTime > 0 ? 0.52 : 1) * (player.hotHeadTime > 0 ? 1.45 : 1) * stats.acceleration * accel * dt;
+    else player.speed += player.speed > 0 ? -Math.min(player.speed, 5.3 * dt) : Math.min(-player.speed, 5.3 * dt);
     if (brake > 0) player.speed -= 29 * brake * dt;
     if (player.boostTime > 0) player.speed += 11 * dt;
     player.speed = clamp(player.speed, -8, maxSpeed);
@@ -749,8 +1029,8 @@ class GenieRace {
       this.releaseDrift(player);
     }
     const boostHandling = player.padBoostTime > 0 ? 1.7 : player.ultimateTime > 0 ? 1.35 : 1;
-    const turnRate = (1.5 - Math.min(Math.abs(player.speed) / 50, 0.5)) * (player.drifting ? 1.25 : 1) * boostHandling;
-    player.yaw -= steer * turnRate * dt * Math.min(1, Math.abs(player.speed) / 6);
+    const turnRate = (1.5 - Math.min(Math.abs(player.speed) / 50, 0.5)) * (player.drifting ? 1.25 : 1) * boostHandling * stats.handling * (player.wobbleTime > 0 ? 0.62 : 1);
+    player.yaw -= (steer + (player.wobbleTime > 0 ? Math.sin(this.elapsed * 19) * 0.22 : 0)) * turnRate * dt * Math.min(1, Math.abs(player.speed) / 6);
     if (Math.abs(steer) < 0.12 && roadBefore.onRoad && !player.drifting && player.speed > 8) {
       const roadYaw = Math.atan2(roadBefore.point.tangent.x, roadBefore.point.tangent.z);
       player.yaw += clamp(angleDiff(roadYaw, player.yaw), -0.8 * dt, 0.8 * dt);
@@ -769,7 +1049,7 @@ class GenieRace {
       }
     } else {
       player.offTrackTime += dt;
-      player.speed = Math.min(player.speed, 20);
+      if (player.ultimateTime <= 0 || player.character !== 'moana') player.speed = Math.min(player.speed, 20);
       if (road.distance > road.point.width / 2 + 14 || player.offTrackTime > 2.2) this.respawn(player);
     }
     if (player.drifting && Math.abs(steer) > 0.15 && player.speed > 12) {
@@ -814,14 +1094,15 @@ class GenieRace {
     const error = angleDiff(targetYaw, racer.yaw);
     const steer = clamp(error * 2.4, -1, 1);
     racer.steerVisual = steer;
-    racer.yaw += steer * (1.2 - Math.min(racer.speed / 100, 0.25)) * (racer.drifting ? 1.25 : 1) * (racer.padBoostTime > 0 ? 1.3 : 1) * dt;
+    racer.yaw += (steer + (racer.wobbleTime > 0 ? Math.sin(this.elapsed * 17) * 0.2 : 0)) * (1.2 - Math.min(racer.speed / 100, 0.25)) * (racer.drifting ? 1.25 : 1) * (racer.padBoostTime > 0 ? 1.3 : 1) * CHARACTER_BY_ID[racer.character].handling * dt;
     racer.moveYaw += angleDiff(racer.yaw, racer.moveYaw) * Math.min(1, dt * 5);
     let targetSpeed = 27 + racer.id * 0.6 + Math.sin(this.elapsed * 0.5 + racer.id) * 1.4;
     if (Math.abs(error) > 0.5) targetSpeed = 22;
     if (racer.boostTime > 0) targetSpeed = racer.ultimateTime > 0 ? 41 : 37;
     if (racer.padBoostTime > 0) targetSpeed = 49;
     if (racer.ultimateTime > 0) targetSpeed = 41;
-    racer.speed += (targetSpeed - racer.speed) * Math.min(1, dt * (targetSpeed > racer.speed ? 1.2 : 2.2));
+    targetSpeed *= CHARACTER_BY_ID[racer.character].speed;
+    racer.speed += (targetSpeed - racer.speed) * Math.min(1, dt * (targetSpeed > racer.speed ? (racer.curseTime > 0 ? 0.55 : 1.2) * CHARACTER_BY_ID[racer.character].acceleration : 2.2));
     racer.position.x += Math.sin(racer.moveYaw) * racer.speed * dt;
     racer.position.z += Math.cos(racer.moveYaw) * racer.speed * dt;
     this.followRoadHeight(racer, dt);
@@ -832,12 +1113,13 @@ class GenieRace {
     }
     racer.aiAbilityTimer -= dt;
     if (racer.aiAbilityTimer <= 0) {
-      racer.aiAbilityTimer = 11 + Math.random() * 8;
-      this.useWish(racer, Math.random() > 0.4 ? 'boost' : 'shield');
+      racer.aiAbilityTimer = 4 + Math.random() * 4;
+      this.useSignature(racer);
+      if (racer.itemCharges > 0 && Math.random() < 0.4) this.useItem(racer);
     }
     racer.aiUltimateTimer -= dt;
-    if (racer.aiUltimateTimer <= 0) {
-      racer.aiUltimateTimer = 43 + Math.random() * 14;
+    if (racer.aiUltimateTimer <= 0 && racer.ultimateMeter >= 100) {
+      racer.aiUltimateTimer = 15 + Math.random() * 8;
       this.activateUltimate(racer);
     }
     this.checkPads(racer);
@@ -886,7 +1168,8 @@ class GenieRace {
     racer.driftCharge = 0;
     if (charge < 0.58) return;
     const stage = charge >= 1.9 ? 3 : charge >= 1.18 ? 2 : 1;
-    racer.boostTime = Math.max(racer.boostTime, [0, 0.65, 1.2, 1.8][stage]);
+    racer.boostTime = Math.max(racer.boostTime, [0, 0.65, 1.2, 1.8][stage] * (racer.character === 'mulan' ? 1.28 : 1));
+    racer.ultimateMeter = Math.min(100, racer.ultimateMeter + (8 + stage * 5) * (racer.character === 'mickey' ? 1.45 : 1));
     if (racer.id === 0) {
       this.showBanner(['', 'BLUE DRIFT BOOST', 'GOLD DRIFT BOOST', 'COSMIC DRIFT BOOST'][stage], 0.95);
       this.audio.play('drift');
@@ -936,6 +1219,8 @@ class GenieRace {
         racer.padBoostTime = Math.max(racer.padBoostTime, pad.boostSeconds);
         racer.speed = Math.max(racer.speed, 44);
         racer.lastPad = 1.25;
+        racer.ultimateMeter = Math.min(100, racer.ultimateMeter + 6);
+        if (racer.character === 'buzz') racer.laserReadyTime = 12;
         this.startJump(racer, 0.7, 1.15);
         this.makePulse(racer.position, 0x6feeff, 0.65, 5.2);
         this.burst(racer.position.clone().add(new THREE.Vector3(0, 0.8, 0)), 0x75edff, 0xffd675, 22);
@@ -946,34 +1231,90 @@ class GenieRace {
   }
 
   private updateRacerTimers(racer: Racer, dt: number) {
+    if (racer.speed > 10 && racer.ultimateTime <= 0) {
+      const route = this.track.nearest(racer.position, racer.progress).point.route;
+      racer.ultimateMeter = Math.min(100, racer.ultimateMeter + dt * (0.85 + (route !== 'main' && racer.character === 'moana' ? 0.85 : 0)));
+    }
+    if (racer.ultimateTime > 0) this.updateUltimatePower(racer, dt);
     racer.boostTime = Math.max(0, racer.boostTime - dt);
     racer.padBoostTime = Math.max(0, racer.padBoostTime - dt);
     racer.shieldTime = Math.max(0, racer.shieldTime - dt);
     racer.ultimateTime = Math.max(0, racer.ultimateTime - dt);
+    racer.signatureCooldown = Math.max(0, racer.signatureCooldown - dt);
+    racer.curseTime = Math.max(0, racer.curseTime - dt);
+    racer.wobbleTime = Math.max(0, racer.wobbleTime - dt);
+    racer.hotHeadTime = Math.max(0, racer.hotHeadTime - dt);
+    racer.laserReadyTime = Math.max(0, racer.laserReadyTime - dt);
     racer.stunTime = Math.max(0, racer.stunTime - dt);
     racer.hitCooldown = Math.max(0, racer.hitCooldown - dt);
     racer.lastPad = Math.max(0, racer.lastPad - dt);
+  }
+
+  private updateUltimatePower(racer: Racer, dt: number) {
+    racer.powerTick -= dt;
+    if (racer.powerTick > 0) return;
+    const def = CHARACTER_BY_ID[racer.character];
+    const position = racer.position.clone().add(new THREE.Vector3(0, 1.6, 0));
+    this.makeFlash(position, def.accent, 3.3, 0.25);
+    switch (racer.character) {
+      case 'genie': racer.powerTick = 0.55; break;
+      case 'mickey': this.makePulse(racer.position, 0xffdb6e, 0.5, 2.3); racer.powerTick = 0.75; break;
+      case 'stitch': this.burst(position, 0x74b7ff, 0xffffff, 10); racer.powerTick = 0.38; break;
+      case 'elsa':
+        this.dropField(racer, 'ice', 0xa9f2ff, 4, 5, -2.8);
+        for (const other of this.racers) if (other.id !== racer.id && other.position.distanceTo(racer.position) < 9) other.wobbleTime = Math.max(other.wobbleTime, 0.7);
+        racer.powerTick = 0.58;
+        break;
+      case 'moana': this.pushWave(racer, 8, 0x6fece5); racer.powerTick = 0.68; break;
+      case 'buzz': this.launchPower(racer, 'laser', 0xa6ff76, 58, 1.25); racer.powerTick = 0.9; break;
+      case 'maleficent': this.dropField(racer, 'dragonfire', 0xa1f576, 4.5, 6, -3); racer.powerTick = 0.68; break;
+      case 'hades': this.dropField(racer, 'soul', 0x77b6ff, 4.1, 5.2, -2.7); racer.powerTick = 0.52; break;
+      case 'jack':
+        this.launchPower(racer, 'cannon', 0xffd58d, 34, 1.8, -1, -2);
+        this.launchPower(racer, 'cannon', 0xffd58d, 34, 1.8, -1, 2);
+        racer.powerTick = 1.05;
+        break;
+      case 'mulan': this.makePulse(racer.position, 0x79e7d5, 0.45, 2.5); racer.powerTick = 0.7; break;
+    }
   }
 
   private updateProgress(racer: Racer, progress: number) {
     const before = racer.progress;
     if (before > 0.84 && progress < 0.16 && racer.speed > 0) {
       racer.lap++;
+      if (racer.lap >= 4 && racer.finishPlace === 0) racer.finishPlace = ++this.finishCount;
       if (racer.id === 0) {
         const lapTime = this.lapClock;
         this.lapClock = 0;
-        const isBest = !this.demoMode && lapTime < this.bestLap;
+        const isBest = !this.demoMode && lapTime >= 25 && lapTime < this.bestLap;
         if (isBest) {
           this.bestLap = lapTime;
           try { localStorage.setItem('genie-midnight-best-lap', String(lapTime)); } catch { /* Storage is optional. */ }
         }
-        this.showBanner(isBest ? `NEW BEST LAP · ${formatLapTime(lapTime)}` : `LAP ${racer.lap} · ${formatLapTime(lapTime)}`, 2);
+        if (racer.lap >= 4) {
+          this.finishRace();
+        }
+        else this.showBanner(isBest ? `NEW BEST LAP · ${formatLapTime(lapTime)}` : `LAP ${racer.lap} · ${formatLapTime(lapTime)}`, 2);
         this.audio.play('lap');
       }
     } else if (before < 0.16 && progress > 0.84 && racer.speed < 0) {
       racer.lap = Math.max(1, racer.lap - 1);
     }
     racer.progress = progress;
+  }
+
+  private finishRace() {
+    if (this.mode !== 'race') return;
+    const player = this.racers[0];
+    const rank = player.finishPlace;
+    this.mode = 'finished';
+    this.wishHolding = false;
+    wishPicker.classList.add('hidden');
+    results.classList.remove('hidden');
+    el<HTMLElement>('results-place').textContent = rank === 1 ? 'FIRST PLACE!' : rank === 2 ? 'SECOND PLACE!' : 'THIRD PLACE!';
+    el<HTMLElement>('results-summary').textContent = `${CHARACTER_BY_ID[player.character].name} finished three laps of Agrabah Circuit.`;
+    el<HTMLElement>('results-time').textContent = formatLapTime(this.raceClock);
+    this.audio.play('lap');
   }
 
   private respawn(racer: Racer) {
@@ -1008,25 +1349,11 @@ class GenieRace {
         const separation = (4.15 - distance) * 0.5;
         a.position.addScaledVector(normal, -separation);
         b.position.addScaledVector(normal, separation);
-        if (a.ultimateTime > 0 && !a.ultimateHit.has(b.id)) {
-          this.stun(b, 1.25, true);
-          const impact = b.position.clone().add(new THREE.Vector3(0, 1.8, 0));
-          this.makeFlash(impact, 0x8befff, 5.5, 0.42);
-          this.burst(impact, 0x7ceaff, 0xffd876, 24);
-          a.ultimateHit.add(b.id);
-          b.position.addScaledVector(normal, 2.3);
-          if (a.id === 0) this.showBanner('COSMIC KNOCKOUT!', 1.2);
-        }
-        if (b.ultimateTime > 0 && !b.ultimateHit.has(a.id)) {
-          this.stun(a, 1.25, true);
-          const impact = a.position.clone().add(new THREE.Vector3(0, 1.8, 0));
-          this.makeFlash(impact, 0x8befff, 5.5, 0.42);
-          this.burst(impact, 0x7ceaff, 0xffd876, 24);
-          b.ultimateHit.add(a.id);
-          a.position.addScaledVector(normal, -2.3);
-          if (a.id === 0) this.showBanner('STUNNED!', 1.1);
-        }
+        if (a.ultimateTime > 0 && !a.ultimateHit.has(b.id)) this.ultimateBump(a, b, normal);
+        if (b.ultimateTime > 0 && !b.ultimateHit.has(a.id)) this.ultimateBump(b, a, normal.clone().negate());
         if (a.ultimateTime <= 0 && b.ultimateTime <= 0 && a.hitCooldown <= 0 && b.hitCooldown <= 0) {
+          if (a.character === 'maleficent' && normal.dot(new THREE.Vector3(Math.sin(a.yaw), 0, Math.cos(a.yaw))) < -0.35) { b.speed *= 0.65; b.wobbleTime = Math.max(b.wobbleTime, 0.55); this.makeFlash(b.position, 0x94f36e, 3, 0.25); }
+          if (b.character === 'maleficent' && normal.dot(new THREE.Vector3(Math.sin(b.yaw), 0, Math.cos(b.yaw))) > 0.35) { a.speed *= 0.65; a.wobbleTime = Math.max(a.wobbleTime, 0.55); this.makeFlash(a.position, 0x94f36e, 3, 0.25); }
           a.speed *= 0.88;
           b.speed *= 0.88;
           a.hitCooldown = b.hitCooldown = 0.35;
@@ -1034,6 +1361,19 @@ class GenieRace {
         }
       }
     }
+  }
+
+  private ultimateBump(attacker: Racer, victim: Racer, direction: THREE.Vector3) {
+    attacker.ultimateHit.add(victim.id);
+    const strong = attacker.character === 'genie' || attacker.character === 'stitch' || attacker.character === 'mulan';
+    if (strong) this.stun(victim, attacker.character === 'genie' ? 1.25 : 0.95, true);
+    else if (victim.ultimateTime <= 0) { victim.speed *= 0.46; victim.wobbleTime = Math.max(victim.wobbleTime, 1.1); }
+    victim.position.addScaledVector(direction, strong ? 2.3 : 3.1);
+    const impact = victim.position.clone().add(new THREE.Vector3(0, 1.8, 0));
+    const def = CHARACTER_BY_ID[attacker.character];
+    this.makeFlash(impact, def.accent, 5.5, 0.42);
+    this.burst(impact, def.color, def.accent, 24);
+    if (attacker.id === 0) this.showBanner(strong ? 'POWER KNOCKOUT!' : 'POWER PUSH!', 1.1);
   }
 
   private stun(racer: Racer, duration: number, ignoreShield = false) {
@@ -1054,6 +1394,7 @@ class GenieRace {
     }
     racer.stunTime = Math.max(racer.stunTime, duration);
     racer.speed = 0;
+    if (racer.character === 'hades') racer.hotHeadTime = 2.2;
     racer.hitCooldown = Math.max(racer.hitCooldown, duration + 0.5);
     this.audio.play('stun');
   }
@@ -1077,7 +1418,7 @@ class GenieRace {
           obstacle.broken = true;
           obstacle.respawn = 12;
           obstacle.mesh.visible = false;
-          if (racer.ultimateTime <= 0) racer.speed *= 0.58;
+          if (racer.ultimateTime <= 0) racer.speed *= racer.character === 'stitch' ? 0.82 : 0.58;
           if (racer.id === 0) this.showBanner(racer.ultimateTime > 0 ? 'CRATE SMASH!' : 'CRATE HIT', 0.8);
         } else if (racer.ultimateTime > 0) {
           racer.speed *= 0.88;
@@ -1089,7 +1430,7 @@ class GenieRace {
           racer.shieldTime = 0;
           if (racer.id === 0) this.showBanner('SHIELD BLOCK!', 0.8);
         } else {
-          racer.speed *= obstacle.kind === 'boulder' ? 0.38 : 0.55;
+          racer.speed *= racer.character === 'stitch' ? 0.78 : obstacle.kind === 'boulder' ? 0.38 : 0.55;
           if (obstacle.kind === 'boulder') this.stun(racer, 0.38);
           if (racer.id === 0) this.showBanner(obstacle.kind === 'boulder' ? 'BOULDER HIT!' : obstacle.kind === 'urn' ? 'PALACE URN HIT!' : 'CART HIT!', 0.8);
         }
@@ -1102,27 +1443,47 @@ class GenieRace {
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const projectile = this.projectiles[i];
       projectile.life -= dt;
+      if (projectile.target >= 0 && projectile.kind === 'laser') {
+        const target = this.racers[projectile.target];
+        if (target && target.stunTime <= 0) {
+          const desired = target.position.clone().sub(projectile.mesh.position).setY(0).normalize().multiplyScalar(projectile.velocity.length());
+          projectile.velocity.lerp(desired, Math.min(1, dt * 1.8));
+        }
+      }
       projectile.mesh.position.addScaledVector(projectile.velocity, dt);
       projectile.mesh.children[0].rotation.y += dt * 8;
+      if (projectile.bounces > 0) {
+        const road = this.track.nearest(projectile.mesh.position);
+        if (Math.abs(road.lateral) > road.point.width / 2 - 1.5) {
+          projectile.velocity.addScaledVector(road.point.right, -2 * projectile.velocity.dot(road.point.right));
+          projectile.bounces--;
+          this.makePulse(projectile.mesh.position, projectile.color, 0.35, 1.8);
+        }
+      }
       for (let spark = 0; spark < 2; spark++) {
         const velocity = projectile.velocity.clone().multiplyScalar(-0.17).add(new THREE.Vector3((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4));
-        this.sparks.spawn(projectile.mesh.position, velocity, spark === 0 ? 0xffd676 : 0xff5264, 0.32 + Math.random() * 0.18);
+        this.sparks.spawn(projectile.mesh.position, velocity, spark === 0 ? projectile.color : 0xffffff, 0.32 + Math.random() * 0.18);
       }
       let remove = projectile.life <= 0;
       for (const racer of this.racers) {
         if (racer.id === projectile.owner || racer.stunTime > 0) continue;
-        if (racer.position.distanceTo(projectile.mesh.position) < 2.8) {
-          this.stun(racer, 0.85);
-          this.makeFlash(projectile.mesh.position, 0xff8b68, 3.6, 0.3);
-          this.burst(projectile.mesh.position, 0xffc46e, 0xff5264, 15);
-          this.makePulse(projectile.mesh.position, 0xff526e, 0.32, 1.5);
-          if (projectile.owner === 0) this.showBanner('STAR HIT!', 1);
+        if (racer.position.distanceTo(projectile.mesh.position) < (projectile.kind === 'dragon' ? 3.8 : 2.8)) {
+          if (projectile.kind === 'curse') { racer.curseTime = Math.max(racer.curseTime, 4); racer.speed *= 0.74; }
+          else if (racer.character === 'jack' && Math.random() < 0.18 && racer.shieldTime <= 0) { racer.speed *= 0.84; }
+          else this.stun(racer, projectile.kind === 'dragon' ? 1.1 : projectile.kind === 'laser' ? 0.55 : 0.85);
+          this.makeFlash(projectile.mesh.position, projectile.color, 4.2, 0.3);
+          this.burst(projectile.mesh.position, projectile.color, 0xffffff, 16);
+          this.makePulse(projectile.mesh.position, projectile.color, 0.32, 1.7);
+          const owner = this.racers[projectile.owner];
+          owner.ultimateMeter = Math.min(100, owner.ultimateMeter + 8);
+          if (projectile.owner === 0) this.showBanner(`${projectile.kind.toUpperCase()} HIT!`, 1);
           remove = true;
           break;
         }
       }
       if (remove) {
         this.scene.remove(projectile.mesh);
+        disposeTransient(projectile.mesh);
         this.projectiles.splice(i, 1);
       }
     }
@@ -1142,14 +1503,16 @@ class GenieRace {
               pickup.collected = true;
               pickup.respawn = 10;
               pickup.mesh.visible = false;
-              const upgraded = Math.random() < 0.12;
-              racer.boostTime = Math.max(racer.boostTime, upgraded ? 2.4 : 0.65);
-              if (upgraded) racer.shieldTime = Math.max(racer.shieldTime, 2);
+              const upgraded = racer.character === 'genie' && Math.random() < 0.28;
+              racer.boostTime = Math.max(racer.boostTime, upgraded ? 1.5 : 0.65);
+              racer.itemCharges = Math.min(2, racer.itemCharges + 1);
+              racer.ultimateMeter = Math.min(100, racer.ultimateMeter + 7);
+              if (upgraded) racer.wishUpgrade = true;
               const sparkle = racer.position.clone().add(new THREE.Vector3(0, 1.4, 0));
               this.makePulse(racer.position, upgraded ? 0xffd778 : 0x82eaff, 0.5, upgraded ? 4.4 : 2.8);
               this.burst(sparkle, upgraded ? 0xffd778 : 0x89eeff, 0xfff0bd, upgraded ? 20 : 10);
               if (racer.id === 0) {
-                this.showBanner(upgraded ? 'PHENOMENAL POWER · UPGRADED!' : 'WISH SPARK!', 0.9);
+                this.showBanner(upgraded ? 'PHENOMENAL POWER · WISH UPGRADED!' : 'WISH SPARK · ITEM READY!', 0.9);
                 this.audio.play('pickup');
               }
               break;
@@ -1169,6 +1532,7 @@ class GenieRace {
       (pulse.mesh.material as THREE.MeshBasicMaterial).opacity = (1 - factor) * 0.7;
       if (pulse.age >= pulse.duration) {
         this.scene.remove(pulse.mesh);
+        disposeTransient(pulse.mesh);
         this.pulses.splice(i, 1);
       }
     }
@@ -1232,12 +1596,12 @@ class GenieRace {
 
   private updateHUD() {
     const player = this.racers[0];
-    hud.dataset.state = JSON.stringify(this.racers.map((racer) => ({ id: racer.id, lap: racer.lap, p: Number(racer.progress.toFixed(3)), x: Number(racer.position.x.toFixed(2)), y: Number(racer.position.y.toFixed(2)), z: Number(racer.position.z.toFixed(2)), yaw: Number(racer.yaw.toFixed(3)), route: this.track.nearest(racer.position, racer.progress).point.route, speed: Math.round(racer.speed), drift: Number(racer.driftCharge.toFixed(2)), padBoost: Number(racer.padBoostTime.toFixed(2)), stun: Number(racer.stunTime.toFixed(2)), hitGrace: Number(racer.hitCooldown.toFixed(2)), ultimate: Number(racer.ultimateTime.toFixed(2)) })));
+    hud.dataset.state = JSON.stringify(this.racers.map((racer) => ({ id: racer.id, character: racer.character, lap: racer.lap, p: Number(racer.progress.toFixed(3)), x: Number(racer.position.x.toFixed(2)), y: Number(racer.position.y.toFixed(2)), z: Number(racer.position.z.toFixed(2)), yaw: Number(racer.yaw.toFixed(3)), route: this.track.nearest(racer.position, racer.progress).point.route, speed: Math.round(racer.speed), drift: Number(racer.driftCharge.toFixed(2)), padBoost: Number(racer.padBoostTime.toFixed(2)), stun: Number(racer.stunTime.toFixed(2)), hitGrace: Number(racer.hitCooldown.toFixed(2)), ultimate: Number(racer.ultimateTime.toFixed(2)), meter: Math.round(racer.ultimateMeter), signatureCooldown: Number(racer.signatureCooldown.toFixed(1)), items: racer.itemCharges })));
     const standings = [...this.racers].sort((a, b) => (b.lap - 1 + b.progress) - (a.lap - 1 + a.progress));
     const rank = standings.findIndex((racer) => racer.id === 0) + 1;
     const suffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : 'rd';
     positionText.innerHTML = `${rank}<span>${suffix}</span><em> / 3</em>`;
-    lapText.textContent = `LAP ${player.lap} · ENDLESS`;
+    lapText.textContent = `LAP ${Math.min(3, player.lap)} / 3`;
     zoneText.textContent = this.track.zone(player.progress);
     lapTimeText.textContent = `${formatLapTime(this.lapClock)} · BEST ${Number.isFinite(this.bestLap) ? formatLapTime(this.bestLap) : '--:--.--'}`;
     speedText.textContent = String(Math.round(Math.max(0, player.speed) * 3.6));
@@ -1252,9 +1616,18 @@ class GenieRace {
       boostFill.style.width = `${clamp(player.boostTime / 3, 0, 1) * 100}%`;
       boostFill.style.background = '';
     }
-    wishTile.querySelector('small')!.textContent = this.wishHolding ? 'CHOOSE · RELEASE E' : player.ultimateTime > 0 ? 'ULTIMATE ACTIVE · NO COOLDOWN' : player.shieldTime > 0 ? 'SHIELD ACTIVE · NO COOLDOWN' : 'HOLD E · RELEASE TO CHOOSE';
-    ultimateTile.querySelector('small')!.textContent = player.ultimateTime > 0 ? `${player.ultimateTime.toFixed(1)}s ACTIVE` : 'READY · NO COOLDOWN';
+    const def = CHARACTER_BY_ID[player.character];
+    wishTile.querySelector('strong')!.textContent = def.signatureName.toUpperCase();
+    wishTile.querySelector('small')!.textContent = this.wishHolding ? 'CHOOSE · RELEASE E' : player.signatureCooldown > 0 ? `RECHARGING · ${player.signatureCooldown.toFixed(1)}s` : player.character === 'genie' ? 'READY · HOLD E TO CHOOSE' : 'READY · PRESS E';
+    signatureFill.style.width = `${clamp(1 - player.signatureCooldown / def.signatureCooldown, 0, 1) * 100}%`;
+    wishTile.classList.toggle('cooling', player.signatureCooldown > 0);
+    wishTile.classList.toggle('ready', player.signatureCooldown <= 0);
+    ultimateTile.querySelector('strong')!.textContent = def.ultimateName.toUpperCase();
+    ultimateTile.querySelector('small')!.textContent = player.ultimateTime > 0 ? `${player.ultimateTime.toFixed(1)}s ACTIVE` : player.ultimateMeter >= 100 ? 'READY · PRESS Q' : `CHARGING · ${Math.floor(player.ultimateMeter)}%`;
+    ultimateFill.style.width = `${player.ultimateMeter}%`;
     ultimateTile.classList.toggle('active', player.ultimateTime > 0);
+    ultimateTile.classList.toggle('ready', player.ultimateMeter >= 100 && player.ultimateTime <= 0);
+    itemCaption.innerHTML = `RANDOM WISH ITEM · ${player.itemCharges} READY<br><small>R · BOOST / SHIELD / STAR SHOT</small>`;
   }
 
   private drawMinimap() {

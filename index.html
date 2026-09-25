@@ -24,8 +24,8 @@
           <canvas id="minimap" width="200" height="170" aria-label="Race minimap"></canvas>
         </div>
         <div class="bottom-left">
-          <div class="item-icon">✦<span>∞</span></div>
-          <div class="item-caption">WISH ITEM<br><small>PASSIVE UPGRADE CHANCE</small></div>
+          <div class="item-icon">✦<span>R</span></div>
+          <div class="item-caption">RANDOM WISH ITEM<br><small>BOOST · SHIELD · STAR SHOT</small></div>
         </div>
         <div class="speed-group">
           <div class="speed"><strong id="speed">0</strong><span>km/h</span></div>
@@ -33,8 +33,8 @@
           <div id="surface" class="surface">ROAD</div>
         </div>
         <div class="ability-group">
-          <div class="ability-tile" id="wish-tile"><div class="ability-symbol">✦</div><div><strong>THREE WISHES</strong><small>HOLD E · RELEASE TO CHOOSE</small></div><kbd>E</kbd></div>
-          <div class="ability-tile ultimate-tile" id="ultimate-tile"><div class="ability-symbol">♛</div><div><strong>COSMIC SHOWSTOPPER</strong><small>READY · NO COOLDOWN</small></div><kbd>Q</kbd></div>
+          <div class="ability-tile" id="wish-tile"><div class="ability-symbol">✦</div><div><strong>THREE WISHES</strong><small>HOLD E · RELEASE TO CHOOSE</small><div class="ability-charge"><div id="signature-fill"></div></div></div><kbd>E</kbd></div>
+          <div class="ability-tile ultimate-tile" id="ultimate-tile"><div class="ability-symbol">♛</div><div><strong>COSMIC SHOWSTOPPER</strong><small>BUILD ULTIMATE ENERGY</small><div class="ability-charge"><div id="ultimate-fill"></div></div></div><kbd>Q</kbd></div>
         </div>
         <div id="wish-picker" class="wish-picker hidden">
           <div class="wish-title">CHOOSE YOUR WISH</div>
@@ -47,25 +47,28 @@
         </div>
         <div id="touch-controls" class="touch-controls hidden">
           <div class="touch-left"><button data-touch="left">◀</button><button data-touch="right">▶</button></div>
-          <div class="touch-right"><button data-touch="drift">DRIFT</button><button data-touch="wish">WISH</button><button data-touch="ultimate">ULT</button><button data-touch="accel">GO</button></div>
+          <div class="touch-right"><button data-touch="drift">DRIFT</button><button data-touch="wish">SIG</button><button data-touch="item">ITEM</button><button data-touch="ultimate">ULT</button><button data-touch="accel">GO</button></div>
         </div>
       </div>
 
       <div id="menu" class="overlay menu">
         <div class="menu-copy">
-          <div class="eyebrow">ONE RACER · ONE TRACK · ENDLESS LAPS</div>
+          <div class="eyebrow">TEN RACERS · THREE LAPS · ONE CIRCUIT</div>
           <h1><span>GENIE'S</span><br />MIDNIGHT RUN</h1>
           <p>Choose the boost alley, rooftop ramp, or garden cut. Drift the sharp bends, hit the apex carpets, and watch for the market cart.</p>
+          <div class="roster-heading">CHOOSE YOUR RACER</div>
+          <div id="character-select" class="character-select" role="group" aria-label="Choose your racer"></div>
+          <div id="character-detail" class="character-detail"></div>
           <button id="play" class="primary-button">START RACING <span>→</span></button>
-          <div class="menu-note">Abilities have no cooldown in this test build.</div>
+          <div class="menu-note">Signature powers recharge. Earn your Ultimate by racing well.</div>
         </div>
         <div class="controls-card">
           <div class="card-heading">CONTROLS</div>
           <div><span>Drive</span><strong>W A S D / ARROWS</strong></div>
           <div><span>Drift boost</span><strong>HOLD SPACE + STEER · RELEASE</strong></div>
-          <div><span>Choose a wish</span><strong>HOLD E · RELEASE</strong></div>
-          <div><span>Quick-test wishes</span><strong>1 BOOST · 2 SHIELD · 3 SHOT</strong></div>
-          <div><span>Ultimate</span><strong>Q</strong></div>
+          <div><span>Signature power</span><strong>E · HOLD FOR GENIE</strong></div>
+          <div><span>Random wish item</span><strong>R</strong></div>
+          <div><span>Ultimate</span><strong>Q WHEN CHARGED</strong></div>
           <div><span>Pause</span><strong>ESC</strong></div>
           <small>Tap Space to jump · Controller supported · Best on desktop</small>
         </div>
@@ -75,10 +78,20 @@
         <div class="pause-card">
           <div class="eyebrow">RACE PAUSED</div>
           <h2>Take a breath.</h2>
-          <p>The race stays endless. Jump back in whenever you're ready.</p>
+          <p>Jump back in whenever you're ready.</p>
           <button id="resume" class="primary-button">RESUME <span>→</span></button>
           <button id="restart" class="text-button">Restart race</button>
           <button id="mute" class="text-button">Sound: on</button>
+        </div>
+      </div>
+      <div id="results" class="overlay results hidden">
+        <div class="results-card">
+          <div class="eyebrow">CHECKERED FLAG</div>
+          <h2 id="results-place">FINISH!</h2>
+          <p id="results-summary">Three laps complete.</p>
+          <div id="results-time" class="results-time">00:00.00</div>
+          <button id="again" class="primary-button">RACE AGAIN <span>→</span></button>
+          <button id="back-menu" class="text-button">Choose another racer</button>
         </div>
       </div>
       <div id="countdown" class="countdown hidden">3</div>

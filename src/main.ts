@@ -783,13 +783,25 @@ class GenieRace {
   }
 
   private updateAI(racer: Racer, dt: number) {
-    if (racer.stunTime > 0) { racer.speed = 0; return; }
+    if (racer.stunTime > 0) { racer.speed = 0; racer.drifting = false; racer.driftCharge = 0; return; }
     const ahead = wrap(racer.progress + Math.max(0.014, racer.speed * (racer.padBoostTime > 0 ? 1.05 : 0.75) / this.track.length));
     let route: RouteName = 'main';
     if (racer.aiRoute === 'alley' && ahead > 0.045 && ahead < 0.16) route = 'alley';
     if (racer.aiRoute === 'roof' && ahead > 0.19 && ahead < 0.33) route = 'roof';
     if ((racer.aiRoute === 'garden' || racer.id === 1) && ahead > 0.37 && ahead < 0.53) route = 'garden';
     const target = this.track.routeAt(route, ahead);
+    const currentTangent = this.track.routeAt(route, racer.progress).tangent;
+    const bend = target.tangent.dot(new THREE.Vector3(-currentTangent.z, 0, currentTangent.x));
+    if (Math.abs(bend) > 0.2 && racer.speed > 17) {
+      if (!racer.drifting) {
+        racer.drifting = true;
+        this.startJump(racer, 0.32, 0.28);
+      }
+      racer.driftCharge += dt;
+      if (Math.random() < dt * 12) this.emitDriftSparks(racer);
+    } else if (racer.drifting) {
+      this.releaseDrift(racer);
+    }
     const direction = target.position.clone().sub(racer.position);
     let targetYaw = Math.atan2(direction.x, direction.z);
     for (const obstacle of this.track.obstacles) {
@@ -802,7 +814,7 @@ class GenieRace {
     const error = angleDiff(targetYaw, racer.yaw);
     const steer = clamp(error * 2.4, -1, 1);
     racer.steerVisual = steer;
-    racer.yaw += steer * (1.2 - Math.min(racer.speed / 100, 0.25)) * dt;
+    racer.yaw += steer * (1.2 - Math.min(racer.speed / 100, 0.25)) * (racer.drifting ? 1.25 : 1) * (racer.padBoostTime > 0 ? 1.3 : 1) * dt;
     racer.moveYaw += angleDiff(racer.yaw, racer.moveYaw) * Math.min(1, dt * 5);
     let targetSpeed = 27 + racer.id * 0.6 + Math.sin(this.elapsed * 0.5 + racer.id) * 1.4;
     if (Math.abs(error) > 0.5) targetSpeed = 22;
@@ -875,9 +887,11 @@ class GenieRace {
     if (charge < 0.58) return;
     const stage = charge >= 1.9 ? 3 : charge >= 1.18 ? 2 : 1;
     racer.boostTime = Math.max(racer.boostTime, [0, 0.65, 1.2, 1.8][stage]);
-    this.showBanner(['', 'BLUE DRIFT BOOST', 'GOLD DRIFT BOOST', 'COSMIC DRIFT BOOST'][stage], 0.95);
-    this.audio.play('drift');
-    this.audio.play('boost');
+    if (racer.id === 0) {
+      this.showBanner(['', 'BLUE DRIFT BOOST', 'GOLD DRIFT BOOST', 'COSMIC DRIFT BOOST'][stage], 0.95);
+      this.audio.play('drift');
+      this.audio.play('boost');
+    }
   }
 
   private emitDriftSparks(racer: Racer) {

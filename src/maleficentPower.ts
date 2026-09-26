@@ -5,6 +5,7 @@ export const DRAGON_ULTIMATE_DURATION = 12;
 export const DRAGON_FIRE_DURATION = 3;
 export const DRAGON_FIRE_RANGE = 42;
 const BREATH_DURATION = 0.48;
+const SCORCH_AFTERGLOW_DURATION = 2.2;
 
 interface BreathRacer {
   id: number;
@@ -33,8 +34,20 @@ interface BurnMark {
   position: THREE.Vector3;
   mesh: THREE.Group;
   floor: THREE.MeshBasicMaterial;
+  scorch: THREE.MeshBasicMaterial;
+  rim: THREE.MeshBasicMaterial;
+  veins: THREE.MeshBasicMaterial;
   flames: THREE.MeshBasicMaterial[];
   hit: Set<number>;
+}
+
+interface ScorchedKart {
+  group: THREE.Group;
+  flames: THREE.MeshBasicMaterial;
+  soot: THREE.MeshBasicMaterial;
+  embers: THREE.Mesh[];
+  light: THREE.PointLight;
+  time: number;
 }
 
 export interface BreathHit {
@@ -48,12 +61,48 @@ export interface BreathHit {
 export class DragonBreath {
   private readonly breaths: Breath[] = [];
   private readonly marks: BurnMark[] = [];
+  private readonly scorched = new Map<number, ScorchedKart>();
 
   constructor(private readonly scene: THREE.Scene) {}
 
   get activeCount() { return this.breaths.length; }
-  get fireCount() { return this.marks.filter((mark) => mark.age >= mark.delay).length; }
-  get fireLifetimes() { return this.marks.filter((mark) => mark.age >= mark.delay).map((mark) => Number((DRAGON_FIRE_DURATION - mark.age + mark.delay).toFixed(2))); }
+  get fireCount() { return this.marks.filter((mark) => mark.age >= mark.delay && mark.age - mark.delay < DRAGON_FIRE_DURATION).length; }
+  get fireLifetimes() { return this.marks.filter((mark) => mark.age >= mark.delay && mark.age - mark.delay < DRAGON_FIRE_DURATION).map((mark) => Number((DRAGON_FIRE_DURATION - mark.age + mark.delay).toFixed(2))); }
+  get scorchedCount() { return [...this.scorched.values()].filter((effect) => effect.time > 0).length; }
+
+  scorchKart(racer: BreathRacer & { visual: { group: THREE.Group } }) {
+    let effect = this.scorched.get(racer.id);
+    if (!effect) {
+      const group = new THREE.Group();
+      const flames = new THREE.MeshBasicMaterial({ color: 0x7cff56, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, toneMapped: false });
+      const soot = new THREE.MeshBasicMaterial({ color: 0x151221, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
+      for (const side of [-1, 1]) for (const end of [-1, 1]) {
+        const stain = new THREE.Mesh(new THREE.SphereGeometry(0.45, 10, 6), soot);
+        stain.position.set(side * 1.05, 0.75, end * 0.82);
+        stain.scale.set(1.2, 0.14, 0.7);
+        group.add(stain);
+        const flame = new THREE.Mesh(new THREE.ConeGeometry(0.3, 1.15, 8, 3, true), flames);
+        flame.position.set(side * 1.13, 1.18, end * 0.85);
+        flame.rotation.z = side * 0.2;
+        group.add(flame);
+      }
+      const embers: THREE.Mesh[] = [];
+      for (let i = 0; i < 7; i++) {
+        const ember = new THREE.Mesh(new THREE.OctahedronGeometry(0.075 + (i % 3) * 0.027, 0), flames);
+        ember.position.set(Math.sin(i * 2.9) * 1.25, 1.1 + (i % 3) * 0.4, Math.cos(i * 3.7) * 1.1);
+        group.add(ember);
+        embers.push(ember);
+      }
+      const light = new THREE.PointLight(0x88ff67, 0, 6, 2);
+      light.position.y = 1.1;
+      group.add(light);
+      effect = { group, flames, soot, embers, light, time: 0 };
+      this.scorched.set(racer.id, effect);
+    }
+    if (effect.group.parent !== racer.visual.group) racer.visual.group.add(effect.group);
+    effect.time = 1.75;
+    effect.group.visible = true;
+  }
 
   fire(owner: number, origin: THREE.Vector3, target: THREE.Vector3, track: RaceTrack) {
     const displacement = target.clone().sub(origin).setY(0);
@@ -108,18 +157,30 @@ export class DragonBreath {
       probe.y = road.point.position.y + 0.16;
       const mesh = new THREE.Group();
       mesh.position.copy(probe);
-      const scorch = new THREE.Mesh(new THREE.CircleGeometry(3.6, 22), new THREE.MeshBasicMaterial({ color: 0x170e25, transparent: true, opacity: 0.78, depthWrite: false, side: THREE.DoubleSide }));
-      scorch.rotation.x = -Math.PI / 2;
-      scorch.position.y = -0.03;
-      mesh.add(scorch);
+      const scorch = new THREE.MeshBasicMaterial({ color: 0x170e25, transparent: true, opacity: 0.78, depthWrite: false, side: THREE.DoubleSide });
+      const scorchDisk = new THREE.Mesh(new THREE.CircleGeometry(3.6, 22), scorch);
+      scorchDisk.rotation.x = -Math.PI / 2;
+      scorchDisk.position.y = -0.03;
+      mesh.add(scorchDisk);
       const floor = new THREE.MeshBasicMaterial({ color: 0x56ff63, transparent: true, opacity: 0.58, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, side: THREE.DoubleSide });
       const disk = new THREE.Mesh(new THREE.CircleGeometry(3.35, 24), floor);
       disk.rotation.x = -Math.PI / 2;
       mesh.add(disk);
-      const bright = new THREE.Mesh(new THREE.TorusGeometry(2.45, 0.19, 6, 24), new THREE.MeshBasicMaterial({ color: 0xd6ff80, transparent: true, opacity: 0.72, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
+      const rim = new THREE.MeshBasicMaterial({ color: 0xd6ff80, transparent: true, opacity: 0.72, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+      const bright = new THREE.Mesh(new THREE.TorusGeometry(2.45, 0.19, 6, 24), rim);
       bright.rotation.x = Math.PI / 2;
       bright.position.y = 0.1;
       mesh.add(bright);
+      const veins = new THREE.MeshBasicMaterial({ color: 0x93ff68, transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+      for (let crack = 0; crack < 4; crack++) {
+        const angle = crack * Math.PI / 2 + along * 0.19;
+        const path = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(Math.cos(angle) * 0.55, 0.07, Math.sin(angle) * 0.55),
+          new THREE.Vector3(Math.cos(angle + 0.22) * 1.5, 0.07, Math.sin(angle + 0.22) * 1.5),
+          new THREE.Vector3(Math.cos(angle - 0.1) * 2.85, 0.07, Math.sin(angle - 0.1) * 2.85),
+        ]);
+        mesh.add(new THREE.Mesh(new THREE.TubeGeometry(path, 9, 0.075, 5, false), veins));
+      }
       const flames: THREE.MeshBasicMaterial[] = [];
       for (let part = 0; part < 5; part++) {
         const flameMaterial = new THREE.MeshBasicMaterial({ color: part % 2 ? 0x98ff65 : 0xcfff80, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, side: THREE.DoubleSide });
@@ -131,12 +192,23 @@ export class DragonBreath {
       }
       mesh.visible = false;
       this.scene.add(mesh);
-      this.marks.push({ owner, age: 0, delay: along / 60, position: probe, mesh, floor, flames, hit: castHit });
+      this.marks.push({ owner, age: 0, delay: along / 60, position: probe, mesh, floor, scorch, rim, veins, flames, hit: castHit });
     }
   }
 
   update(dt: number, racers: BreathRacer[]): BreathHit[] {
     const hits: BreathHit[] = [];
+    for (const effect of this.scorched.values()) {
+      effect.time = Math.max(0, effect.time - dt);
+      const strength = Math.min(1, effect.time * 2.1);
+      effect.group.visible = strength > 0.01;
+      effect.flames.opacity = (0.55 + Math.sin(effect.time * 23) * 0.12) * strength;
+      effect.soot.opacity = 0.48 * strength;
+      effect.light.intensity = 1.65 * strength;
+      effect.embers.forEach((ember, index) => {
+        ember.position.y = 1.1 + (index % 3) * 0.4 + Math.sin(effect.time * 8 + index) * 0.24;
+      });
+    }
     for (let index = this.breaths.length - 1; index >= 0; index--) {
       const breath = this.breaths[index];
       breath.age += dt;
@@ -171,10 +243,22 @@ export class DragonBreath {
       mark.age += dt;
       const burning = mark.age - mark.delay;
       if (burning < 0) continue;
-      if (burning >= DRAGON_FIRE_DURATION) { this.disposeMark(index); continue; }
+      if (burning >= DRAGON_FIRE_DURATION + SCORCH_AFTERGLOW_DURATION) { this.disposeMark(index); continue; }
       mark.mesh.visible = true;
+      if (burning >= DRAGON_FIRE_DURATION) {
+        const afterglow = 1 - (burning - DRAGON_FIRE_DURATION) / SCORCH_AFTERGLOW_DURATION;
+        mark.floor.opacity = 0;
+        mark.rim.opacity = 0;
+        mark.veins.opacity = 0.42 * afterglow;
+        mark.scorch.opacity = 0.68 * afterglow;
+        mark.flames.forEach((material) => { material.opacity = 0; });
+        continue;
+      }
       const fade = Math.min(1, burning * 5, (DRAGON_FIRE_DURATION - burning) * 1.9);
       mark.floor.opacity = 0.58 * fade;
+      mark.rim.opacity = 0.72 * fade;
+      mark.veins.opacity = 0.7 * fade;
+      mark.scorch.opacity = 0.78;
       mark.flames.forEach((material, part) => { material.opacity = (0.67 + Math.sin(burning * 18 + part * 2.1) * 0.16) * fade; });
       for (const racer of racers) {
         if (racer.id === mark.owner || mark.hit.has(racer.id) || Math.abs(racer.position.y - mark.position.y) > 2.8) continue;
@@ -189,6 +273,16 @@ export class DragonBreath {
   reset() {
     for (let index = this.breaths.length - 1; index >= 0; index--) this.dispose(index);
     for (let index = this.marks.length - 1; index >= 0; index--) this.disposeMark(index);
+    for (const effect of this.scorched.values()) {
+      effect.group.removeFromParent();
+      effect.group.traverse((part) => {
+        if (part instanceof THREE.Mesh) {
+          part.geometry.dispose();
+          (part.material as THREE.Material).dispose();
+        }
+      });
+    }
+    this.scorched.clear();
   }
 
   private dispose(index: number) {

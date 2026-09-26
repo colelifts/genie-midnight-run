@@ -1,7 +1,10 @@
 import * as THREE from 'three';
+import type { RaceTrack } from './track';
 
 export const DRAGON_ULTIMATE_DURATION = 12;
-const BREATH_DURATION = 1.0;
+export const DRAGON_FIRE_DURATION = 3;
+export const DRAGON_FIRE_RANGE = 42;
+const BREATH_DURATION = 0.48;
 
 interface BreathRacer {
   id: number;
@@ -11,8 +14,11 @@ interface BreathRacer {
 
 interface Breath {
   owner: number;
-  aimSign: number;
   age: number;
+  origin: THREE.Vector3;
+  forward: THREE.Vector3;
+  right: THREE.Vector3;
+  length: number;
   group: THREE.Group;
   materials: THREE.MeshBasicMaterial[];
   embers: THREE.Mesh[];
@@ -20,32 +26,53 @@ interface Breath {
   hit: Set<number>;
 }
 
+interface BurnMark {
+  owner: number;
+  age: number;
+  delay: number;
+  position: THREE.Vector3;
+  mesh: THREE.Group;
+  floor: THREE.MeshBasicMaterial;
+  flames: THREE.MeshBasicMaterial[];
+  hit: Set<number>;
+}
+
 export interface BreathHit {
   owner: number;
   target: number;
   position: THREE.Vector3;
+  kind: 'breath' | 'fire';
 }
 
 /** A short, wide, steerable cone attack rather than a traveling projectile. */
 export class DragonBreath {
   private readonly breaths: Breath[] = [];
+  private readonly marks: BurnMark[] = [];
 
   constructor(private readonly scene: THREE.Scene) {}
 
   get activeCount() { return this.breaths.length; }
+  get fireCount() { return this.marks.filter((mark) => mark.age >= mark.delay).length; }
+  get fireLifetimes() { return this.marks.filter((mark) => mark.age >= mark.delay).map((mark) => Number((DRAGON_FIRE_DURATION - mark.age + mark.delay).toFixed(2))); }
 
-  fire(owner: number, aimSign: number) {
+  fire(owner: number, origin: THREE.Vector3, target: THREE.Vector3, track: RaceTrack) {
+    const displacement = target.clone().sub(origin).setY(0);
+    if (displacement.lengthSq() < 1) return;
+    const length = Math.min(DRAGON_FIRE_RANGE, displacement.length());
+    const forward = displacement.normalize();
+    const right = new THREE.Vector3(forward.z, 0, -forward.x);
+    const yaw = Math.atan2(forward.x, forward.z);
     const group = new THREE.Group();
     const materials: THREE.MeshBasicMaterial[] = [];
-    for (const [radius, length, color, opacity] of [
-      [3.45, 19, 0x37ff76, 0.22],
-      [2.4, 17.5, 0x7cff6c, 0.38],
-      [1.22, 15.5, 0xe5ff9d, 0.58],
+    for (const [radius, beamLength, color, opacity] of [
+      [3.8, length, 0x37ff76, 0.27],
+      [2.6, length * 0.96, 0x7cff6c, 0.44],
+      [1.35, length * 0.91, 0xe5ff9d, 0.66],
     ] as const) {
       const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, toneMapped: false });
-      const flame = new THREE.Mesh(new THREE.ConeGeometry(radius, length, 20, 4, true), material);
-      flame.rotation.x = -Math.PI / 2;
-      flame.position.z = length / 2;
+      const flame = new THREE.Mesh(new THREE.ConeGeometry(radius, beamLength, 20, 4, true), material);
+      flame.rotation.x = Math.PI / 2;
+      flame.position.z = beamLength / 2;
       flame.rotation.z = materials.length * 1.73;
       group.add(flame);
       materials.push(material);
@@ -68,8 +95,44 @@ export class DragonBreath {
     const light = new THREE.PointLight(0x9bff80, 3.6, 19, 2);
     light.position.z = 5;
     group.add(light);
+    group.position.copy(origin).addScaledVector(forward, 2.6).add(new THREE.Vector3(0, 3.8, 0));
+    group.rotation.y = yaw;
+    group.rotation.x = 0.1;
+    const castHit = new Set<number>();
     this.scene.add(group);
-    this.breaths.push({ owner, aimSign, age: 0, group, materials, embers, light, hit: new Set() });
+    this.breaths.push({ owner, age: 0, origin: origin.clone(), forward, right, length, group, materials, embers, light, hit: castHit });
+    for (let along = 4; along <= length + 1; along += 4.2) {
+      const probe = origin.clone().addScaledVector(forward, Math.min(along, length));
+      const road = track.nearest(probe);
+      if (!road.onRoad || Math.abs(road.lateral) > road.point.width / 2 - 1.5 || Math.abs(probe.y - road.point.position.y) > 4) continue;
+      probe.y = road.point.position.y + 0.16;
+      const mesh = new THREE.Group();
+      mesh.position.copy(probe);
+      const scorch = new THREE.Mesh(new THREE.CircleGeometry(3.6, 22), new THREE.MeshBasicMaterial({ color: 0x170e25, transparent: true, opacity: 0.78, depthWrite: false, side: THREE.DoubleSide }));
+      scorch.rotation.x = -Math.PI / 2;
+      scorch.position.y = -0.03;
+      mesh.add(scorch);
+      const floor = new THREE.MeshBasicMaterial({ color: 0x56ff63, transparent: true, opacity: 0.58, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, side: THREE.DoubleSide });
+      const disk = new THREE.Mesh(new THREE.CircleGeometry(3.35, 24), floor);
+      disk.rotation.x = -Math.PI / 2;
+      mesh.add(disk);
+      const bright = new THREE.Mesh(new THREE.TorusGeometry(2.45, 0.19, 6, 24), new THREE.MeshBasicMaterial({ color: 0xd6ff80, transparent: true, opacity: 0.72, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }));
+      bright.rotation.x = Math.PI / 2;
+      bright.position.y = 0.1;
+      mesh.add(bright);
+      const flames: THREE.MeshBasicMaterial[] = [];
+      for (let part = 0; part < 5; part++) {
+        const flameMaterial = new THREE.MeshBasicMaterial({ color: part % 2 ? 0x98ff65 : 0xcfff80, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, side: THREE.DoubleSide });
+        const tongue = new THREE.Mesh(new THREE.ConeGeometry(part % 2 ? 0.7 : 0.95, 2.3 + part % 3, 7), flameMaterial);
+        tongue.position.set(Math.cos(part * 2.4) * 1.5, 1.2, Math.sin(part * 2.4) * 1.5);
+        tongue.rotation.z = Math.sin(part * 2.7) * 0.3;
+        mesh.add(tongue);
+        flames.push(flameMaterial);
+      }
+      mesh.visible = false;
+      this.scene.add(mesh);
+      this.marks.push({ owner, age: 0, delay: along / 60, position: probe, mesh, floor, flames, hit: castHit });
+    }
   }
 
   update(dt: number, racers: BreathRacer[]): BreathHit[] {
@@ -77,16 +140,10 @@ export class DragonBreath {
     for (let index = this.breaths.length - 1; index >= 0; index--) {
       const breath = this.breaths[index];
       breath.age += dt;
-      const owner = racers[breath.owner];
-      if (!owner || breath.age >= BREATH_DURATION) {
+      if (breath.age >= BREATH_DURATION) {
         this.dispose(index);
         continue;
       }
-      const yaw = owner.yaw + (breath.aimSign < 0 ? Math.PI : 0);
-      const forward = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
-      const right = new THREE.Vector3(forward.z, 0, -forward.x);
-      breath.group.position.copy(owner.position).addScaledVector(forward, 3.1).add(new THREE.Vector3(0, 3.7, 0));
-      breath.group.rotation.y = yaw;
       const grow = Math.min(1, breath.age / 0.14);
       const fade = Math.min(1, (BREATH_DURATION - breath.age) / 0.2);
       breath.group.scale.set(0.7 + Math.sin(breath.age * 42) * 0.08, 0.8 + Math.sin(breath.age * 37) * 0.09, grow);
@@ -100,13 +157,30 @@ export class DragonBreath {
       });
       if (breath.age < 0.16) continue;
       for (const racer of racers) {
-        if (racer.id === owner.id || breath.hit.has(racer.id) || Math.abs(racer.position.y - owner.position.y) > 5) continue;
-        const delta = racer.position.clone().sub(owner.position);
-        const along = delta.dot(forward);
-        const across = Math.abs(delta.dot(right));
-        if (along < 2.5 || along > 21 || across > 1.25 + along * 0.23) continue;
+        if (racer.id === breath.owner || breath.hit.has(racer.id) || Math.abs(racer.position.y - breath.origin.y) > 5) continue;
+        const delta = racer.position.clone().sub(breath.origin);
+        const along = delta.dot(breath.forward);
+        const across = Math.abs(delta.dot(breath.right));
+        if (along < 2.5 || along > breath.length * grow || across > 1.5 + along * 0.18) continue;
         breath.hit.add(racer.id);
-        hits.push({ owner: owner.id, target: racer.id, position: racer.position.clone() });
+        hits.push({ owner: breath.owner, target: racer.id, position: racer.position.clone(), kind: 'breath' });
+      }
+    }
+    for (let index = this.marks.length - 1; index >= 0; index--) {
+      const mark = this.marks[index];
+      mark.age += dt;
+      const burning = mark.age - mark.delay;
+      if (burning < 0) continue;
+      if (burning >= DRAGON_FIRE_DURATION) { this.disposeMark(index); continue; }
+      mark.mesh.visible = true;
+      const fade = Math.min(1, burning * 5, (DRAGON_FIRE_DURATION - burning) * 1.9);
+      mark.floor.opacity = 0.58 * fade;
+      mark.flames.forEach((material, part) => { material.opacity = (0.67 + Math.sin(burning * 18 + part * 2.1) * 0.16) * fade; });
+      for (const racer of racers) {
+        if (racer.id === mark.owner || mark.hit.has(racer.id) || Math.abs(racer.position.y - mark.position.y) > 2.8) continue;
+        if (Math.hypot(racer.position.x - mark.position.x, racer.position.z - mark.position.z) > 4.1) continue;
+        mark.hit.add(racer.id);
+        hits.push({ owner: mark.owner, target: racer.id, position: racer.position.clone(), kind: 'fire' });
       }
     }
     return hits;
@@ -114,12 +188,24 @@ export class DragonBreath {
 
   reset() {
     for (let index = this.breaths.length - 1; index >= 0; index--) this.dispose(index);
+    for (let index = this.marks.length - 1; index >= 0; index--) this.disposeMark(index);
   }
 
   private dispose(index: number) {
     const [breath] = this.breaths.splice(index, 1);
     this.scene.remove(breath.group);
     breath.group.traverse((part) => {
+      if (part instanceof THREE.Mesh) {
+        part.geometry.dispose();
+        (part.material as THREE.Material).dispose();
+      }
+    });
+  }
+
+  private disposeMark(index: number) {
+    const [mark] = this.marks.splice(index, 1);
+    this.scene.remove(mark.mesh);
+    mark.mesh.traverse((part) => {
       if (part instanceof THREE.Mesh) {
         part.geometry.dispose();
         (part.material as THREE.Material).dispose();

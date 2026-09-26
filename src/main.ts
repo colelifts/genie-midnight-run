@@ -10,7 +10,7 @@ import { CHARACTERS, CHARACTER_BY_ID, type CharacterId } from './characters';
 import { KartVisual, makeProjectile } from './kart';
 import { StitchUfo, STITCH_UFO_DURATION, STITCH_UFO_INBOUND_DURATION } from './stitchUfo';
 import { PlutoUltimate, PlutoTongue, PLUTO_ULTIMATE_DURATION } from './pluto';
-import { DragonBreath, DRAGON_ULTIMATE_DURATION } from './maleficentPower';
+import { DragonBreath, DRAGON_FIRE_RANGE, DRAGON_ULTIMATE_DURATION } from './maleficentPower';
 import { RacerShowcase } from './showcase';
 import { ITEMS, rollItem, type ItemId } from './items';
 import { BOOST_PAD_LAYOUT, GARDEN_ROUTE_END, MARKET_CROSSING_PROGRESS, MARKET_CROSSING_TRAVEL, marketCartState, PICKUP_LAYOUT, RaceTrack, START_GRID_BASE_PROGRESS, START_GRID_LANES, startGridProgress, touchesBoostPad, type RoadHit, type RoadPoint, type RouteName } from './track';
@@ -308,7 +308,9 @@ class GenieRace {
   private skyColors!: THREE.BufferAttribute;
   private skyCalm!: Float32Array;
   private skyStorm!: Float32Array;
+  private skyDragon!: Float32Array;
   private stormBlend = 0;
+  private dragonBlend = 0;
   private ambientUltBlend = 0;
   private stitchIntroTime = 0;
   private ufoPhase = 'none';
@@ -350,8 +352,17 @@ class GenieRace {
   private cameraLook = new THREE.Vector3();
   private cameraYaw = 0;
   private sunlight!: THREE.DirectionalLight;
+  private ambientLight!: THREE.HemisphereLight;
+  private moonFill!: THREE.DirectionalLight;
+  private dragonWorldLight!: THREE.PointLight;
   private cameraDistance = 14.3;
+  private cameraHeight = 4.55;
+  private cameraAhead = 12;
   private cameraReady = false;
+  private readonly mouseAimNdc = new THREE.Vector2();
+  private mouseAimActive = false;
+  private readonly dragonAimPoint = new THREE.Vector3();
+  private readonly dragonAimReticle = new THREE.Group();
   private mapTransform = { centerX: 0, centerZ: 0, scale: 0.25 };
   private smoothedFps = 60;
   private lastFrame = performance.now();
@@ -378,6 +389,7 @@ class GenieRace {
     this.scene.background = new THREE.Color(0x1c2a59);
     this.scene.fog = new THREE.Fog(0x3a3158, 260, 700);
     const ambient = new THREE.HemisphereLight(0xa9b9fa, 0x875263, 1.25);
+    this.ambientLight = ambient;
     this.scene.add(ambient);
     const sunlight = new THREE.DirectionalLight(0xffc480, 2.15);
     sunlight.position.set(-75, 130, -85);
@@ -393,8 +405,11 @@ class GenieRace {
     this.sunlight = sunlight;
     this.scene.add(sunlight, sunlight.target);
     const moonFill = new THREE.DirectionalLight(0x809cff, 0.62);
+    this.moonFill = moonFill;
     moonFill.position.set(90, 80, 45);
     this.scene.add(moonFill);
+    this.dragonWorldLight = new THREE.PointLight(0x9fff76, 0, 85, 1.65);
+    this.scene.add(this.dragonWorldLight);
     this.makeSky();
     this.makeStars();
     this.track = new RaceTrack(this.scene);
@@ -402,6 +417,21 @@ class GenieRace {
     this.pluto = new PlutoUltimate(this.scene, this.track);
     this.plutoTongue = new PlutoTongue(this.scene);
     this.dragonBreath = new DragonBreath(this.scene);
+    const aimMaterial = new THREE.MeshBasicMaterial({ color: 0xcaff89, transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+    for (const radius of [1.2, 3.1]) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(radius, radius === 1.2 ? 0.09 : 0.16, 6, 48), aimMaterial);
+      ring.rotation.x = Math.PI / 2;
+      this.dragonAimReticle.add(ring);
+    }
+    for (let side = 0; side < 4; side++) {
+      const fang = new THREE.Mesh(new THREE.ConeGeometry(0.32, 1.4, 6), aimMaterial);
+      fang.rotation.z = Math.PI / 2;
+      fang.position.set(Math.sin(side * Math.PI / 2) * 3.3, 0.2, Math.cos(side * Math.PI / 2) * 3.3);
+      fang.rotation.y = side * Math.PI / 2;
+      this.dragonAimReticle.add(fang);
+    }
+    this.dragonAimReticle.visible = false;
+    this.scene.add(this.dragonAimReticle);
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
     for (const point of this.track.samples) {
       minX = Math.min(minX, point.position.x);
@@ -474,18 +504,25 @@ class GenieRace {
     const stormHorizon = new THREE.Color(0x47345f);
     const stormMiddle = new THREE.Color(0x25183f);
     const stormZenith = new THREE.Color(0x0d102b);
+    const dragonHorizon = new THREE.Color(0x35402c);
+    const dragonMiddle = new THREE.Color(0x253e3f);
+    const dragonZenith = new THREE.Color(0x100c27);
     const stormColors: number[] = [];
+    const dragonColors: number[] = [];
     for (let i = 0; i < positions.count; i++) {
       const up = Math.max(0, positions.getY(i) / 540);
       const color = up < 0.32 ? horizon.clone().lerp(middle, up / 0.32) : middle.clone().lerp(zenith, Math.min(1, (up - 0.32) / 0.68));
       colors.push(color.r, color.g, color.b);
       const storm = up < 0.32 ? stormHorizon.clone().lerp(stormMiddle, up / 0.32) : stormMiddle.clone().lerp(stormZenith, Math.min(1, (up - 0.32) / 0.68));
       stormColors.push(storm.r, storm.g, storm.b);
+      const dragon = up < 0.32 ? dragonHorizon.clone().lerp(dragonMiddle, up / 0.32) : dragonMiddle.clone().lerp(dragonZenith, Math.min(1, (up - 0.32) / 0.68));
+      dragonColors.push(dragon.r, dragon.g, dragon.b);
     }
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     this.skyColors = geometry.getAttribute('color') as THREE.BufferAttribute;
     this.skyCalm = new Float32Array(colors);
     this.skyStorm = new Float32Array(stormColors);
+    this.skyDragon = new Float32Array(dragonColors);
     const sky = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, depthWrite: false, fog: false }));
     sky.renderOrder = -100;
     this.scene.add(sky);
@@ -507,15 +544,19 @@ class GenieRace {
     this.scene.add(moon);
   }
 
-  private setStorm(amount: number) {
-    this.stormBlend = amount;
+  private setAtmosphere(storm: number, dragon: number) {
+    this.stormBlend = storm;
+    this.dragonBlend = dragon;
     const values = this.skyColors.array as Float32Array;
-    for (let i = 0; i < values.length; i++) values[i] = this.skyCalm[i] + (this.skyStorm[i] - this.skyCalm[i]) * amount;
+    const total = Math.max(1, storm + dragon);
+    for (let i = 0; i < values.length; i++) values[i] = this.skyCalm[i] * Math.max(0, 1 - storm - dragon) + this.skyStorm[i] * storm / total + this.skyDragon[i] * dragon / total;
     this.skyColors.needsUpdate = true;
-    (this.scene.fog as THREE.Fog).color.copy(new THREE.Color(0x3a3158).lerp(new THREE.Color(0x302841), amount));
-    this.sunlight.color.copy(new THREE.Color(0xffc480).lerp(new THREE.Color(0xc2b8ef), amount));
-    this.sunlight.intensity = 2.15 - amount * 1.03;
-    this.renderer.toneMappingExposure = 1.34 - amount * 0.15;
+    (this.scene.fog as THREE.Fog).color.copy(new THREE.Color(0x3a3158).lerp(new THREE.Color(0x302841), storm).lerp(new THREE.Color(0x29233c), dragon));
+    this.sunlight.color.copy(new THREE.Color(0xffc480).lerp(new THREE.Color(0xc2b8ef), storm).lerp(new THREE.Color(0x9af58d), dragon));
+    this.ambientLight.color.copy(new THREE.Color(0xa9b9fa).lerp(new THREE.Color(0x9e91dc), dragon));
+    this.ambientLight.groundColor.copy(new THREE.Color(0x875263).lerp(new THREE.Color(0x352653), dragon));
+    this.moonFill.color.copy(new THREE.Color(0x809cff).lerp(new THREE.Color(0x9fffad), dragon));
+    this.renderer.toneMappingExposure = 1.34 - storm * 0.15 - dragon * 0.09;
   }
 
   private raceStarts() {
@@ -689,6 +730,16 @@ class GenieRace {
 
   private bindInput() {
     const gameKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyE', 'KeyR', 'KeyQ', 'KeyF'];
+    window.addEventListener('pointermove', (event) => {
+      if (event.pointerType === 'touch') return;
+      this.mouseAimNdc.set(event.clientX / window.innerWidth * 2 - 1, 1 - event.clientY / window.innerHeight * 2);
+      if (this.mode === 'race' && this.racers[0].character === 'maleficent' && this.racers[0].ultimateTime > 0) this.mouseAimActive = true;
+    });
+    canvas.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0 || this.mode !== 'race' || this.racers[0].character !== 'maleficent' || this.racers[0].ultimateTime <= 0) return;
+      event.preventDefault();
+      this.useSignature(this.racers[0]);
+    });
     window.addEventListener('keydown', (event) => {
       if (gameKeys.includes(event.code)) event.preventDefault();
       if (this.plutoPreview) this.audio.start();
@@ -801,7 +852,9 @@ class GenieRace {
     this.stitchIntroTime = 0;
     this.ambientUltBlend = 0;
     atmosphereShade.style.opacity = '0';
-    this.setStorm(0);
+    this.setAtmosphere(0, 0);
+    this.dragonAimReticle.visible = false;
+    this.mouseAimActive = false;
     this.lapClock = 0;
     this.raceClock = 0;
     delete hud.dataset.handlingStart;
@@ -1102,14 +1155,14 @@ class GenieRace {
     if (racer.character === 'genie' && racer.id === 0) { this.beginWish(); return; }
     if (racer.character === 'buzz' && racer.id === 0) { this.beginLaserLock(); return; }
     if (racer.character === 'maleficent' && racer.ultimateTime > 0) {
-      racer.signatureCooldown = 1.55;
-      const aimSign = this.projectileAimSign(racer);
-      this.dragonBreath.fire(racer.id, aimSign);
-      const mouth = racer.position.clone().addScaledVector(this.projectileDirection(racer, aimSign), 3.8).add(new THREE.Vector3(0, 3.7, 0));
+      racer.signatureCooldown = 2.15;
+      const target = this.dragonAimFor(racer);
+      this.dragonBreath.fire(racer.id, racer.position, target, this.track);
+      const mouth = racer.position.clone().addScaledVector(target.clone().sub(racer.position).setY(0).normalize(), 3.8).add(new THREE.Vector3(0, 3.7, 0));
       this.makeFlash(mouth, 0x93ff72, 7.3, 0.48);
       this.burst(mouth, 0x73ff6d, 0xeaffaa, 32);
       this.racerSound('maleficent-breath', racer);
-      if (racer.id === 0) this.showBanner('DRAGON BREATH · SWEEP THE ROAD!', 0.9);
+      if (racer.id === 0) this.showBanner('DRAGON FIRE · ROAD BURNS FOR 3 SECONDS!', 1.1);
       return;
     }
     let hexTarget: Racer | undefined;
@@ -1278,13 +1331,14 @@ class GenieRace {
     }
     if (racer.character === 'maleficent') {
       racer.signatureCooldown = 0;
+      if (racer.id === 0) this.mouseAimActive = false;
       this.racerSound('maleficent-roar', racer);
     }
     racer.ultimateHit.clear();
     racer.powerTick = 0;
     racer.visual.setUltimate(racer.character !== 'stitch');
     const def = CHARACTER_BY_ID[racer.character];
-    const shadeColor = racer.character === 'stitch' ? new THREE.Color(0x1b1236) : new THREE.Color(def.color).multiplyScalar(0.22);
+    const shadeColor = racer.character === 'stitch' ? new THREE.Color(0x1b1236) : racer.character === 'maleficent' ? new THREE.Color(0x102719) : new THREE.Color(def.color).multiplyScalar(0.22);
     atmosphereShade.style.setProperty('--atmosphere-color', `#${shadeColor.getHexString()}`);
     this.bannerTime = 0;
     banner.classList.add('hidden');
@@ -1295,7 +1349,7 @@ class GenieRace {
       stitchIntro.classList.remove('hidden');
     } else {
       this.announcementTime = 1.35;
-      ultimateAnnouncement.innerHTML = `<span>${def.icon}</span><div><small>${racer.id === 0 ? 'YOUR' : 'RIVAL'} ULTIMATE · ${def.name.toUpperCase()}</small><strong>${def.ultimateName.toUpperCase()}</strong></div>`;
+      ultimateAnnouncement.innerHTML = `<span>${def.icon}</span><div><small>${racer.id === 0 ? 'YOUR' : 'RIVAL'} ULTIMATE · ${def.name.toUpperCase()}</small><strong>${def.ultimateName.toUpperCase()}</strong>${racer.character === 'maleficent' && racer.id === 0 ? '<em>MOUSE AIM · CLICK OR E TO BREATHE</em>' : ''}</div>`;
       ultimateAnnouncement.style.setProperty('--ultimate-color', `#${def.accent.toString(16).padStart(6, '0')}`);
       ultimateAnnouncement.classList.remove('hidden');
     }
@@ -1316,6 +1370,7 @@ class GenieRace {
     if (racer.character === 'mulan') this.launchPower(racer, 'dragon', 0x74e3cf, 54, 5);
     if (racer.character === 'stitch' || racer.character === 'mickey' || racer.id === 0) this.audio.playUltimate(racer.character);
     else this.audio.playAt('ultimate', racer.position);
+    if (racer.id === 0 && racer.character === 'maleficent') this.showBanner('MOUSE AIM · CLICK OR E TO BREATHE FIRE', 2.6);
   }
 
   private firePlasmaBurst(racer: Racer) {
@@ -1466,17 +1521,43 @@ class GenieRace {
       const target = this.racers[hit.target];
       if (!target || target.ultimateTime > 0 || target.hitCooldown > 0) continue;
       const shielded = target.shieldTime > 0;
-      this.stun(target, 0.8);
+      this.stun(target, hit.kind === 'breath' ? 0.8 : 0.55);
       if (!shielded) {
-        target.speed *= 0.54;
-        target.curseTime = Math.max(target.curseTime, 2.1);
+        target.speed *= hit.kind === 'breath' ? 0.54 : 0.72;
+        target.curseTime = Math.max(target.curseTime, hit.kind === 'breath' ? 2.1 : 1.4);
       }
       this.makePulse(hit.position, 0x79ff68, 0.6, 4.8);
       this.makeFlash(hit.position.clone().add(new THREE.Vector3(0, 1.5, 0)), 0xc6ff8b, 5, 0.34);
       this.burst(hit.position, 0x71fb68, 0xeaffad, 26);
       this.audio.playAt('maleficent-hit', hit.position);
-      if (target.id === 0) this.showBanner('DRAGON FIRE · KNOCKED OUT!', 0.95);
+      if (target.id === 0) this.showBanner(hit.kind === 'breath' ? 'DRAGON BREATH · KNOCKED OUT!' : 'CURSED FIRE · ROAD IS BURNING!', 0.95);
     }
+  }
+
+  private dragonAimFor(racer: Racer) {
+    const forward = this.projectileDirection(racer);
+    let target = racer.position.clone().addScaledVector(forward, 34);
+    if (racer.id === 0 && this.mouseAimActive) {
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(this.mouseAimNdc, this.camera);
+      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -racer.position.y);
+      const pointed = raycaster.ray.intersectPlane(plane, new THREE.Vector3());
+      if (pointed) target = pointed;
+    } else if (racer.id !== 0) {
+      const rival = this.racers.filter((other) => other.id !== racer.id && other.ultimateTime <= 0 && other.position.distanceTo(racer.position) <= DRAGON_FIRE_RANGE)
+        .sort((a, b) => a.position.distanceToSquared(racer.position) - b.position.distanceToSquared(racer.position))[0];
+      if (rival) target = rival.position.clone();
+    }
+    const offset = target.clone().sub(racer.position).setY(0);
+    if (offset.lengthSq() < 16) offset.copy(forward).multiplyScalar(6);
+    offset.clampLength(6, DRAGON_FIRE_RANGE);
+    target.copy(racer.position).add(offset);
+    const road = this.track.nearest(target, racer.progress);
+    if (!road.onRoad) {
+      const lateral = clamp(road.lateral, -road.point.width / 2 + 2, road.point.width / 2 - 2);
+      target.copy(road.point.position).addScaledVector(road.point.right, lateral);
+    } else target.y = road.point.position.y;
+    return target;
   }
 
   private launchPower(racer: Racer, kind: Projectile['kind'], color: number, speed: number, life: number, target = -1, side = 0, playSound = true, aimSign = this.projectileAimSign(racer)) {
@@ -1873,12 +1954,17 @@ class GenieRace {
     if (this.mode !== 'paused') {
       const targetStorm = ultimateAtmosphere === 'ufo' ? 1 : 0;
       const nextStorm = this.stormBlend + (targetStorm - this.stormBlend) * (1 - Math.exp(-dt * (targetStorm ? 0.48 : 1.25)));
-      if (Math.abs(nextStorm - this.stormBlend) > 0.001) this.setStorm(nextStorm);
+      const dragonOwner = this.mode === 'race' ? this.racers.find((racer) => racer.character === 'maleficent' && racer.ultimateTime > 0) : undefined;
+      const targetDragon = dragonOwner ? 1 : 0;
+      const nextDragon = this.dragonBlend + (targetDragon - this.dragonBlend) * (1 - Math.exp(-dt * (targetDragon ? 1.8 : 1.2)));
+      if (Math.abs(nextStorm - this.stormBlend) > 0.001 || Math.abs(nextDragon - this.dragonBlend) > 0.001) this.setAtmosphere(nextStorm, nextDragon);
+      if (dragonOwner) this.dragonWorldLight.position.copy(dragonOwner.position).add(new THREE.Vector3(0, 10, 0));
+      this.dragonWorldLight.intensity = this.dragonBlend * 9;
       atmosphereShade.classList.toggle('siren', this.ufo.active && this.ufo.elapsed < STITCH_UFO_INBOUND_DURATION);
       const targetAmbient = ultimateAtmosphere === 'ultimate' ? 1 : 0;
       this.ambientUltBlend += (targetAmbient - this.ambientUltBlend) * (1 - Math.exp(-dt * (targetAmbient ? 3 : 1.8)));
-      this.sunlight.intensity = 2.15 - this.stormBlend * 1.03 - this.ambientUltBlend * 0.19;
-      atmosphereShade.style.opacity = String(Math.min(0.5, this.stormBlend * 0.4 + this.ambientUltBlend * 0.16));
+      this.sunlight.intensity = 2.15 - this.stormBlend * 1.03 - this.dragonBlend * 0.7 - this.ambientUltBlend * 0.19;
+      atmosphereShade.style.opacity = String(Math.min(0.5, this.stormBlend * 0.4 + this.dragonBlend * 0.14 + this.ambientUltBlend * 0.12));
     }
     if (this.mode === 'race' && !countdown.classList.contains('hidden')) {
       this.countdownElapsed += dt;
@@ -2999,18 +3085,30 @@ class GenieRace {
       this.cameraYaw = advanceChaseYaw(this.cameraYaw, player.moveYaw, player.drifting, dt);
       const chaseForward = new THREE.Vector3(Math.sin(this.cameraYaw), 0, Math.cos(this.cameraYaw));
       const insideCave = player.progress > 0.665 && player.progress < 0.78;
-      const targetDistance = insideCave ? 13.3 : player.padBoostTime > 0 ? 16 : player.ultimateTime > 0 ? 15.5 : player.boostTime > 0 ? 15 : 14.3;
+      const dragonView = player.character === 'maleficent' && player.ultimateTime > 0;
+      const targetDistance = dragonView ? insideCave ? 16.5 : 27 : insideCave ? 13.3 : player.padBoostTime > 0 ? 16 : player.ultimateTime > 0 ? 15.5 : player.boostTime > 0 ? 15 : 14.3;
       this.cameraDistance += (targetDistance - this.cameraDistance) * Math.min(1, dt * 4);
+      this.cameraHeight += ((dragonView ? insideCave ? 8.5 : 38 : 4.55 + player.speed * 0.012) - this.cameraHeight) * Math.min(1, dt * 3.4);
+      this.cameraAhead += ((dragonView ? insideCave ? 8 : 10 : 12) - this.cameraAhead) * Math.min(1, dt * 3.4);
       const distance = this.cameraDistance;
-      const desired = player.position.clone().addScaledVector(chaseForward, -distance).add(new THREE.Vector3(0, 4.55 + player.speed * 0.012, 0));
+      const desired = player.position.clone().addScaledVector(chaseForward, -distance).add(new THREE.Vector3(0, this.cameraHeight, 0));
       this.camera.position.copy(desired);
-      const target = player.position.clone().addScaledVector(chaseForward, 12).add(new THREE.Vector3(0, 2.4, 0));
+      const target = player.position.clone().addScaledVector(chaseForward, this.cameraAhead).add(new THREE.Vector3(0, 2.4, 0));
       this.cameraLook.copy(target);
-      const targetFov = player.padBoostTime > 0 ? 77 : player.ultimateTime > 0 ? 77 : player.boostTime > 0 ? 72 : 67 + Math.min(player.speed / raceSpeed(31), 1) * 2;
+      const targetFov = dragonView ? 72 : player.padBoostTime > 0 ? 77 : player.ultimateTime > 0 ? 77 : player.boostTime > 0 ? 72 : 67 + Math.min(player.speed / raceSpeed(31), 1) * 2;
       this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, dt * 2.3);
       this.camera.updateProjectionMatrix();
     }
     this.camera.lookAt(this.cameraLook);
+    const aimingDragon = this.mode === 'race' && player.character === 'maleficent' && player.ultimateTime > 0;
+    this.dragonAimReticle.visible = aimingDragon;
+    document.body.classList.toggle('dragon-aiming', aimingDragon);
+    if (aimingDragon) {
+      this.dragonAimPoint.copy(this.dragonAimFor(player));
+      this.dragonAimReticle.position.copy(this.dragonAimPoint).add(new THREE.Vector3(0, 0.4, 0));
+      this.dragonAimReticle.rotation.y += dt * 1.4;
+      this.dragonAimReticle.scale.setScalar(0.93 + Math.sin(this.elapsed * 8) * 0.06);
+    }
     if (this.mode === 'race') {
       const player = this.racers[0];
       const forward = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
@@ -3086,6 +3184,7 @@ class GenieRace {
       return { id: racer.id, character: racer.character, lap: racer.lap, p: Number(racer.progress.toFixed(3)), x: Number(racer.position.x.toFixed(2)), y: Number(racer.position.y.toFixed(2)), z: Number(racer.position.z.toFixed(2)), yaw: Number(racer.yaw.toFixed(3)), moveYaw: Number(racer.moveYaw.toFixed(3)), yawRate: Number(racer.yawRate.toFixed(2)), route: road.point.route, lateral: Number(road.lateral.toFixed(2)), roadHalfWidth: Number((road.point.width / 2).toFixed(2)), onRoad: road.onRoad, aiRoute: racer.aiRoute, aiLine: Number(racer.aiLine.toFixed(1)), speed: Math.round(racer.speed), drift: Number(racer.driftCharge.toFixed(2)), jump: Number(racer.jumpTime.toFixed(2)), trickReady: racer.trickReady, trickBoost: racer.trickBoost, tricks: racer.tricksLanded, drafts: racer.draftBoosts, slip: Number(racer.slipCharge.toFixed(2)), padBoost: Number(racer.padBoostTime.toFixed(2)), iceSpeed: Number(racer.iceSpeedTime.toFixed(2)), hex: Number(racer.hexTime.toFixed(2)), stun: Number(racer.stunTime.toFixed(2)), hitGrace: Number(racer.hitCooldown.toFixed(2)), ultimate: Number(racer.ultimateTime.toFixed(2)), meter: Math.round(racer.ultimateMeter), signatureCooldown: Number(racer.signatureCooldown.toFixed(1)), item: racer.item, tripleSparks: racer.tripleSparks };
     }));
     if (this.debugPowers) hud.dataset.effects = JSON.stringify({ projectiles: this.projectiles.map((projectile) => ({ kind: projectile.kind, speed: Math.round(projectile.velocity.length()), target: projectile.target, velocity: projectile.velocity.toArray().map((n) => Math.round(n)) })), fields: this.powerFields.map((field) => field.kind), plasmaHits: this.plasmaTotalHits, plasmaCombos: [...this.plasmaCombos.entries()].map(([target, combo]) => ({ target, count: combo.count })), ufo: { active: this.ufo.active, owner: this.ufo.owner, age: Number(this.ufo.elapsed.toFixed(2)), phase: this.ufoPhase, warnings: this.ufo.warnings, hits: this.ufoTotalHits, hitsByRacer: [...this.ufoHitsByRacer], beamTarget: this.ufo.beamTarget, beamVictims: [...this.ufoBeamVictims] } });
+    if (this.debugPowers) hud.dataset.dragonFire = JSON.stringify({ marks: this.dragonBreath.fireCount, lifetimes: this.dragonBreath.fireLifetimes, atmosphere: Number(this.dragonBlend.toFixed(2)), aim: this.dragonAimPoint.toArray().map((value) => Number(value.toFixed(1))), cameraHeight: Number(this.cameraHeight.toFixed(1)) });
     const standings = [...this.racers].sort((a, b) => (b.lap - 1 + b.progress) - (a.lap - 1 + a.progress));
     const rank = standings.findIndex((racer) => racer.id === 0) + 1;
     const suffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th';
@@ -3107,12 +3206,13 @@ class GenieRace {
       boostFill.style.background = '';
     }
     const def = CHARACTER_BY_ID[player.character];
-    aimCue.textContent = this.keys.has('ArrowDown') ? '↓ AIMING BACKWARD' : this.keys.has('ArrowUp') ? '↑ AIMING FORWARD' : '↑ FORWARD · ↓ BACKWARD';
+    const dragonAiming = player.character === 'maleficent' && player.ultimateTime > 0;
+    aimCue.textContent = dragonAiming ? 'MOUSE AIM · CLICK OR E TO BREATHE' : this.keys.has('ArrowDown') ? '↓ AIMING BACKWARD' : this.keys.has('ArrowUp') ? '↑ AIMING FORWARD' : '↑ FORWARD · ↓ BACKWARD';
     aimCue.classList.toggle('backward', this.keys.has('ArrowDown'));
     const dragonBreath = player.character === 'maleficent' && player.ultimateTime > 0;
     wishTile.querySelector('strong')!.textContent = dragonBreath ? 'DRAGON BREATH' : def.signatureName.toUpperCase();
     wishTile.querySelector('small')!.textContent = this.wishHolding ? 'CHOOSE · RELEASE E' : this.laserLocking ? this.laserLockTarget >= 0 ? 'TARGET LOCKED · RELEASE E' : 'LOCKING · HOLD ON RIVAL' : player.signatureCooldown > 0 ? `RECHARGING · ${player.signatureCooldown.toFixed(1)}s` : player.character === 'genie' ? 'READY · HOLD E TO CHOOSE' : player.character === 'buzz' ? 'READY · HOLD E TO LOCK' : 'READY · PRESS E';
-    signatureFill.style.width = `${this.laserLocking ? clamp(this.laserLockElapsed / (player.laserReadyTime > 0 ? 0.2 : 0.33), 0, 1) * 100 : clamp(1 - player.signatureCooldown / (dragonBreath ? 1.35 : def.signatureCooldown), 0, 1) * 100}%`;
+    signatureFill.style.width = `${this.laserLocking ? clamp(this.laserLockElapsed / (player.laserReadyTime > 0 ? 0.2 : 0.33), 0, 1) * 100 : clamp(1 - player.signatureCooldown / (dragonBreath ? 2.15 : def.signatureCooldown), 0, 1) * 100}%`;
     wishTile.classList.toggle('cooling', player.signatureCooldown > 0);
     wishTile.classList.toggle('ready', player.signatureCooldown <= 0);
     ultimateTile.querySelector('strong')!.textContent = def.ultimateName.toUpperCase();

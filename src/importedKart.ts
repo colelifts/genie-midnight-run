@@ -119,6 +119,7 @@ export class ImportedKartVisual implements RaceVisual {
     if (this.id === 'maleficent') {
       const dragon = templates.dragon.clone(true);
       dragon.rotation.y = Math.PI;
+      dragon.scale.setScalar(1.72);
       dragon.visible = false;
       this.dragon = dragon;
       this.dragonWingL = dragon.getObjectByName('Wing_L') ?? null;
@@ -159,7 +160,7 @@ export class ImportedKartVisual implements RaceVisual {
     }
     if (this.glider?.visible) this.glider.rotation.z = -steer * 0.1;
     if (this.dragon?.visible) {
-      this.dragon.position.y = 0.54 + Math.sin(this.elapsed * 5.7) * 0.16;
+      this.dragon.position.y = 1.9 + Math.sin(this.elapsed * 5.7) * 0.23;
       this.dragon.rotation.z = -steer * (drifting ? 0.09 : 0.045);
       if (this.dragonWingL) this.dragonWingL.rotation.z = -0.13 + Math.sin(this.elapsed * 7.2) * 0.15;
       if (this.dragonWingR) this.dragonWingR.rotation.z = 0.13 - Math.sin(this.elapsed * 7.2) * 0.15;

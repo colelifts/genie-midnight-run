@@ -69,7 +69,7 @@ export const CHARACTERS: CharacterDefinition[] = [
     speed: 1.04, acceleration: 0.96, handling: 0.98, weight: 1.05,
     passiveName: 'Dark Thorns', passive: 'Rear impacts recoil against the attacker.',
     signatureName: 'Boost Hex', signature: 'Hex a nearby rival. Their next boost misfires unless they break the curse with a clean drift.', signatureCooldown: 11,
-    ultimateName: "Dragon's Wrath", ultimate: 'Become a dragon for 12 seconds. Press E for a sweeping fire breath, but turn more slowly.',
+    ultimateName: "Dragon's Wrath", ultimate: 'Become a giant dragon for 12 seconds. Aim with the mouse and click or press E to burn the road for 3 seconds. Powerful, but slower to turn.',
   },
   {
     id: 'hades', name: 'Hades', title: 'Underworld Trickster', icon: '♠', color: 0x6eaaff, accent: 0xc087ef, kartColor: 0x242c52,

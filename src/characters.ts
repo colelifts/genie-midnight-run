@@ -55,7 +55,7 @@ export const CHARACTERS: CharacterDefinition[] = [
     speed: 1.01, acceleration: 1.02, handling: 1, weight: 1,
     passiveName: 'Wayfinder', passive: 'Shortcuts charge extra ultimate energy.',
     signatureName: 'Ocean Push', signature: 'Push rivals with a forward wave, or raise a rear barrier while braking.', signatureCooldown: 10,
-    ultimateName: "Ocean's Chosen", ultimate: 'Ride a fast wave that sweeps rivals aside and ignores rough ground.',
+    ultimateName: "Ocean's Chosen", ultimate: 'Summon ocean currents on the road edges. Surf them for speed while they pull rivals inward; sweeping waves knock nearby racers aside.',
   },
   {
     id: 'buzz', name: 'Buzz Lightyear', title: 'Precision Pilot', icon: '✧', color: 0x9cdb72, accent: 0xcba4ff, kartColor: 0xeff1e4,

@@ -347,5 +347,6 @@ def build_dragon():
     export('maleficent-dragon.glb')
 
 
-build_racer()
-build_dragon()
+if __name__ == '__main__':
+    build_racer()
+    build_dragon()

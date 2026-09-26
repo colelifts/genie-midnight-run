@@ -4,8 +4,8 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { CharacterKartVisual, type RaceVisual } from './characterKart';
 import { makePluto } from './pluto';
 
-type ImportedRacer = 'mickey' | 'stitch' | 'maleficent';
-type Templates = { kart: THREE.Group; stitch: THREE.Group; maleficentKart: THREE.Group; dragon: THREE.Group };
+type ImportedRacer = 'mickey' | 'stitch' | 'maleficent' | 'moana';
+type Templates = { kart: THREE.Group; stitch: THREE.Group; maleficentKart: THREE.Group; moanaKart: THREE.Group; dragon: THREE.Group };
 
 let templates: Templates | null = null;
 let loading: Promise<boolean> | null = null;
@@ -22,9 +22,10 @@ export function loadImportedKarts(): Promise<boolean> {
     loader.loadAsync(`${import.meta.env.BASE_URL}models/mickey-kart.glb`),
     loader.loadAsync(`${import.meta.env.BASE_URL}models/stitch-driver.glb`),
     loader.loadAsync(`${import.meta.env.BASE_URL}models/maleficent-kart.glb`),
+    loader.loadAsync(`${import.meta.env.BASE_URL}models/moana-kart.glb`),
     loader.loadAsync(`${import.meta.env.BASE_URL}models/maleficent-dragon.glb`),
-  ]).then(([kart, stitch, maleficentKart, dragon]) => {
-    templates = { kart: kart.scene, stitch: stitch.scene, maleficentKart: maleficentKart.scene, dragon: dragon.scene };
+  ]).then(([kart, stitch, maleficentKart, moanaKart, dragon]) => {
+    templates = { kart: kart.scene, stitch: stitch.scene, maleficentKart: maleficentKart.scene, moanaKart: moanaKart.scene, dragon: dragon.scene };
     return true;
   }).catch((error) => {
     console.warn('Detailed racer models unavailable; using the built-in racers.', error);
@@ -82,8 +83,8 @@ export class ImportedKartVisual implements RaceVisual {
 
   private mount() {
     if (this.model || !templates || this.disposed) return;
-    const kart = (this.id === 'maleficent' ? templates.maleficentKart : templates.kart).clone(true);
-    const mickey = kart.getObjectByName(this.id === 'maleficent' ? 'Maleficent' : 'Driver');
+    const kart = (this.id === 'maleficent' ? templates.maleficentKart : this.id === 'moana' ? templates.moanaKart : templates.kart).clone(true);
+    const mickey = kart.getObjectByName(this.id === 'maleficent' ? 'Maleficent' : this.id === 'moana' ? 'Moana' : 'Driver');
     if (!mickey) return;
     if (this.id === 'stitch') {
       mickey.visible = false;

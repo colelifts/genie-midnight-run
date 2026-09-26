@@ -6,7 +6,7 @@ import { ImportedKartVisual } from './importedKart';
 
 const makeVisual = (character: CharacterId): RaceVisual =>
   character === 'genie' ? new KartVisual('gold')
-    : character === 'mickey' || character === 'stitch' || character === 'maleficent' ? new ImportedKartVisual(character)
+    : character === 'mickey' || character === 'stitch' || character === 'maleficent' || character === 'moana' ? new ImportedKartVisual(character)
     : new CharacterKartVisual(character);
 
 export class RacerShowcase {

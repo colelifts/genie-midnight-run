@@ -12,6 +12,7 @@ import { StitchUfo, STITCH_UFO_DURATION, STITCH_UFO_INBOUND_DURATION } from './s
 import { PlutoUltimate, PlutoTongue, PLUTO_ULTIMATE_DURATION } from './pluto';
 import { DragonBreath, DRAGON_FIRE_RANGE, DRAGON_ULTIMATE_DURATION } from './maleficentPower';
 import { ElsaStorm } from './elsaStorm';
+import { MoanaTide } from './moanaTide';
 import { RacerShowcase } from './showcase';
 import { ITEMS, rollItem, type ItemId } from './items';
 import { BOOST_PAD_LAYOUT, GARDEN_ROUTE_END, MARKET_CROSSING_PROGRESS, MARKET_CROSSING_TRAVEL, marketCartState, PICKUP_LAYOUT, RaceTrack, START_GRID_BASE_PROGRESS, START_GRID_LANES, startGridProgress, touchesBoostPad, type RoadHit, type RoadPoint, type RouteName } from './track';
@@ -299,6 +300,7 @@ class GenieRace {
   readonly plutoTongue: PlutoTongue;
   readonly dragonBreath: DragonBreath;
   readonly elsaStorm: ElsaStorm;
+  readonly moanaTide: MoanaTide;
   private plutoGliderStarted = false;
   private plasmaCast = 0;
   private plasmaTotalHits = 0;
@@ -312,9 +314,12 @@ class GenieRace {
   private skyStorm!: Float32Array;
   private skyDragon!: Float32Array;
   private skyElsa!: Float32Array;
+  private skyMoana!: Float32Array;
   private stormBlend = 0;
   private dragonBlend = 0;
   private elsaBlend = 0;
+  private moanaBlend = 0;
+  private readonly tideWet = new Set<number>();
   private ambientUltBlend = 0;
   private stitchIntroTime = 0;
   private ufoPhase = 'none';
@@ -422,6 +427,7 @@ class GenieRace {
     this.plutoTongue = new PlutoTongue(this.scene);
     this.dragonBreath = new DragonBreath(this.scene);
     this.elsaStorm = new ElsaStorm(this.scene, this.track);
+    this.moanaTide = new MoanaTide(this.scene, this.track);
     const aimMaterial = new THREE.MeshBasicMaterial({ color: 0xcaff89, transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
     for (const radius of [1.2, 3.1]) {
       const ring = new THREE.Mesh(new THREE.TorusGeometry(radius, radius === 1.2 ? 0.09 : 0.16, 6, 48), aimMaterial);
@@ -475,6 +481,7 @@ class GenieRace {
         ufo: { active: this.ufo.active, owner: this.ufo.owner, phase: this.ufoPhase, age: Math.round(this.ufo.elapsed * 10) / 10, warnings: this.ufo.warnings },
         pluto: { active: this.pluto.active, owner: this.pluto.owner, age: Math.round(this.pluto.elapsed * 10) / 10, hazards: this.pluto.hazards, tongues: this.plutoTongue.count },
         elsa: { active: this.elsaStorm.active, owner: this.elsaStorm.owner, blend: Math.round(this.elsaStorm.blend * 100) / 100, frozenSections: this.elsaStorm.frozenSections },
+        moana: { active: this.moanaTide.active, owner: this.moanaTide.owner, blend: Math.round(this.moanaTide.blend * 100) / 100, wetSections: this.moanaTide.wetSections },
         powerFields: this.powerFields.length,
         audio: this.audio.getStatus(),
       }),
@@ -516,9 +523,13 @@ class GenieRace {
     const elsaHorizon = new THREE.Color(0x446a91);
     const elsaMiddle = new THREE.Color(0x294770);
     const elsaZenith = new THREE.Color(0x0f1c43);
+    const moanaHorizon = new THREE.Color(0x397b88);
+    const moanaMiddle = new THREE.Color(0x1c5266);
+    const moanaZenith = new THREE.Color(0x0d294a);
     const stormColors: number[] = [];
     const dragonColors: number[] = [];
     const elsaColors: number[] = [];
+    const moanaColors: number[] = [];
     for (let i = 0; i < positions.count; i++) {
       const up = Math.max(0, positions.getY(i) / 540);
       const color = up < 0.32 ? horizon.clone().lerp(middle, up / 0.32) : middle.clone().lerp(zenith, Math.min(1, (up - 0.32) / 0.68));
@@ -529,6 +540,8 @@ class GenieRace {
       dragonColors.push(dragon.r, dragon.g, dragon.b);
       const elsa = up < 0.32 ? elsaHorizon.clone().lerp(elsaMiddle, up / 0.32) : elsaMiddle.clone().lerp(elsaZenith, Math.min(1, (up - 0.32) / 0.68));
       elsaColors.push(elsa.r, elsa.g, elsa.b);
+      const moana = up < 0.32 ? moanaHorizon.clone().lerp(moanaMiddle, up / 0.32) : moanaMiddle.clone().lerp(moanaZenith, Math.min(1, (up - 0.32) / 0.68));
+      moanaColors.push(moana.r, moana.g, moana.b);
     }
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     this.skyColors = geometry.getAttribute('color') as THREE.BufferAttribute;
@@ -536,6 +549,7 @@ class GenieRace {
     this.skyStorm = new Float32Array(stormColors);
     this.skyDragon = new Float32Array(dragonColors);
     this.skyElsa = new Float32Array(elsaColors);
+    this.skyMoana = new Float32Array(moanaColors);
     const sky = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, depthWrite: false, fog: false }));
     sky.renderOrder = -100;
     this.scene.add(sky);
@@ -557,21 +571,22 @@ class GenieRace {
     this.scene.add(moon);
   }
 
-  private setAtmosphere(storm: number, dragon: number, elsa: number) {
+  private setAtmosphere(storm: number, dragon: number, elsa: number, moana: number) {
     this.stormBlend = storm;
     this.dragonBlend = dragon;
     this.elsaBlend = elsa;
+    this.moanaBlend = moana;
     const values = this.skyColors.array as Float32Array;
-    const total = Math.max(1, storm + dragon + elsa);
-    for (let i = 0; i < values.length; i++) values[i] = this.skyCalm[i] * Math.max(0, 1 - storm - dragon - elsa) + (this.skyStorm[i] * storm + this.skyDragon[i] * dragon + this.skyElsa[i] * elsa) / total;
+    const total = Math.max(1, storm + dragon + elsa + moana);
+    for (let i = 0; i < values.length; i++) values[i] = this.skyCalm[i] * Math.max(0, 1 - storm - dragon - elsa - moana) + (this.skyStorm[i] * storm + this.skyDragon[i] * dragon + this.skyElsa[i] * elsa + this.skyMoana[i] * moana) / total;
     this.skyColors.needsUpdate = true;
-    (this.scene.fog as THREE.Fog).color.copy(new THREE.Color(0x3a3158).lerp(new THREE.Color(0x302841), storm).lerp(new THREE.Color(0x29233c), dragon).lerp(new THREE.Color(0x4d6d91), elsa));
-    this.sunlight.color.copy(new THREE.Color(0xffc480).lerp(new THREE.Color(0xc2b8ef), storm).lerp(new THREE.Color(0x9af58d), dragon).lerp(new THREE.Color(0xd5f6ff), elsa));
-    this.ambientLight.color.copy(new THREE.Color(0xa9b9fa).lerp(new THREE.Color(0x9e91dc), dragon).lerp(new THREE.Color(0xd7f5ff), elsa));
-    this.ambientLight.groundColor.copy(new THREE.Color(0x875263).lerp(new THREE.Color(0x352653), dragon).lerp(new THREE.Color(0x8faec5), elsa));
-    this.moonFill.color.copy(new THREE.Color(0x809cff).lerp(new THREE.Color(0x9fffad), dragon).lerp(new THREE.Color(0xe3ffff), elsa));
-    this.renderer.toneMappingExposure = 1.34 - storm * 0.15 - dragon * 0.09 - elsa * 0.05;
-    this.track.setFreeze(elsa);
+    (this.scene.fog as THREE.Fog).color.copy(new THREE.Color(0x3a3158).lerp(new THREE.Color(0x302841), storm).lerp(new THREE.Color(0x29233c), dragon).lerp(new THREE.Color(0x4d6d91), elsa).lerp(new THREE.Color(0x346979), moana));
+    this.sunlight.color.copy(new THREE.Color(0xffc480).lerp(new THREE.Color(0xc2b8ef), storm).lerp(new THREE.Color(0x9af58d), dragon).lerp(new THREE.Color(0xd5f6ff), elsa).lerp(new THREE.Color(0x9aefdb), moana));
+    this.ambientLight.color.copy(new THREE.Color(0xa9b9fa).lerp(new THREE.Color(0x9e91dc), dragon).lerp(new THREE.Color(0xd7f5ff), elsa).lerp(new THREE.Color(0x95e6e0), moana));
+    this.ambientLight.groundColor.copy(new THREE.Color(0x875263).lerp(new THREE.Color(0x352653), dragon).lerp(new THREE.Color(0x8faec5), elsa).lerp(new THREE.Color(0x367b7e), moana));
+    this.moonFill.color.copy(new THREE.Color(0x809cff).lerp(new THREE.Color(0x9fffad), dragon).lerp(new THREE.Color(0xe3ffff), elsa).lerp(new THREE.Color(0xb9fff0), moana));
+    this.renderer.toneMappingExposure = 1.34 - storm * 0.15 - dragon * 0.09 - elsa * 0.05 - moana * 0.04;
+    this.track.setEnvironment(elsa, moana);
   }
 
   private raceStarts() {
@@ -637,7 +652,7 @@ class GenieRace {
 
   private makeVisual(character: CharacterId): RaceVisual {
     return character === 'genie' ? new KartVisual('gold')
-      : character === 'mickey' || character === 'stitch' || character === 'maleficent' ? new ImportedKartVisual(character)
+      : character === 'mickey' || character === 'stitch' || character === 'maleficent' || character === 'moana' ? new ImportedKartVisual(character)
       : new CharacterKartVisual(character);
   }
 
@@ -668,8 +683,8 @@ class GenieRace {
     } catch (error) { console.warn('Racer portraits unavailable; using selection symbols.', error); }
     void loadImportedKarts().then((ready) => {
       if (!ready) return;
-      const portraits = this.showcase.renderPortraits(['mickey', 'stitch', 'maleficent']);
-      for (const character of ['mickey', 'stitch', 'maleficent'] as const) {
+      const portraits = this.showcase.renderPortraits(['mickey', 'stitch', 'maleficent', 'moana']);
+      for (const character of ['mickey', 'stitch', 'maleficent', 'moana'] as const) {
         const portrait = portraits.get(character);
         const image = characterSelect.querySelector<HTMLImageElement>(`.roster-card[data-character="${character}"] .roster-card-portrait`);
         if (portrait && image) image.src = portrait;
@@ -853,6 +868,8 @@ class GenieRace {
     this.plutoTongue.reset();
     this.dragonBreath.reset();
     this.elsaStorm.reset();
+    this.moanaTide.reset();
+    this.tideWet.clear();
     this.plutoGliderStarted = false;
     plutoAlert.classList.add('hidden');
     this.plasmaVolleys.length = 0;
@@ -868,7 +885,7 @@ class GenieRace {
     this.stitchIntroTime = 0;
     this.ambientUltBlend = 0;
     atmosphereShade.style.opacity = '0';
-    this.setAtmosphere(0, 0, 0);
+    this.setAtmosphere(0, 0, 0, 0);
     this.dragonAimReticle.visible = false;
     this.mouseAimActive = false;
     this.lapClock = 0;
@@ -1225,7 +1242,7 @@ class GenieRace {
           this.makePulse(rear, 0x66e9e9, 0.65, 3.6);
           if (racer.id === 0) this.showBanner('OCEAN BARRIER · REAR GUARD', 1.1);
           this.racerSound('shield', racer);
-        } else this.launchPower(racer, 'wave', 0x58e8db, 30, 1.25);
+        } else this.launchPower(racer, 'wave', 0x58e8db, 88, 1.75, -1, 0, racer.id !== 0);
         break;
       case 'buzz': {
         const aim = this.projectileDirection(racer);
@@ -1341,6 +1358,7 @@ class GenieRace {
     racer.ultimateMeter = 0;
     racer.ultimateTime = racer.character === 'stitch' ? STITCH_UFO_DURATION : racer.character === 'maleficent' ? DRAGON_ULTIMATE_DURATION : PLUTO_ULTIMATE_DURATION;
     if (racer.character === 'elsa') this.elsaStorm.start(racer.id, racer.progress, racer.ultimateTime);
+    if (racer.character === 'moana') this.moanaTide.start(racer.id, racer.progress, racer.ultimateTime);
     if (racer.character !== 'stitch') {
       racer.shieldTime = Math.max(racer.shieldTime, racer.character === 'maleficent' ? 1.15 : racer.ultimateTime);
       racer.boostTime = Math.max(racer.boostTime, racer.ultimateTime);
@@ -1385,7 +1403,7 @@ class GenieRace {
       plutoAlert.classList.remove('hidden');
     }
     if (racer.character === 'mulan') this.launchPower(racer, 'dragon', 0x74e3cf, 54, 5);
-    if (racer.character === 'stitch' || racer.character === 'mickey' || racer.character === 'elsa' || racer.id === 0) this.audio.playUltimate(racer.character);
+    if (racer.character === 'stitch' || racer.character === 'mickey' || racer.character === 'elsa' || racer.character === 'moana' || racer.id === 0) this.audio.playUltimate(racer.character);
     else this.audio.playAt('ultimate', racer.position);
     if (racer.id === 0 && racer.character === 'maleficent') this.showBanner('MOUSE AIM · CLICK OR E TO BREATHE FIRE', 2.6);
   }
@@ -1966,7 +1984,7 @@ class GenieRace {
     if (this.mode === 'menu') this.showcase.update(dt);
     this.syncGamepad();
     if (this.mode === 'countdown') this.updateCountdown(dt);
-    if (this.mode === 'race') { this.lapClock += dt; this.raceClock += dt; this.updateRace(dt); this.elsaStorm.update(dt, this.racers, this.racers[0].position); }
+    if (this.mode === 'race') { this.lapClock += dt; this.raceClock += dt; this.updateRace(dt); this.elsaStorm.update(dt, this.racers, this.racers[0].position); this.moanaTide.update(dt, this.racers); }
     const ultimateAtmosphere = this.mode === 'race' ? this.ufo.active ? 'ufo' : this.racers.some((racer) => racer.ultimateTime > 0) ? 'ultimate' : 'none' : 'none';
     if (this.mode !== 'paused') {
       const targetStorm = ultimateAtmosphere === 'ufo' ? 1 : 0;
@@ -1976,14 +1994,16 @@ class GenieRace {
       const nextDragon = this.dragonBlend + (targetDragon - this.dragonBlend) * (1 - Math.exp(-dt * (targetDragon ? 1.8 : 1.2)));
       const targetElsa = this.elsaStorm.blend;
       const nextElsa = this.elsaBlend + (targetElsa - this.elsaBlend) * (1 - Math.exp(-dt * (targetElsa ? 3.2 : 1.8)));
-      if (Math.abs(nextStorm - this.stormBlend) > 0.001 || Math.abs(nextDragon - this.dragonBlend) > 0.001 || Math.abs(nextElsa - this.elsaBlend) > 0.001) this.setAtmosphere(nextStorm, nextDragon, nextElsa);
+      const targetMoana = this.moanaTide.blend;
+      const nextMoana = this.moanaBlend + (targetMoana - this.moanaBlend) * (1 - Math.exp(-dt * (targetMoana ? 3 : 1.8)));
+      if (Math.abs(nextStorm - this.stormBlend) > 0.001 || Math.abs(nextDragon - this.dragonBlend) > 0.001 || Math.abs(nextElsa - this.elsaBlend) > 0.001 || Math.abs(nextMoana - this.moanaBlend) > 0.001) this.setAtmosphere(nextStorm, nextDragon, nextElsa, nextMoana);
       if (dragonOwner) this.dragonWorldLight.position.copy(dragonOwner.position).add(new THREE.Vector3(0, 10, 0));
       this.dragonWorldLight.intensity = this.dragonBlend * 9;
       atmosphereShade.classList.toggle('siren', this.ufo.active && this.ufo.elapsed < STITCH_UFO_INBOUND_DURATION);
       const targetAmbient = ultimateAtmosphere === 'ultimate' ? 1 : 0;
       this.ambientUltBlend += (targetAmbient - this.ambientUltBlend) * (1 - Math.exp(-dt * (targetAmbient ? 3 : 1.8)));
-      this.sunlight.intensity = 2.15 - this.stormBlend * 1.03 - this.dragonBlend * 0.7 - this.elsaBlend * 0.65 - this.ambientUltBlend * 0.19;
-      atmosphereShade.style.opacity = String(Math.min(0.5, this.stormBlend * 0.4 + this.dragonBlend * 0.14 + this.elsaBlend * 0.09 + this.ambientUltBlend * 0.12));
+      this.sunlight.intensity = 2.15 - this.stormBlend * 1.03 - this.dragonBlend * 0.7 - this.elsaBlend * 0.65 - this.moanaBlend * 0.3 - this.ambientUltBlend * 0.19;
+      atmosphereShade.style.opacity = String(Math.min(0.5, this.stormBlend * 0.4 + this.dragonBlend * 0.14 + this.elsaBlend * 0.09 + this.moanaBlend * 0.1 + this.ambientUltBlend * 0.12));
     }
     if (this.mode === 'race' && !countdown.classList.contains('hidden')) {
       this.countdownElapsed += dt;
@@ -2077,6 +2097,7 @@ class GenieRace {
     if (this.demoMode && !this.debugDrive) this.updateAI(this.racers[0], dt);
     else this.updatePlayer(dt);
     for (let i = 1; i < this.racers.length; i++) this.updateAI(this.racers[i], dt);
+    this.updateMoanaCurrents(dt);
     this.updatePlasmaVolleys(dt);
     this.updateSlipstreams(dt);
     for (const racer of this.racers) this.updateRacerTimers(racer, dt);
@@ -2222,6 +2243,33 @@ class GenieRace {
     this.checkPads(player);
   }
 
+  private updateMoanaCurrents(dt: number) {
+    if (!this.moanaTide.active) { this.tideWet.clear(); return; }
+    for (const racer of this.racers) {
+      if (racer.jumpTime > 0 || racer.stunTime > 0) { this.tideWet.delete(racer.id); continue; }
+      const road = this.track.nearest(racer.position, racer.progress);
+      if (!road.onRoad) { this.tideWet.delete(racer.id); continue; }
+      const current = this.moanaTide.currentAt(racer.progress, road.lateral, road.point.width);
+      if (current < 0.08) { this.tideWet.delete(racer.id); continue; }
+      if (current > 0.4 && !this.tideWet.has(racer.id)) {
+        this.tideWet.add(racer.id);
+        this.racerSound('moana-current', racer);
+        this.burst(racer.position.clone().add(new THREE.Vector3(0, 0.5, 0)), 0x57e3df, 0xe4fff7, 10);
+      }
+      if (racer.id === this.moanaTide.owner) {
+        racer.speed = Math.max(racer.speed, Math.min(raceSpeed(53), racer.speed + dt * 8 * current));
+      } else {
+        racer.position.addScaledVector(road.point.right, -Math.sign(road.lateral) * dt * 2.8 * current);
+        racer.speed *= 1 - dt * 0.055 * current;
+      }
+      if (Math.random() < dt * 6 * current) {
+        const splash = racer.position.clone().addScaledVector(road.point.right, Math.sign(road.lateral) * 1.45);
+        splash.y += 0.3;
+        this.sparks.spawn(splash, new THREE.Vector3(0, 1.5 + Math.random() * 1.5, 0), Math.random() < 0.5 ? 0x8bf6e8 : 0xe3fffb, 0.36);
+      }
+    }
+  }
+
   private updateAI(racer: Racer, dt: number) {
     if (racer.stunTime > 0) { racer.speed = 0; racer.drifting = false; racer.driftDirection = 0; racer.driftCharge = 0; return; }
     const ahead = wrap(racer.progress + Math.max(0.014, racer.speed * (racer.padBoostTime > 0 ? 1.05 : 0.75) / this.track.length));
@@ -2246,6 +2294,7 @@ class GenieRace {
     }
     const laneLimit = target.width / 2 - 2.6;
     let desiredLane = clamp(racer.aiLane + clamp(bend * 4, -2.4, 2.4), -laneLimit, laneLimit);
+    if (this.moanaTide.active && racer.id !== this.moanaTide.owner) desiredLane *= 0.68;
     if (route !== 'main' || racer.id === 0 || (racer.id + racer.lap) % 3 !== 0) {
       for (const pad of BOOST_PAD_LAYOUT) {
         if (pad.route !== route || !pad.width) continue;
@@ -2665,6 +2714,8 @@ class GenieRace {
     this.pluto.reset();
     this.plutoTongue.reset();
     this.elsaStorm.reset();
+    this.moanaTide.reset();
+    this.tideWet.clear();
     plutoAlert.classList.add('hidden');
     player.visual.setPlutoPresent?.(true);
     player.visual.setGlider?.(false);
@@ -3211,6 +3262,7 @@ class GenieRace {
     if (this.debugPowers) hud.dataset.effects = JSON.stringify({ projectiles: this.projectiles.map((projectile) => ({ kind: projectile.kind, speed: Math.round(projectile.velocity.length()), target: projectile.target, velocity: projectile.velocity.toArray().map((n) => Math.round(n)) })), fields: this.powerFields.map((field) => field.kind), plasmaHits: this.plasmaTotalHits, plasmaCombos: [...this.plasmaCombos.entries()].map(([target, combo]) => ({ target, count: combo.count })), ufo: { active: this.ufo.active, owner: this.ufo.owner, age: Number(this.ufo.elapsed.toFixed(2)), phase: this.ufoPhase, warnings: this.ufo.warnings, hits: this.ufoTotalHits, hitsByRacer: [...this.ufoHitsByRacer], beamTarget: this.ufo.beamTarget, beamVictims: [...this.ufoBeamVictims] } });
     if (this.debugPowers) hud.dataset.dragonFire = JSON.stringify({ marks: this.dragonBreath.fireCount, lifetimes: this.dragonBreath.fireLifetimes, atmosphere: Number(this.dragonBlend.toFixed(2)), aim: this.dragonAimPoint.toArray().map((value) => Number(value.toFixed(1))), cameraHeight: Number(this.cameraHeight.toFixed(1)) });
     if (this.debugPowers) hud.dataset.elsaStorm = JSON.stringify({ active: this.elsaStorm.active, owner: this.elsaStorm.owner, blend: Number(this.elsaBlend.toFixed(2)), frozenSections: this.elsaStorm.frozenSections, grip: this.racers.map((racer) => Number(this.elsaStorm.strengthAt(racer.progress).toFixed(2))) });
+    if (this.debugPowers) hud.dataset.moanaTide = JSON.stringify({ active: this.moanaTide.active, owner: this.moanaTide.owner, blend: Number(this.moanaBlend.toFixed(2)), wetSections: this.moanaTide.wetSections, current: this.racers.map((racer) => { const road = this.track.nearest(racer.position, racer.progress); return Number(this.moanaTide.currentAt(racer.progress, road.lateral, road.point.width).toFixed(2)); }) });
     const standings = [...this.racers].sort((a, b) => (b.lap - 1 + b.progress) - (a.lap - 1 + a.progress));
     const rank = standings.findIndex((racer) => racer.id === 0) + 1;
     const suffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th';
@@ -3220,6 +3272,7 @@ class GenieRace {
     lapTimeText.textContent = `${formatLapTime(this.lapClock)} · BEST ${Number.isFinite(this.bestLap) ? formatLapTime(this.bestLap) : '--:--.--'}`;
     speedText.textContent = String(Math.round(Math.max(0, player.speed) * 3.6));
     const road = this.track.nearest(player.position, player.progress);
+    const tideCurrent = this.moanaTide.currentAt(player.progress, road.lateral, road.point.width);
     if (player.drifting) {
       const charge = player.driftCharge;
       const stage = driftBoostStage(charge);
@@ -3227,7 +3280,7 @@ class GenieRace {
       boostFill.style.width = `${clamp(charge / 1.9, 0, 1) * 100}%`;
       boostFill.style.background = stage === 3 ? '#d799ff' : stage === 2 ? '#ffd075' : '#65dbf9';
     } else {
-      surfaceText.textContent = player.slipCharge > 0.1 ? `DRAFTING · ${Math.round(player.slipCharge / 1.2 * 100)}%` : player.compassTime > 0 && player.compassShortcut ? `COMPASS → ${player.compassShortcut.route.toUpperCase()} SHORTCUT` : player.compassTime > 0 && player.compassTarget ? `COMPASS → ${player.compassTarget.route.toUpperCase()} SPARK` : player.iceSpeedTime > 0 || player.character === 'elsa' && this.elsaStorm.strengthAt(player.progress) > 0.1 ? 'FROZEN GRIP · ICE SPEED' : this.elsaStorm.strengthAt(player.progress) > 0.1 ? 'FROZEN ROAD · LESS GRIP' : road.onRoad ? road.point.route === 'main' ? 'ROAD' : `${road.point.route.toUpperCase()} ROUTE` : 'OFF ROAD';
+      surfaceText.textContent = player.slipCharge > 0.1 ? `DRAFTING · ${Math.round(player.slipCharge / 1.2 * 100)}%` : player.compassTime > 0 && player.compassShortcut ? `COMPASS → ${player.compassShortcut.route.toUpperCase()} SHORTCUT` : player.compassTime > 0 && player.compassTarget ? `COMPASS → ${player.compassTarget.route.toUpperCase()} SPARK` : player.iceSpeedTime > 0 || player.character === 'elsa' && this.elsaStorm.strengthAt(player.progress) > 0.1 ? 'FROZEN GRIP · ICE SPEED' : this.elsaStorm.strengthAt(player.progress) > 0.1 ? 'FROZEN ROAD · LESS GRIP' : tideCurrent > 0.15 ? player.id === this.moanaTide.owner ? 'OCEAN CURRENT · SURF BOOST' : 'OCEAN CURRENT · PULLING IN' : road.onRoad ? road.point.route === 'main' ? 'ROAD' : `${road.point.route.toUpperCase()} ROUTE` : 'OFF ROAD';
       boostFill.style.width = `${clamp(Math.max(player.boostTime / 3, player.slipCharge / 1.2), 0, 1) * 100}%`;
       boostFill.style.background = '';
     }

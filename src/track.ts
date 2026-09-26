@@ -537,16 +537,17 @@ export class RaceTrack {
     scene.add(this.group);
   }
 
-  setFreeze(strength: number) {
-    const ice = Math.max(0, Math.min(1, strength));
-    stone.color.setHex(0xc48b66).lerp(new THREE.Color(0xa0c8d5), ice);
-    stoneLight.color.setHex(0xd7a476).lerp(new THREE.Color(0xc7e2e8), ice);
-    stoneDark.color.setHex(0x865e59).lerp(new THREE.Color(0x7798aa), ice);
-    sand.color.setHex(0xb77b5c).lerp(new THREE.Color(0xabb8bf), ice * 0.72);
-    roadMat.color.setHex(0xffffff).lerp(new THREE.Color(0xd4f0f8), ice);
-    gardenRoadMat.color.setHex(0xe6d5ba).lerp(new THREE.Color(0xcceaf1), ice);
-    stone.emissive.setHex(0x376a88).multiplyScalar(ice * 0.1);
-    stoneLight.emissive.setHex(0x376a88).multiplyScalar(ice * 0.1);
+  setEnvironment(freeze: number, tide: number) {
+    const ice = Math.max(0, Math.min(1, freeze));
+    const water = Math.max(0, Math.min(1, tide));
+    stone.color.setHex(0xc48b66).lerp(new THREE.Color(0xa0c8d5), ice).lerp(new THREE.Color(0x71a8a9), water);
+    stoneLight.color.setHex(0xd7a476).lerp(new THREE.Color(0xc7e2e8), ice).lerp(new THREE.Color(0x96c9c4), water);
+    stoneDark.color.setHex(0x865e59).lerp(new THREE.Color(0x7798aa), ice).lerp(new THREE.Color(0x3d747e), water);
+    sand.color.setHex(0xb77b5c).lerp(new THREE.Color(0xabb8bf), ice * 0.72).lerp(new THREE.Color(0x9da78f), water * 0.45);
+    roadMat.color.setHex(0xffffff).lerp(new THREE.Color(0xd4f0f8), ice).lerp(new THREE.Color(0x9ad9dc), water);
+    gardenRoadMat.color.setHex(0xe6d5ba).lerp(new THREE.Color(0xcceaf1), ice).lerp(new THREE.Color(0x8ed2cf), water);
+    stone.emissive.setHex(0x376a88).multiplyScalar(ice * 0.1).add(new THREE.Color(0x20767b).multiplyScalar(water * 0.1));
+    stoneLight.emissive.setHex(0x376a88).multiplyScalar(ice * 0.1).add(new THREE.Color(0x20767b).multiplyScalar(water * 0.1));
   }
 
   private makeSamples() {

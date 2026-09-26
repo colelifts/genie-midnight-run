@@ -75,8 +75,8 @@ export const CHARACTERS: CharacterDefinition[] = [
     id: 'hades', name: 'Hades', title: 'Underworld Trickster', icon: '♠', color: 0x6eaaff, accent: 0xc087ef, kartColor: 0x242c52,
     speed: 1.02, acceleration: 1, handling: 0.99, weight: 0.99,
     passiveName: 'Hot Head', passive: 'A hit briefly boosts acceleration.',
-    signatureName: 'Soul Flame', signature: 'Drop blue fire that haunts and unsteadies the next rival.', signatureCooldown: 10,
-    ultimateName: 'Underworld Unleashed', ultimate: 'Blue flame speed, immunity to light hazards, and a trail of soul fire.',
+    signatureName: 'Soul Chain', signature: 'Tether a nearby racer and siphon speed for three seconds. A charged drift breaks the chain.', signatureCooldown: 10,
+    ultimateName: 'Styx Toll', ultimate: 'The sky and boost carpets turn blue. Rivals get a weak, haunted boost from each carpet while Hades steals its speed.',
   },
   {
     id: 'jack', name: 'Jack Sparrow', title: 'Pirate Trickster', icon: '☠', color: 0xc49a69, accent: 0xffd47e, kartColor: 0x604736,

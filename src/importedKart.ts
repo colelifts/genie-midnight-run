@@ -4,8 +4,8 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { CharacterKartVisual, type RaceVisual } from './characterKart';
 import { makePluto } from './pluto';
 
-type ImportedRacer = 'mickey' | 'stitch' | 'maleficent' | 'moana' | 'buzz';
-type Templates = { kart: THREE.Group; stitch: THREE.Group; maleficentKart: THREE.Group; moanaKart: THREE.Group; buzzKart: THREE.Group; dragon: THREE.Group };
+type ImportedRacer = 'mickey' | 'stitch' | 'maleficent' | 'moana' | 'buzz' | 'hades';
+type Templates = { kart: THREE.Group; stitch: THREE.Group; maleficentKart: THREE.Group; moanaKart: THREE.Group; buzzKart: THREE.Group; hadesKart: THREE.Group; dragon: THREE.Group };
 
 let templates: Templates | null = null;
 let loading: Promise<boolean> | null = null;
@@ -24,9 +24,10 @@ export function loadImportedKarts(): Promise<boolean> {
     loader.loadAsync(`${import.meta.env.BASE_URL}models/maleficent-kart.glb`),
     loader.loadAsync(`${import.meta.env.BASE_URL}models/moana-kart.glb`),
     loader.loadAsync(`${import.meta.env.BASE_URL}models/buzz-kart.glb`),
+    loader.loadAsync(`${import.meta.env.BASE_URL}models/hades-kart.glb`),
     loader.loadAsync(`${import.meta.env.BASE_URL}models/maleficent-dragon.glb`),
-  ]).then(([kart, stitch, maleficentKart, moanaKart, buzzKart, dragon]) => {
-    templates = { kart: kart.scene, stitch: stitch.scene, maleficentKart: maleficentKart.scene, moanaKart: moanaKart.scene, buzzKart: buzzKart.scene, dragon: dragon.scene };
+  ]).then(([kart, stitch, maleficentKart, moanaKart, buzzKart, hadesKart, dragon]) => {
+    templates = { kart: kart.scene, stitch: stitch.scene, maleficentKart: maleficentKart.scene, moanaKart: moanaKart.scene, buzzKart: buzzKart.scene, hadesKart: hadesKart.scene, dragon: dragon.scene };
     return true;
   }).catch((error) => {
     console.warn('Detailed racer models unavailable; using the built-in racers.', error);
@@ -49,6 +50,12 @@ export class ImportedKartVisual implements RaceVisual {
   private dragonWingR: THREE.Object3D | null = null;
   private buzzWings: THREE.Group | null = null;
   private readonly buzzWingPanels: THREE.Group[] = [];
+  private readonly hadesFlames: Array<{ part: THREE.Object3D; phase: number; baseScale: number }> = [];
+  private readonly hadesMaterials: THREE.Material[] = [];
+  private hadesAura: THREE.Group | null = null;
+  private hadesAuraGlow: THREE.MeshBasicMaterial | null = null;
+  private hadesAuraFire: THREE.MeshBasicMaterial | null = null;
+  private hadesAuraStrength = 0;
   private buzzWingDeploy = 0;
   private plutoPresent = true;
   private ultimateActive = false;
@@ -85,14 +92,21 @@ export class ImportedKartVisual implements RaceVisual {
       this.buzzWings = this.makeBuzzWings();
       this.group.add(this.buzzWings);
     }
+    if (id === 'hades') {
+      this.hadesAura = this.makeHadesAura();
+      this.group.add(this.hadesAura);
+      const headlight = new THREE.PointLight(0x5db9ff, 0.72, 5.5, 2);
+      headlight.position.set(0, 2.85, 0);
+      this.group.add(headlight);
+    }
   }
 
   get driver(): THREE.Object3D { return this.importedDriver ?? this.fallback.driver; }
 
   private mount() {
     if (this.model || !templates || this.disposed) return;
-    const kart = (this.id === 'maleficent' ? templates.maleficentKart : this.id === 'moana' ? templates.moanaKart : this.id === 'buzz' ? templates.buzzKart : templates.kart).clone(true);
-    const mickey = kart.getObjectByName(this.id === 'maleficent' ? 'Maleficent' : this.id === 'moana' ? 'Moana' : this.id === 'buzz' ? 'Buzz' : 'Driver');
+    const kart = (this.id === 'maleficent' ? templates.maleficentKart : this.id === 'moana' ? templates.moanaKart : this.id === 'buzz' ? templates.buzzKart : this.id === 'hades' ? templates.hadesKart : templates.kart).clone(true);
+    const mickey = kart.getObjectByName(this.id === 'maleficent' ? 'Maleficent' : this.id === 'moana' ? 'Moana' : this.id === 'buzz' ? 'Buzz' : this.id === 'hades' ? 'Hades' : 'Driver');
     if (!mickey) return;
     if (this.id === 'stitch') {
       mickey.visible = false;
@@ -119,11 +133,27 @@ export class ImportedKartVisual implements RaceVisual {
     this.fallback.hideBaseModel();
     this.model = model;
     this.group.add(model);
-    if (this.id === 'maleficent' || this.id === 'moana' || this.id === 'buzz') {
+    if (this.id === 'maleficent' || this.id === 'moana' || this.id === 'buzz' || this.id === 'hades') {
       // Preserve the GLB scene's Blender-to-Three axis transform when lifting
       // the driver out of the imported chassis for independent animation.
       this.group.attach(mickey);
       this.driverBaseYaw = mickey.rotation.y;
+    }
+    if (this.id === 'hades') {
+      this.importedDriver?.traverse((part) => {
+        if (!(part instanceof THREE.Mesh)) return;
+        if (part.name.startsWith('HadesFlame_')) {
+          part.material = new THREE.MeshBasicMaterial({ color: 0x3978ed, side: THREE.DoubleSide, toneMapped: false });
+          this.hadesMaterials.push(part.material);
+          this.hadesFlames.push({ part, phase: this.hadesFlames.length * 0.81, baseScale: part.scale.z });
+        } else if (part.name.startsWith('inner flame')) {
+          part.material = new THREE.MeshBasicMaterial({ color: 0x59bfff, side: THREE.DoubleSide, toneMapped: false });
+          this.hadesMaterials.push(part.material);
+        } else if (part.name === 'cyan flame root') {
+          part.material = new THREE.MeshBasicMaterial({ color: 0x397feb, side: THREE.DoubleSide, toneMapped: false });
+          this.hadesMaterials.push(part.material);
+        }
+      });
     }
     if (this.id === 'maleficent') {
       const dragon = templates.dragon.clone(true);
@@ -147,7 +177,7 @@ export class ImportedKartVisual implements RaceVisual {
       if (this.importedDriver) this.importedDriver.visible = !active;
       this.dragon.visible = active;
       this.fallback.setUltimate(false);
-    } else this.fallback.setUltimate(this.id === 'buzz' ? false : active);
+    } else this.fallback.setUltimate(this.id === 'buzz' || this.id === 'hades' ? false : active);
     if (this.buzzWings && active) this.buzzWings.visible = true;
   }
   setPlutoPresent(active: boolean) { this.plutoPresent = active; if (this.pluto) this.pluto.visible = active; }
@@ -175,6 +205,16 @@ export class ImportedKartVisual implements RaceVisual {
       for (const panel of this.buzzWingPanels) panel.scale.x = Math.max(0.02, this.buzzWingDeploy);
       this.buzzWings.position.y = Math.sin(this.elapsed * 7) * 0.08 * this.buzzWingDeploy;
     }
+    if (this.hadesAura && this.hadesAuraGlow && this.hadesAuraFire) {
+      this.hadesAuraStrength += ((this.ultimateActive ? 1 : 0) - this.hadesAuraStrength) * Math.min(1, dt * 4.5);
+      this.hadesAura.visible = this.hadesAuraStrength > 0.02;
+      this.hadesAuraGlow.opacity = 0.63 * this.hadesAuraStrength;
+      this.hadesAuraFire.opacity = (0.55 + Math.sin(this.elapsed * 10) * 0.11) * this.hadesAuraStrength;
+      this.hadesAura.rotation.y += dt * 0.35;
+      this.hadesAura.children.forEach((part, index) => {
+        if (part instanceof THREE.Mesh && part.geometry instanceof THREE.ConeGeometry) part.scale.y = 0.85 + Math.sin(this.elapsed * 9 + index * 1.8) * 0.19;
+      });
+    }
     if (this.dragon?.visible) {
       this.dragon.position.y = 1.9 + Math.sin(this.elapsed * 5.7) * 0.23;
       this.dragon.rotation.z = -steer * (drifting ? 0.09 : 0.045);
@@ -184,6 +224,10 @@ export class ImportedKartVisual implements RaceVisual {
     if (this.importedDriver) {
       this.importedDriver.rotation.y = this.driverBaseYaw + steer * 0.045;
       this.importedDriver.rotation.z = stunned ? Math.sin(this.elapsed * 12) * 0.13 : -steer * (drifting ? 0.055 : 0.025);
+    }
+    for (const flame of this.hadesFlames) {
+      flame.part.rotation.y = Math.sin(this.elapsed * 5.8 + flame.phase) * 0.12;
+      flame.part.scale.z = flame.baseScale * (0.89 + Math.sin(this.elapsed * 7.1 + flame.phase) * 0.11);
     }
   }
 
@@ -195,6 +239,11 @@ export class ImportedKartVisual implements RaceVisual {
     this.glider?.removeFromParent();
     this.dragon?.removeFromParent();
     this.buzzWings?.removeFromParent();
+    this.hadesAura?.removeFromParent();
+    this.hadesAura?.traverse((part) => { if (part instanceof THREE.Mesh) part.geometry.dispose(); });
+    this.hadesAuraGlow?.dispose();
+    this.hadesAuraFire?.dispose();
+    this.hadesMaterials.forEach((material) => material.dispose());
     this.fallback.dispose();
   }
 
@@ -271,6 +320,28 @@ export class ImportedKartVisual implements RaceVisual {
       }
       root.add(panel);
       this.buzzWingPanels.push(panel);
+    }
+    return root;
+  }
+
+  private makeHadesAura() {
+    const root = new THREE.Group();
+    root.visible = false;
+    const glow = new THREE.MeshBasicMaterial({ color: 0x68caff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+    const fire = new THREE.MeshBasicMaterial({ color: 0x377cff, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, toneMapped: false });
+    this.hadesAuraGlow = glow;
+    this.hadesAuraFire = fire;
+    for (const radius of [1.7, 2.1]) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(radius, radius === 1.7 ? 0.065 : 0.12, 6, 48), glow);
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = 0.26;
+      root.add(ring);
+    }
+    for (const side of [-1, 1]) for (const end of [-1, 1]) {
+      const tongue = new THREE.Mesh(new THREE.ConeGeometry(0.28, 1.55, 8, 3, true), fire);
+      tongue.position.set(side * 1.15, 0.9, end * 1.1);
+      tongue.rotation.z = side * 0.21;
+      root.add(tongue);
     }
     return root;
   }

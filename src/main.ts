@@ -14,6 +14,7 @@ import { DragonBreath, DRAGON_FIRE_RANGE, DRAGON_ULTIMATE_DURATION } from './mal
 import { ElsaStorm } from './elsaStorm';
 import { MoanaTide } from './moanaTide';
 import { BuzzOrbit } from './buzzOrbit';
+import { HadesStyx } from './hadesStyx';
 import { RacerShowcase } from './showcase';
 import { ITEMS, rollItem, type ItemId } from './items';
 import { BOOST_PAD_LAYOUT, GARDEN_ROUTE_END, MARKET_CROSSING_PROGRESS, MARKET_CROSSING_TRAVEL, marketCartState, PICKUP_LAYOUT, RaceTrack, START_GRID_BASE_PROGRESS, START_GRID_LANES, startGridProgress, touchesBoostPad, type RoadHit, type RoadPoint, type RouteName } from './track';
@@ -303,6 +304,7 @@ class GenieRace {
   readonly elsaStorm: ElsaStorm;
   readonly moanaTide: MoanaTide;
   readonly buzzOrbit: BuzzOrbit;
+  readonly hadesStyx: HadesStyx;
   private plutoGliderStarted = false;
   private plasmaCast = 0;
   private plasmaTotalHits = 0;
@@ -318,11 +320,13 @@ class GenieRace {
   private skyElsa!: Float32Array;
   private skyMoana!: Float32Array;
   private skyBuzz!: Float32Array;
+  private skyHades!: Float32Array;
   private stormBlend = 0;
   private dragonBlend = 0;
   private elsaBlend = 0;
   private moanaBlend = 0;
   private buzzBlend = 0;
+  private hadesBlend = 0;
   private readonly tideWet = new Set<number>();
   private ambientUltBlend = 0;
   private stitchIntroTime = 0;
@@ -433,6 +437,7 @@ class GenieRace {
     this.elsaStorm = new ElsaStorm(this.scene, this.track);
     this.moanaTide = new MoanaTide(this.scene, this.track);
     this.buzzOrbit = new BuzzOrbit(this.scene, this.track);
+    this.hadesStyx = new HadesStyx(this.scene, this.track);
     const aimMaterial = new THREE.MeshBasicMaterial({ color: 0xcaff89, transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
     for (const radius of [1.2, 3.1]) {
       const ring = new THREE.Mesh(new THREE.TorusGeometry(radius, radius === 1.2 ? 0.09 : 0.16, 6, 48), aimMaterial);
@@ -535,11 +540,15 @@ class GenieRace {
     const buzzHorizon = new THREE.Color(0x536a9e);
     const buzzMiddle = new THREE.Color(0x272a69);
     const buzzZenith = new THREE.Color(0x0b113b);
+    const hadesHorizon = new THREE.Color(0x244d7b);
+    const hadesMiddle = new THREE.Color(0x1d2863);
+    const hadesZenith = new THREE.Color(0x0a0927);
     const stormColors: number[] = [];
     const dragonColors: number[] = [];
     const elsaColors: number[] = [];
     const moanaColors: number[] = [];
     const buzzColors: number[] = [];
+    const hadesColors: number[] = [];
     for (let i = 0; i < positions.count; i++) {
       const up = Math.max(0, positions.getY(i) / 540);
       const color = up < 0.32 ? horizon.clone().lerp(middle, up / 0.32) : middle.clone().lerp(zenith, Math.min(1, (up - 0.32) / 0.68));
@@ -554,6 +563,8 @@ class GenieRace {
       moanaColors.push(moana.r, moana.g, moana.b);
       const buzz = up < 0.32 ? buzzHorizon.clone().lerp(buzzMiddle, up / 0.32) : buzzMiddle.clone().lerp(buzzZenith, Math.min(1, (up - 0.32) / 0.68));
       buzzColors.push(buzz.r, buzz.g, buzz.b);
+      const hades = up < 0.32 ? hadesHorizon.clone().lerp(hadesMiddle, up / 0.32) : hadesMiddle.clone().lerp(hadesZenith, Math.min(1, (up - 0.32) / 0.68));
+      hadesColors.push(hades.r, hades.g, hades.b);
     }
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     this.skyColors = geometry.getAttribute('color') as THREE.BufferAttribute;
@@ -563,6 +574,7 @@ class GenieRace {
     this.skyElsa = new Float32Array(elsaColors);
     this.skyMoana = new Float32Array(moanaColors);
     this.skyBuzz = new Float32Array(buzzColors);
+    this.skyHades = new Float32Array(hadesColors);
     const sky = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, depthWrite: false, fog: false }));
     sky.renderOrder = -100;
     this.scene.add(sky);
@@ -584,23 +596,24 @@ class GenieRace {
     this.scene.add(moon);
   }
 
-  private setAtmosphere(storm: number, dragon: number, elsa: number, moana: number, buzz: number) {
+  private setAtmosphere(storm: number, dragon: number, elsa: number, moana: number, buzz: number, hades: number) {
     this.stormBlend = storm;
     this.dragonBlend = dragon;
     this.elsaBlend = elsa;
     this.moanaBlend = moana;
     this.buzzBlend = buzz;
+    this.hadesBlend = hades;
     const values = this.skyColors.array as Float32Array;
-    const total = Math.max(1, storm + dragon + elsa + moana + buzz);
-    for (let i = 0; i < values.length; i++) values[i] = this.skyCalm[i] * Math.max(0, 1 - storm - dragon - elsa - moana - buzz) + (this.skyStorm[i] * storm + this.skyDragon[i] * dragon + this.skyElsa[i] * elsa + this.skyMoana[i] * moana + this.skyBuzz[i] * buzz) / total;
+    const total = Math.max(1, storm + dragon + elsa + moana + buzz + hades);
+    for (let i = 0; i < values.length; i++) values[i] = this.skyCalm[i] * Math.max(0, 1 - storm - dragon - elsa - moana - buzz - hades) + (this.skyStorm[i] * storm + this.skyDragon[i] * dragon + this.skyElsa[i] * elsa + this.skyMoana[i] * moana + this.skyBuzz[i] * buzz + this.skyHades[i] * hades) / total;
     this.skyColors.needsUpdate = true;
-    (this.scene.fog as THREE.Fog).color.copy(new THREE.Color(0x3a3158).lerp(new THREE.Color(0x302841), storm).lerp(new THREE.Color(0x29233c), dragon).lerp(new THREE.Color(0x4d6d91), elsa).lerp(new THREE.Color(0x346979), moana).lerp(new THREE.Color(0x33356b), buzz));
-    this.sunlight.color.copy(new THREE.Color(0xffc480).lerp(new THREE.Color(0xc2b8ef), storm).lerp(new THREE.Color(0x9af58d), dragon).lerp(new THREE.Color(0xd5f6ff), elsa).lerp(new THREE.Color(0x9aefdb), moana).lerp(new THREE.Color(0xd4d3ff), buzz));
-    this.ambientLight.color.copy(new THREE.Color(0xa9b9fa).lerp(new THREE.Color(0x9e91dc), dragon).lerp(new THREE.Color(0xd7f5ff), elsa).lerp(new THREE.Color(0x95e6e0), moana).lerp(new THREE.Color(0xa5b8ff), buzz));
-    this.ambientLight.groundColor.copy(new THREE.Color(0x875263).lerp(new THREE.Color(0x352653), dragon).lerp(new THREE.Color(0x8faec5), elsa).lerp(new THREE.Color(0x367b7e), moana).lerp(new THREE.Color(0x4b4f8b), buzz));
-    this.moonFill.color.copy(new THREE.Color(0x809cff).lerp(new THREE.Color(0x9fffad), dragon).lerp(new THREE.Color(0xe3ffff), elsa).lerp(new THREE.Color(0xb9fff0), moana).lerp(new THREE.Color(0xbfd4ff), buzz));
-    this.renderer.toneMappingExposure = 1.34 - storm * 0.15 - dragon * 0.09 - elsa * 0.05 - moana * 0.04 - buzz * 0.09;
-    this.track.setEnvironment(elsa, moana, buzz);
+    (this.scene.fog as THREE.Fog).color.copy(new THREE.Color(0x3a3158).lerp(new THREE.Color(0x302841), storm).lerp(new THREE.Color(0x29233c), dragon).lerp(new THREE.Color(0x4d6d91), elsa).lerp(new THREE.Color(0x346979), moana).lerp(new THREE.Color(0x33356b), buzz).lerp(new THREE.Color(0x1a1e4d), hades));
+    this.sunlight.color.copy(new THREE.Color(0xffc480).lerp(new THREE.Color(0xc2b8ef), storm).lerp(new THREE.Color(0x9af58d), dragon).lerp(new THREE.Color(0xd5f6ff), elsa).lerp(new THREE.Color(0x9aefdb), moana).lerp(new THREE.Color(0xd4d3ff), buzz).lerp(new THREE.Color(0x8fcfff), hades));
+    this.ambientLight.color.copy(new THREE.Color(0xa9b9fa).lerp(new THREE.Color(0x9e91dc), dragon).lerp(new THREE.Color(0xd7f5ff), elsa).lerp(new THREE.Color(0x95e6e0), moana).lerp(new THREE.Color(0xa5b8ff), buzz).lerp(new THREE.Color(0x82acff), hades));
+    this.ambientLight.groundColor.copy(new THREE.Color(0x875263).lerp(new THREE.Color(0x352653), dragon).lerp(new THREE.Color(0x8faec5), elsa).lerp(new THREE.Color(0x367b7e), moana).lerp(new THREE.Color(0x4b4f8b), buzz).lerp(new THREE.Color(0x292c68), hades));
+    this.moonFill.color.copy(new THREE.Color(0x809cff).lerp(new THREE.Color(0x9fffad), dragon).lerp(new THREE.Color(0xe3ffff), elsa).lerp(new THREE.Color(0xb9fff0), moana).lerp(new THREE.Color(0xbfd4ff), buzz).lerp(new THREE.Color(0x8cdfff), hades));
+    this.renderer.toneMappingExposure = 1.34 - storm * 0.15 - dragon * 0.09 - elsa * 0.05 - moana * 0.04 - buzz * 0.09 - hades * 0.12;
+    this.track.setEnvironment(elsa, moana, buzz, hades);
   }
 
   private raceStarts() {
@@ -666,7 +679,7 @@ class GenieRace {
 
   private makeVisual(character: CharacterId): RaceVisual {
     return character === 'genie' ? new KartVisual('gold')
-      : character === 'mickey' || character === 'stitch' || character === 'maleficent' || character === 'moana' || character === 'buzz' ? new ImportedKartVisual(character)
+      : character === 'mickey' || character === 'stitch' || character === 'maleficent' || character === 'moana' || character === 'buzz' || character === 'hades' ? new ImportedKartVisual(character)
       : new CharacterKartVisual(character);
   }
 
@@ -697,8 +710,8 @@ class GenieRace {
     } catch (error) { console.warn('Racer portraits unavailable; using selection symbols.', error); }
     void loadImportedKarts().then((ready) => {
       if (!ready) return;
-      const portraits = this.showcase.renderPortraits(['mickey', 'stitch', 'maleficent', 'moana', 'buzz']);
-      for (const character of ['mickey', 'stitch', 'maleficent', 'moana', 'buzz'] as const) {
+      const portraits = this.showcase.renderPortraits(['mickey', 'stitch', 'maleficent', 'moana', 'buzz', 'hades']);
+      for (const character of ['mickey', 'stitch', 'maleficent', 'moana', 'buzz', 'hades'] as const) {
         const portrait = portraits.get(character);
         const image = characterSelect.querySelector<HTMLImageElement>(`.roster-card[data-character="${character}"] .roster-card-portrait`);
         if (portrait && image) image.src = portrait;
@@ -884,6 +897,7 @@ class GenieRace {
     this.elsaStorm.reset();
     this.moanaTide.reset();
     this.buzzOrbit.reset();
+    this.hadesStyx.reset();
     this.tideWet.clear();
     this.plutoGliderStarted = false;
     plutoAlert.classList.add('hidden');
@@ -900,7 +914,7 @@ class GenieRace {
     this.stitchIntroTime = 0;
     this.ambientUltBlend = 0;
     atmosphereShade.style.opacity = '0';
-    this.setAtmosphere(0, 0, 0, 0, 0);
+    this.setAtmosphere(0, 0, 0, 0, 0, 0);
     this.dragonAimReticle.visible = false;
     this.mouseAimActive = false;
     this.lapClock = 0;
@@ -1225,6 +1239,17 @@ class GenieRace {
         return;
       }
     }
+    let soulTarget: Racer | undefined;
+    if (racer.character === 'hades') {
+      const aim = this.projectileDirection(racer);
+      soulTarget = this.racers.filter((other) => other.id !== racer.id && other.ultimateTime <= 0 && other.shieldTime <= 0
+        && other.position.distanceTo(racer.position) <= 58 && other.position.clone().sub(racer.position).dot(aim) > 0)
+        .sort((a, b) => a.position.distanceToSquared(racer.position) - b.position.distanceToSquared(racer.position))[0];
+      if (!soulTarget) {
+        if (racer.id === 0) this.showBanner('SOUL CHAIN · NO RACER IN RANGE', 0.9);
+        return;
+      }
+    }
     const def = CHARACTER_BY_ID[racer.character];
     racer.signatureCooldown = def.signatureCooldown;
     const forward = new THREE.Vector3(Math.sin(racer.yaw), 0, Math.cos(racer.yaw));
@@ -1233,7 +1258,7 @@ class GenieRace {
     this.makeFlash(origin, def.accent, 4.8, 0.38);
     this.burst(origin, def.color, def.accent, 20);
     if (racer.id === 0) this.showBanner(def.signatureName.toUpperCase(), 1);
-    if (racer.character !== 'maleficent') {
+    if (racer.character !== 'maleficent' && racer.character !== 'hades') {
       if (racer.id === 0) this.audio.playSignature(racer.character);
       else this.audio.playAt('wish', racer.position);
     }
@@ -1285,7 +1310,12 @@ class GenieRace {
         break;
       }
       case 'hades':
-        this.dropField(racer, 'soul', 0x55a8ff, 4.8, 9, -3.3);
+        this.hadesStyx.link(racer.id, soulTarget!.id);
+        soulTarget!.hauntedTime = Math.max(soulTarget!.hauntedTime, 1.3);
+        this.makePulse(soulTarget!.position, 0x6ad9ff, 0.65, 3.7);
+        this.makeFlash(soulTarget!.position.clone().add(new THREE.Vector3(0, 1.6, 0)), 0x9eeeff, 4, 0.35);
+        this.racerSound('hades-chain-cast', racer);
+        if (soulTarget!.id === 0) this.showBanner('SOUL CHAIN · HOLD A DRIFT TO BREAK FREE', 1.45);
         break;
       case 'jack': {
         const currentRoute = this.track.nearest(racer.position, racer.progress).point.route;
@@ -1379,8 +1409,9 @@ class GenieRace {
       this.buzzOrbit.start(racer.id, racer.progress, racer.ultimateTime);
       racer.signatureCooldown = Math.min(racer.signatureCooldown, 1.4);
     }
+    if (racer.character === 'hades') this.hadesStyx.start(racer.id, racer.ultimateTime);
     if (racer.character !== 'stitch') {
-      racer.shieldTime = Math.max(racer.shieldTime, racer.character === 'maleficent' ? 1.15 : racer.character === 'buzz' ? 2.1 : racer.ultimateTime);
+      racer.shieldTime = Math.max(racer.shieldTime, racer.character === 'maleficent' ? 1.15 : racer.character === 'buzz' ? 2.1 : racer.character === 'hades' ? 2.4 : racer.ultimateTime);
       racer.boostTime = Math.max(racer.boostTime, racer.ultimateTime);
       racer.speed = Math.max(racer.speed, raceSpeed(34));
     }
@@ -1423,7 +1454,7 @@ class GenieRace {
       plutoAlert.classList.remove('hidden');
     }
     if (racer.character === 'mulan') this.launchPower(racer, 'dragon', 0x74e3cf, 54, 5);
-    if (racer.character === 'stitch' || racer.character === 'mickey' || racer.character === 'elsa' || racer.character === 'moana' || racer.character === 'buzz' || racer.id === 0) this.audio.playUltimate(racer.character);
+    if (racer.character === 'stitch' || racer.character === 'mickey' || racer.character === 'elsa' || racer.character === 'moana' || racer.character === 'buzz' || racer.character === 'hades' || racer.id === 0) this.audio.playUltimate(racer.character);
     else this.audio.playAt('ultimate', racer.position);
     if (racer.id === 0 && racer.character === 'maleficent') this.showBanner('MOUSE AIM · CLICK OR E TO BREATHE FIRE', 2.6);
   }
@@ -2006,7 +2037,20 @@ class GenieRace {
     if (this.mode === 'menu') this.showcase.update(dt);
     this.syncGamepad();
     if (this.mode === 'countdown') this.updateCountdown(dt);
-    if (this.mode === 'race') { this.lapClock += dt; this.raceClock += dt; this.updateRace(dt); this.elsaStorm.update(dt, this.racers, this.racers[0].position); this.moanaTide.update(dt, this.racers); this.buzzOrbit.update(dt, this.racers[0].position); }
+    if (this.mode === 'race') {
+      this.lapClock += dt;
+      this.raceClock += dt;
+      this.updateRace(dt);
+      this.elsaStorm.update(dt, this.racers, this.racers[0].position);
+      this.moanaTide.update(dt, this.racers);
+      this.buzzOrbit.update(dt, this.racers[0].position);
+      for (const link of this.hadesStyx.update(dt, this.racers, this.racers[0].position)) {
+        if (link.brokenByDrift) {
+          this.racerSound('hades-chain-break', this.racers[link.target]);
+          if (link.target === 0) this.showBanner('CHARGED DRIFT BROKE THE SOUL CHAIN', 1.2);
+        }
+      }
+    }
     const ultimateAtmosphere = this.mode === 'race' ? this.ufo.active ? 'ufo' : this.racers.some((racer) => racer.ultimateTime > 0) ? 'ultimate' : 'none' : 'none';
     if (this.mode !== 'paused') {
       const targetStorm = ultimateAtmosphere === 'ufo' ? 1 : 0;
@@ -2020,14 +2064,16 @@ class GenieRace {
       const nextMoana = this.moanaBlend + (targetMoana - this.moanaBlend) * (1 - Math.exp(-dt * (targetMoana ? 3 : 1.8)));
       const targetBuzz = this.buzzOrbit.blend;
       const nextBuzz = this.buzzBlend + (targetBuzz - this.buzzBlend) * (1 - Math.exp(-dt * (targetBuzz ? 3 : 1.8)));
-      if (Math.abs(nextStorm - this.stormBlend) > 0.001 || Math.abs(nextDragon - this.dragonBlend) > 0.001 || Math.abs(nextElsa - this.elsaBlend) > 0.001 || Math.abs(nextMoana - this.moanaBlend) > 0.001 || Math.abs(nextBuzz - this.buzzBlend) > 0.001) this.setAtmosphere(nextStorm, nextDragon, nextElsa, nextMoana, nextBuzz);
+      const targetHades = this.hadesStyx.blend;
+      const nextHades = this.hadesBlend + (targetHades - this.hadesBlend) * (1 - Math.exp(-dt * (targetHades ? 3.4 : 1.7)));
+      if (Math.abs(nextStorm - this.stormBlend) > 0.001 || Math.abs(nextDragon - this.dragonBlend) > 0.001 || Math.abs(nextElsa - this.elsaBlend) > 0.001 || Math.abs(nextMoana - this.moanaBlend) > 0.001 || Math.abs(nextBuzz - this.buzzBlend) > 0.001 || Math.abs(nextHades - this.hadesBlend) > 0.001) this.setAtmosphere(nextStorm, nextDragon, nextElsa, nextMoana, nextBuzz, nextHades);
       if (dragonOwner) this.dragonWorldLight.position.copy(dragonOwner.position).add(new THREE.Vector3(0, 10, 0));
       this.dragonWorldLight.intensity = this.dragonBlend * 9;
       atmosphereShade.classList.toggle('siren', this.ufo.active && this.ufo.elapsed < STITCH_UFO_INBOUND_DURATION);
       const targetAmbient = ultimateAtmosphere === 'ultimate' ? 1 : 0;
       this.ambientUltBlend += (targetAmbient - this.ambientUltBlend) * (1 - Math.exp(-dt * (targetAmbient ? 3 : 1.8)));
-      this.sunlight.intensity = 2.15 - this.stormBlend * 1.03 - this.dragonBlend * 0.7 - this.elsaBlend * 0.65 - this.moanaBlend * 0.3 - this.buzzBlend * 0.42 - this.ambientUltBlend * 0.19;
-      atmosphereShade.style.opacity = String(Math.min(0.5, this.stormBlend * 0.4 + this.dragonBlend * 0.14 + this.elsaBlend * 0.09 + this.moanaBlend * 0.1 + this.buzzBlend * 0.15 + this.ambientUltBlend * 0.12));
+      this.sunlight.intensity = 2.15 - this.stormBlend * 1.03 - this.dragonBlend * 0.7 - this.elsaBlend * 0.65 - this.moanaBlend * 0.3 - this.buzzBlend * 0.42 - this.hadesBlend * 0.65 - this.ambientUltBlend * 0.19;
+      atmosphereShade.style.opacity = String(Math.min(0.5, this.stormBlend * 0.4 + this.dragonBlend * 0.14 + this.elsaBlend * 0.09 + this.moanaBlend * 0.1 + this.buzzBlend * 0.15 + this.hadesBlend * 0.16 + this.ambientUltBlend * 0.12));
     }
     if (this.mode === 'race' && !countdown.classList.contains('hidden')) {
       this.countdownElapsed += dt;
@@ -2598,16 +2644,26 @@ class GenieRace {
     const route = this.track.nearest(racer.position, racer.progress).point.route;
     for (const pad of this.track.boostPads) {
       if (touchesBoostPad(pad, racer.position, route)) {
-        racer.boostTime = Math.max(racer.boostTime, pad.boostSeconds);
-        racer.padBoostTime = Math.max(racer.padBoostTime, pad.boostSeconds);
-        racer.speed = Math.max(racer.speed, raceSpeed(44));
+        const styxOwner = this.hadesStyx.active ? this.racers[this.hadesStyx.owner] : undefined;
+        const stolen = !!styxOwner && styxOwner.id !== racer.id;
+        const boostSeconds = stolen ? 0.85 : pad.boostSeconds + (styxOwner?.id === racer.id ? 1.2 : 0);
+        racer.boostTime = Math.max(racer.boostTime, boostSeconds);
+        racer.padBoostTime = Math.max(racer.padBoostTime, boostSeconds);
+        racer.speed = Math.max(racer.speed, raceSpeed(stolen ? 38 : styxOwner?.id === racer.id ? 49 : 44));
         racer.lastPad = 1.25;
-        racer.ultimateMeter = Math.min(100, racer.ultimateMeter + 6);
+        racer.ultimateMeter = Math.min(100, racer.ultimateMeter + (stolen ? 3 : 6));
         if (racer.character === 'buzz') racer.laserReadyTime = 12;
-        this.startJump(racer, 0.7, 1.15);
-        this.makePulse(racer.position, 0x6feeff, 0.65, 5.2);
-        this.burst(racer.position.clone().add(new THREE.Vector3(0, 0.8, 0)), 0x75edff, 0xffd675, 22);
-        if (racer.id === 0) { this.showBanner(pad.halfWidth < 8 ? 'APEX CARPET BOOST!' : 'MAGIC CARPET BOOST', 1.1); this.audio.play('pad'); }
+        this.startJump(racer, stolen ? 0.48 : 0.7, stolen ? 0.95 : 1.15);
+        this.makePulse(racer.position, stolen ? 0x78aaff : 0x6feeff, 0.65, 5.2);
+        this.burst(racer.position.clone().add(new THREE.Vector3(0, 0.8, 0)), stolen ? 0x6ba7ff : 0x75edff, stolen ? 0xa0dbff : 0xffd675, 22);
+        if (stolen) {
+          racer.hauntedTime = Math.max(racer.hauntedTime, 1.1);
+          styxOwner.padBoostTime = Math.max(styxOwner.padBoostTime, 2.1);
+          styxOwner.speed = Math.max(styxOwner.speed, raceSpeed(47));
+          this.racerSound('hades-toll', racer);
+          if (racer.id === 0) this.showBanner('STYX TOLL · HADES STOLE YOUR BOOST', 1.3);
+          else if (styxOwner.id === 0) this.showBanner('STYX TOLL · SOUL BOOST STOLEN', 1.1);
+        } else if (racer.id === 0) { this.showBanner(styxOwner?.id === racer.id ? 'STYX CARPET · SOUL BOOST!' : pad.halfWidth < 8 ? 'APEX CARPET BOOST!' : 'MAGIC CARPET BOOST', 1.1); this.audio.play('pad'); }
         break;
       }
     }
@@ -2703,7 +2759,11 @@ class GenieRace {
         this.burst(racer.position.clone().add(new THREE.Vector3(0, 3.4, 0)), 0x75fa69, 0xd2ff9e, 9);
         racer.powerTick = 1.3;
         break;
-      case 'hades': this.dropField(racer, 'soul', 0x77b6ff, 4.1, 5.2, -2.7); racer.powerTick = 2.1; break;
+      case 'hades':
+        this.makePulse(racer.position, 0x65dfff, 0.55, 4.4);
+        this.burst(racer.position.clone().add(new THREE.Vector3(0, 1.9, 0)), 0x5caeff, 0xb3f5ff, 14);
+        racer.powerTick = 1.8;
+        break;
       case 'jack':
         this.launchPower(racer, 'cannon', 0xffd58d, 34, 1.8, -1, -2);
         this.launchPower(racer, 'cannon', 0xffd58d, 34, 1.8, -1, 2);
@@ -3303,6 +3363,7 @@ class GenieRace {
     if (this.debugPowers) hud.dataset.elsaStorm = JSON.stringify({ active: this.elsaStorm.active, owner: this.elsaStorm.owner, blend: Number(this.elsaBlend.toFixed(2)), frozenSections: this.elsaStorm.frozenSections, grip: this.racers.map((racer) => Number(this.elsaStorm.strengthAt(racer.progress).toFixed(2))) });
     if (this.debugPowers) hud.dataset.moanaTide = JSON.stringify({ active: this.moanaTide.active, owner: this.moanaTide.owner, blend: Number(this.moanaBlend.toFixed(2)), wetSections: this.moanaTide.wetSections, current: this.racers.map((racer) => { const road = this.track.nearest(racer.position, racer.progress); return Number(this.moanaTide.currentAt(racer.progress, road.lateral, road.point.width).toFixed(2)); }) });
     if (this.debugPowers) hud.dataset.buzzOrbit = JSON.stringify({ active: this.buzzOrbit.active, owner: this.buzzOrbit.owner, blend: Number(this.buzzBlend.toFixed(2)), litSections: this.buzzOrbit.litSections, height: Number((player.position.y - this.track.nearest(player.position, player.progress).point.position.y).toFixed(2)) });
+    if (this.debugPowers) hud.dataset.hadesStyx = JSON.stringify({ active: this.hadesStyx.active, owner: this.hadesStyx.owner, blend: Number(this.hadesBlend.toFixed(2)), cursedPads: this.hadesStyx.litPads, soulLinks: this.hadesStyx.linkedCount });
     const standings = [...this.racers].sort((a, b) => (b.lap - 1 + b.progress) - (a.lap - 1 + a.progress));
     const rank = standings.findIndex((racer) => racer.id === 0) + 1;
     const suffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th';
@@ -3320,7 +3381,7 @@ class GenieRace {
       boostFill.style.width = `${clamp(charge / 1.9, 0, 1) * 100}%`;
       boostFill.style.background = stage === 3 ? '#d799ff' : stage === 2 ? '#ffd075' : '#65dbf9';
     } else {
-      surfaceText.textContent = player.slipCharge > 0.1 ? `DRAFTING · ${Math.round(player.slipCharge / 1.2 * 100)}%` : player.compassTime > 0 && player.compassShortcut ? `COMPASS → ${player.compassShortcut.route.toUpperCase()} SHORTCUT` : player.compassTime > 0 && player.compassTarget ? `COMPASS → ${player.compassTarget.route.toUpperCase()} SPARK` : player.iceSpeedTime > 0 || player.character === 'elsa' && this.elsaStorm.strengthAt(player.progress) > 0.1 ? 'FROZEN GRIP · ICE SPEED' : this.elsaStorm.strengthAt(player.progress) > 0.1 ? 'FROZEN ROAD · LESS GRIP' : tideCurrent > 0.15 ? player.id === this.moanaTide.owner ? 'OCEAN CURRENT · SURF BOOST' : 'OCEAN CURRENT · PULLING IN' : this.buzzOrbit.active ? player.id === this.buzzOrbit.owner ? 'STAR COMMAND FLYOVER · LOW GRAVITY' : 'LOW GRAVITY · LONGER JUMPS' : road.onRoad ? road.point.route === 'main' ? 'ROAD' : `${road.point.route.toUpperCase()} ROUTE` : 'OFF ROAD';
+      surfaceText.textContent = player.slipCharge > 0.1 ? `DRAFTING · ${Math.round(player.slipCharge / 1.2 * 100)}%` : player.compassTime > 0 && player.compassShortcut ? `COMPASS → ${player.compassShortcut.route.toUpperCase()} SHORTCUT` : player.compassTime > 0 && player.compassTarget ? `COMPASS → ${player.compassTarget.route.toUpperCase()} SPARK` : player.iceSpeedTime > 0 || player.character === 'elsa' && this.elsaStorm.strengthAt(player.progress) > 0.1 ? 'FROZEN GRIP · ICE SPEED' : this.elsaStorm.strengthAt(player.progress) > 0.1 ? 'FROZEN ROAD · LESS GRIP' : tideCurrent > 0.15 ? player.id === this.moanaTide.owner ? 'OCEAN CURRENT · SURF BOOST' : 'OCEAN CURRENT · PULLING IN' : this.buzzOrbit.active ? player.id === this.buzzOrbit.owner ? 'STAR COMMAND FLYOVER · LOW GRAVITY' : 'LOW GRAVITY · LONGER JUMPS' : this.hadesStyx.active ? player.id === this.hadesStyx.owner ? 'UNDERWORLD · CARPETS FEED YOUR SPEED' : 'STYX TOLL · BLUE CARPETS STEAL BOOSTS' : road.onRoad ? road.point.route === 'main' ? 'ROAD' : `${road.point.route.toUpperCase()} ROUTE` : 'OFF ROAD';
       boostFill.style.width = `${clamp(Math.max(player.boostTime / 3, player.slipCharge / 1.2), 0, 1) * 100}%`;
       boostFill.style.background = '';
     }

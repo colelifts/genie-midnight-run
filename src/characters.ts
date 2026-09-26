@@ -68,8 +68,8 @@ export const CHARACTERS: CharacterDefinition[] = [
     id: 'maleficent', name: 'Maleficent', title: 'Dark Power', icon: '♜', color: 0x9b67d6, accent: 0x81ef80, kartColor: 0x252036,
     speed: 1.04, acceleration: 0.96, handling: 0.98, weight: 1.05,
     passiveName: 'Dark Thorns', passive: 'Rear impacts recoil against the attacker.',
-    signatureName: 'Cursed Flame', signature: 'Green fire weakens a rival’s acceleration.', signatureCooldown: 11,
-    ultimateName: "Dragon's Wrath", ultimate: 'Surge with a dragon spirit, leave green fire, and press E to breathe fire forward.',
+    signatureName: 'Boost Hex', signature: 'Hex a nearby rival. Their next boost misfires unless they break the curse with a clean drift.', signatureCooldown: 11,
+    ultimateName: "Dragon's Wrath", ultimate: 'Become a dragon for 12 seconds. Press E for a sweeping fire breath, but turn more slowly.',
   },
   {
     id: 'hades', name: 'Hades', title: 'Underworld Trickster', icon: '♠', color: 0x6eaaff, accent: 0xc087ef, kartColor: 0x242c52,

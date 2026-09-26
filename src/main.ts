@@ -10,6 +10,7 @@ import { CHARACTERS, CHARACTER_BY_ID, type CharacterId } from './characters';
 import { KartVisual, makeProjectile } from './kart';
 import { StitchUfo, STITCH_UFO_DURATION, STITCH_UFO_INBOUND_DURATION } from './stitchUfo';
 import { PlutoUltimate, PlutoTongue, PLUTO_ULTIMATE_DURATION } from './pluto';
+import { DragonBreath, DRAGON_ULTIMATE_DURATION } from './maleficentPower';
 import { RacerShowcase } from './showcase';
 import { ITEMS, rollItem, type ItemId } from './items';
 import { BOOST_PAD_LAYOUT, GARDEN_ROUTE_END, MARKET_CROSSING_PROGRESS, MARKET_CROSSING_TRAVEL, marketCartState, PICKUP_LAYOUT, RaceTrack, START_GRID_BASE_PROGRESS, START_GRID_LANES, startGridProgress, touchesBoostPad, type RoadHit, type RoadPoint, type RouteName } from './track';
@@ -63,6 +64,7 @@ interface Racer {
   character: CharacterId;
   visual: RaceVisual;
   itemOrbit: THREE.Group;
+  hexMarker: THREE.Group;
   position: THREE.Vector3;
   previousPosition: THREE.Vector3;
   yaw: number;
@@ -86,6 +88,8 @@ interface Racer {
   mirrorTime: number;
   wishUpgrade: boolean;
   curseTime: number;
+  hexTime: number;
+  hexArmed: boolean;
   iceSpeedTime: number;
   luckyEscapeCooldown: number;
   wobbleTime: number;
@@ -292,10 +296,13 @@ class GenieRace {
   readonly ufo: StitchUfo;
   readonly pluto: PlutoUltimate;
   readonly plutoTongue: PlutoTongue;
+  readonly dragonBreath: DragonBreath;
   private plutoGliderStarted = false;
   private plasmaCast = 0;
   private plasmaTotalHits = 0;
   private ufoTotalHits = 0;
+  private readonly ufoHitsByRacer = new Map<number, number>();
+  private readonly ufoLastHitAt = new Map<number, number>();
   private readonly ufoBeamVictims = new Set<number>();
   private lastUfoImpactSound = -10;
   private skyColors!: THREE.BufferAttribute;
@@ -394,6 +401,7 @@ class GenieRace {
     this.ufo = new StitchUfo(this.scene, this.track);
     this.pluto = new PlutoUltimate(this.scene, this.track);
     this.plutoTongue = new PlutoTongue(this.scene);
+    this.dragonBreath = new DragonBreath(this.scene);
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
     for (const point of this.track.samples) {
       minX = Math.min(minX, point.position.x);
@@ -547,9 +555,22 @@ class GenieRace {
       }
       itemOrbit.visible = false;
       this.scene.add(itemOrbit);
+      const hexMarker = new THREE.Group();
+      const hexRing = new THREE.Mesh(new THREE.TorusGeometry(0.72, 0.085, 7, 32), new THREE.MeshBasicMaterial({ color: 0x8cff83, toneMapped: false }));
+      hexRing.rotation.x = Math.PI / 2;
+      hexMarker.add(hexRing);
+      for (let thorn = 0; thorn < 4; thorn++) {
+        const point = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.55, 7), new THREE.MeshBasicMaterial({ color: 0xc9ff9a, toneMapped: false }));
+        const angle = thorn * Math.PI / 2;
+        point.position.set(Math.cos(angle) * 0.7, 0.27, Math.sin(angle) * 0.7);
+        point.rotation.z = Math.cos(angle) * -0.45;
+        hexMarker.add(point);
+      }
+      hexMarker.visible = false;
+      this.scene.add(hexMarker);
       const racer: Racer = {
-        id: i, character, visual, itemOrbit, position: gridPosition.clone(), previousPosition: gridPosition.clone(), yaw, moveYaw: yaw, yawRate: 0, speed: 0, progress: starts[i], lap: 1, finishPlace: 0,
-        boostTime: 0, padBoostTime: 0, shieldTime: 0, oceanBarrierTime: 0, ultimateTime: 0, ultimateMeter: 0, signatureCooldown: 0, item: null, tripleSparks: 0, fogTime: 0, featherTime: 0, mirrorTime: 0, wishUpgrade: false, curseTime: 0, iceSpeedTime: 0, luckyEscapeCooldown: 0, wobbleTime: 0, hauntedTime: 0, hotHeadTime: 0, laserReadyTime: 0, powerTick: 0, stunTime: 0, hitCooldown: 0, offTrackTime: 0, lastPad: 0,
+        id: i, character, visual, itemOrbit, hexMarker, position: gridPosition.clone(), previousPosition: gridPosition.clone(), yaw, moveYaw: yaw, yawRate: 0, speed: 0, progress: starts[i], lap: 1, finishPlace: 0,
+        boostTime: 0, padBoostTime: 0, shieldTime: 0, oceanBarrierTime: 0, ultimateTime: 0, ultimateMeter: 0, signatureCooldown: 0, item: null, tripleSparks: 0, fogTime: 0, featherTime: 0, mirrorTime: 0, wishUpgrade: false, curseTime: 0, hexTime: 0, hexArmed: false, iceSpeedTime: 0, luckyEscapeCooldown: 0, wobbleTime: 0, hauntedTime: 0, hotHeadTime: 0, laserReadyTime: 0, powerTick: 0, stunTime: 0, hitCooldown: 0, offTrackTime: 0, lastPad: 0,
         drifting: false, driftDirection: 0, driftCharge: 0, jumpTime: 0, jumpDuration: 0, jumpPower: 0, trickReady: false, trickBoost: false, trickAnim: 0, slipCharge: 0, slipCooldown: 0, tricksLanded: 0, draftBoosts: 0, compassTime: 0, compassTarget: null, compassShortcut: null,
         lastSafe: gridPosition.clone(), lastSafeProgress: starts[i], aiRoute: this.aiRouteForLap(i, 1), aiLane: START_GRID_LANES[i], aiLine: START_GRID_LANES[i],
         aiAbilityTimer: 7 + i * 1.2, aiUltimateTimer: 40 + i * 3, ultimateHit: new Set<number>(), steerVisual: 0,
@@ -560,7 +581,7 @@ class GenieRace {
 
   private makeVisual(character: CharacterId): RaceVisual {
     return character === 'genie' ? new KartVisual('gold')
-      : character === 'mickey' || character === 'stitch' ? new ImportedKartVisual(character)
+      : character === 'mickey' || character === 'stitch' || character === 'maleficent' ? new ImportedKartVisual(character)
       : new CharacterKartVisual(character);
   }
 
@@ -591,8 +612,8 @@ class GenieRace {
     } catch (error) { console.warn('Racer portraits unavailable; using selection symbols.', error); }
     void loadImportedKarts().then((ready) => {
       if (!ready) return;
-      const portraits = this.showcase.renderPortraits(['mickey', 'stitch']);
-      for (const character of ['mickey', 'stitch'] as const) {
+      const portraits = this.showcase.renderPortraits(['mickey', 'stitch', 'maleficent']);
+      for (const character of ['mickey', 'stitch', 'maleficent'] as const) {
         const portrait = portraits.get(character);
         const image = characterSelect.querySelector<HTMLImageElement>(`.roster-card[data-character="${character}"] .roster-card-portrait`);
         if (portrait && image) image.src = portrait;
@@ -764,11 +785,14 @@ class GenieRace {
     this.ufo.reset();
     this.pluto.reset();
     this.plutoTongue.reset();
+    this.dragonBreath.reset();
     this.plutoGliderStarted = false;
     plutoAlert.classList.add('hidden');
     this.plasmaVolleys.length = 0;
     this.plasmaCombos.clear();
     this.plasmaTotalHits = this.ufoTotalHits = 0;
+    this.ufoHitsByRacer.clear();
+    this.ufoLastHitAt.clear();
     this.ufoBeamVictims.clear();
     this.lastUfoImpactSound = -10;
     this.ufoPhase = 'none';
@@ -804,7 +828,8 @@ class GenieRace {
       racer.finishPlace = 0;
       racer.boostTime = racer.padBoostTime = racer.shieldTime = racer.oceanBarrierTime = racer.ultimateTime = racer.stunTime = 0;
       racer.ultimateMeter = this.debugPowers || this.plutoPreview && racer.character === 'mickey' ? 100 : 0;
-      racer.signatureCooldown = racer.curseTime = racer.iceSpeedTime = racer.luckyEscapeCooldown = racer.wobbleTime = racer.hauntedTime = racer.hotHeadTime = racer.laserReadyTime = racer.powerTick = 0;
+      racer.signatureCooldown = racer.curseTime = racer.hexTime = racer.iceSpeedTime = racer.luckyEscapeCooldown = racer.wobbleTime = racer.hauntedTime = racer.hotHeadTime = racer.laserReadyTime = racer.powerTick = 0;
+      racer.hexArmed = false;
       const requestedItem = new URLSearchParams(window.location.search).get('debugItem');
       racer.item = this.debugPowers && i === 0 ? requestedItem && requestedItem in ITEMS ? requestedItem as ItemId : 'spark' : null;
       racer.tripleSparks = racer.fogTime = racer.featherTime = racer.mirrorTime = 0;
@@ -830,6 +855,7 @@ class GenieRace {
       racer.ultimateHit.clear();
       racer.visual.group.position.copy(racer.position);
       racer.itemOrbit.visible = false;
+      racer.hexMarker.visible = false;
       racer.visual.group.rotation.y = racer.yaw;
       racer.visual.setShield(false);
       racer.visual.setUltimate(false);
@@ -1076,13 +1102,26 @@ class GenieRace {
     if (racer.character === 'genie' && racer.id === 0) { this.beginWish(); return; }
     if (racer.character === 'buzz' && racer.id === 0) { this.beginLaserLock(); return; }
     if (racer.character === 'maleficent' && racer.ultimateTime > 0) {
-      racer.signatureCooldown = 1.35;
-      for (const side of [-0.95, 0, 0.95]) this.launchPower(racer, 'dragonfire', 0x9bfa72, 42, 0.9, -1, side, side === 0);
-      const mouth = racer.position.clone().add(new THREE.Vector3(Math.sin(racer.yaw) * 4.2, 2.2, Math.cos(racer.yaw) * 4.2));
-      this.makeFlash(mouth, 0x7dff60, 5.6, 0.38);
-      this.burst(mouth, 0xa3ff76, 0xdffff0, 24);
-      if (racer.id === 0) this.showBanner('DRAGON BREATH!', 0.9);
+      racer.signatureCooldown = 1.55;
+      const aimSign = this.projectileAimSign(racer);
+      this.dragonBreath.fire(racer.id, aimSign);
+      const mouth = racer.position.clone().addScaledVector(this.projectileDirection(racer, aimSign), 3.8).add(new THREE.Vector3(0, 3.7, 0));
+      this.makeFlash(mouth, 0x93ff72, 7.3, 0.48);
+      this.burst(mouth, 0x73ff6d, 0xeaffaa, 32);
+      this.racerSound('maleficent-breath', racer);
+      if (racer.id === 0) this.showBanner('DRAGON BREATH · SWEEP THE ROAD!', 0.9);
       return;
+    }
+    let hexTarget: Racer | undefined;
+    if (racer.character === 'maleficent') {
+      const aim = this.projectileDirection(racer);
+      hexTarget = this.racers.filter((other) => other.id !== racer.id && other.ultimateTime <= 0 && other.position.distanceTo(racer.position) < 55
+        && other.position.clone().sub(racer.position).dot(aim) > 0)
+        .sort((a, b) => a.position.distanceToSquared(racer.position) - b.position.distanceToSquared(racer.position))[0];
+      if (!hexTarget) {
+        if (racer.id === 0) this.showBanner('CURSE · NO RACER IN RANGE', 0.85);
+        return;
+      }
     }
     const def = CHARACTER_BY_ID[racer.character];
     racer.signatureCooldown = def.signatureCooldown;
@@ -1092,8 +1131,10 @@ class GenieRace {
     this.makeFlash(origin, def.accent, 4.8, 0.38);
     this.burst(origin, def.color, def.accent, 20);
     if (racer.id === 0) this.showBanner(def.signatureName.toUpperCase(), 1);
-    if (racer.id === 0) this.audio.playSignature(racer.character);
-    else this.audio.playAt('wish', racer.position);
+    if (racer.character !== 'maleficent') {
+      if (racer.id === 0) this.audio.playSignature(racer.character);
+      else this.audio.playAt('wish', racer.position);
+    }
     switch (racer.character) {
       case 'genie':
         this.useWish(racer, 'boost');
@@ -1125,9 +1166,22 @@ class GenieRace {
         racer.laserReadyTime = 0;
         break;
       }
-      case 'maleficent':
-        this.launchPower(racer, 'curse', 0x89fa74, 39, 3.5);
+      case 'maleficent': {
+        const target = hexTarget!;
+        target.hexTime = 7.5;
+        target.hexArmed = target.boostTime <= 0 && target.padBoostTime <= 0;
+        for (let step = 0; step < 14; step++) {
+          const t = step / 13;
+          const point = racer.position.clone().lerp(target.position, t);
+          point.y += 2.2 + Math.sin(t * Math.PI) * 2.2;
+          this.sparks.spawn(point, new THREE.Vector3(0, 0.6, 0), step % 3 ? 0x9dff73 : 0xd6a5ff, 0.72);
+        }
+        this.makePulse(target.position, 0x80ff72, 0.7, 3.5);
+        this.makeFlash(target.position.clone().add(new THREE.Vector3(0, 2.5, 0)), 0x9efb75, 5, 0.35);
+        this.racerSound('maleficent-curse', racer);
+        if (target.id === 0) this.showBanner('CURSED BOOST · CLEAN DRIFT TO BREAK IT', 1.5);
         break;
+      }
       case 'hades':
         this.dropField(racer, 'soul', 0x55a8ff, 4.8, 9, -3.3);
         break;
@@ -1210,15 +1264,22 @@ class GenieRace {
       return;
     }
     if (racer.character === 'stitch' && !this.ufo.start(racer.id, this.racers)) return;
+    if (racer.character === 'stitch') {
+      this.ufoHitsByRacer.clear();
+      this.ufoLastHitAt.clear();
+    }
     if (racer.character === 'mickey' && !this.pluto.start(racer.id, this.plutoPreview ? 0 : -1)) return;
     racer.ultimateMeter = 0;
-    racer.ultimateTime = racer.character === 'stitch' ? STITCH_UFO_DURATION : PLUTO_ULTIMATE_DURATION;
+    racer.ultimateTime = racer.character === 'stitch' ? STITCH_UFO_DURATION : racer.character === 'maleficent' ? DRAGON_ULTIMATE_DURATION : PLUTO_ULTIMATE_DURATION;
     if (racer.character !== 'stitch') {
-      racer.shieldTime = Math.max(racer.shieldTime, racer.ultimateTime);
+      racer.shieldTime = Math.max(racer.shieldTime, racer.character === 'maleficent' ? 1.15 : racer.ultimateTime);
       racer.boostTime = Math.max(racer.boostTime, racer.ultimateTime);
       racer.speed = Math.max(racer.speed, raceSpeed(34));
     }
-    if (racer.character === 'maleficent') racer.signatureCooldown = 0;
+    if (racer.character === 'maleficent') {
+      racer.signatureCooldown = 0;
+      this.racerSound('maleficent-roar', racer);
+    }
     racer.ultimateHit.clear();
     racer.powerTick = 0;
     racer.visual.setUltimate(racer.character !== 'stitch');
@@ -1308,6 +1369,7 @@ class GenieRace {
       for (const racer of this.racers) {
         if (impact.target !== undefined && racer.id !== impact.target) continue;
         if (racer.id === this.ufo.owner || racer.stunTime > 0 || racer.hitCooldown > 0) continue;
+        if ((this.ufoHitsByRacer.get(racer.id) ?? 0) >= 3 || this.raceClock - (this.ufoLastHitAt.get(racer.id) ?? -100) < 1.6) continue;
         if (Math.abs(racer.position.y - impact.position.y) > 3.4) continue;
         let distance = Math.hypot(racer.position.x - impact.position.x, racer.position.z - impact.position.z);
         if (impact.previous) {
@@ -1319,6 +1381,8 @@ class GenieRace {
         if (distance > impact.radius + 1.25) continue;
         this.stun(racer, impact.kind === 'beam' ? 0.65 : 0.48);
         this.ufoTotalHits++;
+        this.ufoHitsByRacer.set(racer.id, (this.ufoHitsByRacer.get(racer.id) ?? 0) + 1);
+        this.ufoLastHitAt.set(racer.id, this.raceClock);
         if (impact.kind === 'beam') this.ufoBeamVictims.add(racer.id);
         if (racer.id === 0) this.showBanner('UFO PLASMA HIT!', 0.8);
       }
@@ -1389,11 +1453,29 @@ class GenieRace {
       }
     }
     const age = this.pluto.elapsed;
-    plutoAlert.textContent = age < 3.85 ? 'GIANT PLUTO INBOUND · WATCH THE TRACK' : age < 5.5 ? 'PAW SLAM · MOVE OUT OF THE GOLD LANE' : age < 11.8 ? 'BROKEN ROAD · SECOND STRIKE COMING' : 'PAW SLAM · FIND A CLEAR LINE';
+    plutoAlert.textContent = age < 3.85 ? 'GIANT PLUTO INBOUND · WATCH THE TRACK' : age < 5.5 ? 'TONGUE STRIKE · MOVE OUT OF THE GOLD LANE' : age < 11.8 ? 'BROKEN ROAD · SECOND STRIKE COMING' : 'TONGUE STRIKE · FIND A CLEAR LINE';
     if (!this.pluto.active) {
       plutoAlert.classList.add('hidden');
       owner?.visual.setPlutoPresent?.(true);
       owner?.visual.setGlider?.(false);
+    }
+  }
+
+  private updateDragonBreath(dt: number) {
+    for (const hit of this.dragonBreath.update(dt, this.racers)) {
+      const target = this.racers[hit.target];
+      if (!target || target.ultimateTime > 0 || target.hitCooldown > 0) continue;
+      const shielded = target.shieldTime > 0;
+      this.stun(target, 0.8);
+      if (!shielded) {
+        target.speed *= 0.54;
+        target.curseTime = Math.max(target.curseTime, 2.1);
+      }
+      this.makePulse(hit.position, 0x79ff68, 0.6, 4.8);
+      this.makeFlash(hit.position.clone().add(new THREE.Vector3(0, 1.5, 0)), 0xc6ff8b, 5, 0.34);
+      this.burst(hit.position, 0x71fb68, 0xeaffad, 26);
+      this.audio.playAt('maleficent-hit', hit.position);
+      if (target.id === 0) this.showBanner('DRAGON FIRE · KNOCKED OUT!', 0.95);
     }
   }
 
@@ -1826,7 +1908,7 @@ class GenieRace {
       this.audio.setListener(this.racers[0].position.x, this.racers[0].position.y, this.racers[0].position.z, this.racers[0].yaw);
       const themeRacer = this.racers.find((racer) => racer.id === 0 && racer.ultimateTime > 0 && racer.character !== 'stitch')
         ?? this.racers.find((racer) => racer.ultimateTime > 0 && racer.character !== 'stitch');
-      this.audio.update(this.racers[0].speed, this.racers[0].drifting, this.racers[0].ultimateTime > 0, this.racers[0].boostTime > 0, this.mode === 'race', this.track.zone(this.racers[0].progress), this.racers[0].lap >= 3, this.track.fountainPosition, ultimateAtmosphere, this.ufo.elapsed, themeRacer?.character ?? null, themeRacer ? PLUTO_ULTIMATE_DURATION - themeRacer.ultimateTime : 0);
+      this.audio.update(this.racers[0].speed, this.racers[0].drifting, this.racers[0].ultimateTime > 0, this.racers[0].boostTime > 0, this.mode === 'race', this.track.zone(this.racers[0].progress), this.racers[0].lap >= 3, this.track.fountainPosition, ultimateAtmosphere, this.ufo.elapsed, themeRacer?.character ?? null, themeRacer ? (themeRacer.character === 'maleficent' ? DRAGON_ULTIMATE_DURATION : PLUTO_ULTIMATE_DURATION) - themeRacer.ultimateTime : 0);
       this.audio.updateRivals(this.racers, this.mode === 'race');
       if (this.stitchIntroTime > 0) {
         this.stitchIntroTime -= dt;
@@ -1899,6 +1981,7 @@ class GenieRace {
     const projectileKnockback = this.updateProjectiles(dt);
     this.updateStitchUfo(dt);
     this.updatePluto(dt);
+    this.updateDragonBreath(dt);
     // Racer bumps and powers can move karts after their individual road checks.
     for (const racer of this.racers) this.keepOnCourse(racer);
     if (projectileKnockback) this.checkObstacleCollisions();
@@ -1920,6 +2003,11 @@ class GenieRace {
     for (const racer of this.racers) {
       racer.visual.group.position.copy(racer.position);
       racer.visual.group.rotation.y = racer.yaw;
+      racer.hexMarker.visible = racer.hexTime > 0;
+      if (racer.hexTime > 0) {
+        racer.hexMarker.position.copy(racer.position).add(new THREE.Vector3(0, 3.45 + Math.sin(this.elapsed * 5) * 0.12, 0));
+        racer.hexMarker.rotation.y += dt * 2.7;
+      }
       racer.itemOrbit.visible = racer.tripleSparks > 0 && (racer.id === 0 || racer.fogTime <= 0);
       if (racer.tripleSparks > 0) {
         racer.itemOrbit.position.copy(racer.position).add(new THREE.Vector3(0, 1.55, 0));
@@ -1996,7 +2084,7 @@ class GenieRace {
       this.releaseDrift(player);
     }
     const boostHandling = player.padBoostTime > 0 ? 1.2 : player.ultimateTime > 0 ? 1.12 : 1;
-    const heading = advanceHeading(player, { steer, speed: player.speed, handling: stats.handling * (player.wobbleTime > 0 ? 0.62 : 1), drifting: player.drifting, driftDirection: player.driftDirection,
+    const heading = advanceHeading(player, { steer, speed: player.speed, handling: stats.handling * (player.wobbleTime > 0 ? 0.62 : 1) * (player.character === 'maleficent' && player.ultimateTime > 0 ? 0.78 : 1), drifting: player.drifting, driftDirection: player.driftDirection,
       boostHandling, wobble: player.wobbleTime > 0 ? Math.sin(this.elapsed * 19) * 0.22 : 0, dt });
     player.yawRate = heading.yawRate;
     player.yaw = heading.yaw;
@@ -2088,14 +2176,14 @@ class GenieRace {
       if (Math.abs(desiredLane - dangerLane) < 7.5) desiredLane = clamp(dangerLane + (desiredLane < dangerLane ? -9 : 9), -laneLimit, laneLimit);
     }
     const plutoLane = this.pluto.avoidLane(racer, route);
-    if (plutoLane !== null && racer.id !== this.pluto.owner) desiredLane = clamp(plutoLane, -laneLimit, laneLimit);
+    if (plutoLane !== null && racer.id !== this.pluto.owner && !(this.plutoPreview && racer.id === 0)) desiredLane = clamp(plutoLane, -laneLimit, laneLimit);
     racer.aiLine += clamp(desiredLane - racer.aiLine, -dt * 14, dt * 14);
     const direction = target.position.clone().addScaledVector(target.right, racer.aiLine).sub(racer.position);
     const targetYaw = Math.atan2(direction.x, direction.z);
     const error = angleDiff(targetYaw, racer.yaw);
     const steer = clamp(error * 2.4, -1, 1);
     racer.steerVisual = steer;
-    racer.yaw += (steer + (racer.wobbleTime > 0 ? Math.sin(this.elapsed * 17) * 0.2 : 0)) * (1.65 - Math.min(racer.speed / raceSpeed(125), 0.3)) * (racer.drifting ? 1.5 : 1) * (racer.padBoostTime > 0 ? 1.2 : 1) * CHARACTER_BY_ID[racer.character].handling * dt;
+    racer.yaw += (steer + (racer.wobbleTime > 0 ? Math.sin(this.elapsed * 17) * 0.2 : 0)) * (1.65 - Math.min(racer.speed / raceSpeed(125), 0.3)) * (racer.drifting ? 1.5 : 1) * (racer.padBoostTime > 0 ? 1.2 : 1) * CHARACTER_BY_ID[racer.character].handling * (racer.character === 'maleficent' && racer.ultimateTime > 0 ? 0.78 : 1) * dt;
     racer.moveYaw += angleDiff(racer.yaw, racer.moveYaw) * Math.min(1, dt * 5);
     let targetSpeed = 27.7 + Math.sin(racer.id * 1.7) * 1.8 + Math.sin(this.elapsed * 0.5 + racer.id) * 1.1;
     if (Math.abs(error) > 0.5) targetSpeed = 22;
@@ -2342,6 +2430,30 @@ class GenieRace {
   }
 
   private updateRacerTimers(racer: Racer, dt: number) {
+    if (racer.hexTime > 0) {
+      if (racer.drifting && racer.driftCharge >= 1.0) {
+        racer.hexTime = 0;
+        racer.hexArmed = false;
+        this.makePulse(racer.position, 0xcda2ff, 0.34, 3.2);
+        this.racerSound('maleficent-hex-break', racer);
+        if (racer.id === 0) this.showBanner('CLEAN DRIFT BROKE THE CURSE', 1);
+      } else if (!racer.hexArmed && racer.boostTime <= 0 && racer.padBoostTime <= 0) {
+        racer.hexArmed = true;
+      } else if (racer.hexArmed && (racer.boostTime > 0 || racer.padBoostTime > 0)) {
+        racer.hexTime = 0;
+        racer.hexArmed = false;
+        racer.boostTime = 0;
+        racer.padBoostTime = 0;
+        racer.speed = Math.min(racer.speed, raceSpeed(21));
+        racer.wobbleTime = Math.max(racer.wobbleTime, 0.8);
+        racer.curseTime = Math.max(racer.curseTime, 1.6);
+        this.makeFlash(racer.position.clone().add(new THREE.Vector3(0, 2, 0)), 0x86ff6b, 6.2, 0.55);
+        this.burst(racer.position.clone().add(new THREE.Vector3(0, 1.5, 0)), 0x8cf36b, 0xc9a5ff, 24);
+        this.racerSound('maleficent-hex-break', racer);
+        if (racer.id === 0) this.showBanner('CURSED BOOST MISFIRED!', 1.1);
+      }
+      racer.hexTime = Math.max(0, racer.hexTime - dt);
+    }
     if (racer.speed > 10 && racer.ultimateTime <= 0) {
       const route = this.track.nearest(racer.position, racer.progress).point.route;
       racer.ultimateMeter = Math.min(100, racer.ultimateMeter + dt * (0.85 + (route !== 'main' && racer.character === 'moana' ? 0.85 : 0)));
@@ -2393,8 +2505,9 @@ class GenieRace {
       case 'moana': this.pushWave(racer, 8, 0x6fece5); racer.powerTick = 2.0; break;
       case 'buzz': this.launchPower(racer, 'laser', 0xa6ff76, 58, 1.25); racer.powerTick = 2.3; break;
       case 'maleficent':
-        this.dropField(racer, 'dragonfire', 0xa1f576, 4.5, 6, -3);
-        racer.powerTick = 2.2;
+        this.makePulse(racer.position, 0x84ff75, 0.45, 3.4);
+        this.burst(racer.position.clone().add(new THREE.Vector3(0, 3.4, 0)), 0x75fa69, 0xd2ff9e, 9);
+        racer.powerTick = 1.3;
         break;
       case 'hades': this.dropField(racer, 'soul', 0x77b6ff, 4.1, 5.2, -2.7); racer.powerTick = 2.1; break;
       case 'jack':
@@ -2970,9 +3083,9 @@ class GenieRace {
     }
     hud.dataset.state = JSON.stringify(this.racers.map((racer) => {
       const road = this.track.nearest(racer.position, racer.progress);
-      return { id: racer.id, character: racer.character, lap: racer.lap, p: Number(racer.progress.toFixed(3)), x: Number(racer.position.x.toFixed(2)), y: Number(racer.position.y.toFixed(2)), z: Number(racer.position.z.toFixed(2)), yaw: Number(racer.yaw.toFixed(3)), moveYaw: Number(racer.moveYaw.toFixed(3)), yawRate: Number(racer.yawRate.toFixed(2)), route: road.point.route, lateral: Number(road.lateral.toFixed(2)), roadHalfWidth: Number((road.point.width / 2).toFixed(2)), onRoad: road.onRoad, aiRoute: racer.aiRoute, aiLine: Number(racer.aiLine.toFixed(1)), speed: Math.round(racer.speed), drift: Number(racer.driftCharge.toFixed(2)), jump: Number(racer.jumpTime.toFixed(2)), trickReady: racer.trickReady, trickBoost: racer.trickBoost, tricks: racer.tricksLanded, drafts: racer.draftBoosts, slip: Number(racer.slipCharge.toFixed(2)), padBoost: Number(racer.padBoostTime.toFixed(2)), iceSpeed: Number(racer.iceSpeedTime.toFixed(2)), stun: Number(racer.stunTime.toFixed(2)), hitGrace: Number(racer.hitCooldown.toFixed(2)), ultimate: Number(racer.ultimateTime.toFixed(2)), meter: Math.round(racer.ultimateMeter), signatureCooldown: Number(racer.signatureCooldown.toFixed(1)), item: racer.item, tripleSparks: racer.tripleSparks };
+      return { id: racer.id, character: racer.character, lap: racer.lap, p: Number(racer.progress.toFixed(3)), x: Number(racer.position.x.toFixed(2)), y: Number(racer.position.y.toFixed(2)), z: Number(racer.position.z.toFixed(2)), yaw: Number(racer.yaw.toFixed(3)), moveYaw: Number(racer.moveYaw.toFixed(3)), yawRate: Number(racer.yawRate.toFixed(2)), route: road.point.route, lateral: Number(road.lateral.toFixed(2)), roadHalfWidth: Number((road.point.width / 2).toFixed(2)), onRoad: road.onRoad, aiRoute: racer.aiRoute, aiLine: Number(racer.aiLine.toFixed(1)), speed: Math.round(racer.speed), drift: Number(racer.driftCharge.toFixed(2)), jump: Number(racer.jumpTime.toFixed(2)), trickReady: racer.trickReady, trickBoost: racer.trickBoost, tricks: racer.tricksLanded, drafts: racer.draftBoosts, slip: Number(racer.slipCharge.toFixed(2)), padBoost: Number(racer.padBoostTime.toFixed(2)), iceSpeed: Number(racer.iceSpeedTime.toFixed(2)), hex: Number(racer.hexTime.toFixed(2)), stun: Number(racer.stunTime.toFixed(2)), hitGrace: Number(racer.hitCooldown.toFixed(2)), ultimate: Number(racer.ultimateTime.toFixed(2)), meter: Math.round(racer.ultimateMeter), signatureCooldown: Number(racer.signatureCooldown.toFixed(1)), item: racer.item, tripleSparks: racer.tripleSparks };
     }));
-    if (this.debugPowers) hud.dataset.effects = JSON.stringify({ projectiles: this.projectiles.map((projectile) => ({ kind: projectile.kind, speed: Math.round(projectile.velocity.length()), target: projectile.target, velocity: projectile.velocity.toArray().map((n) => Math.round(n)) })), fields: this.powerFields.map((field) => field.kind), plasmaHits: this.plasmaTotalHits, plasmaCombos: [...this.plasmaCombos.entries()].map(([target, combo]) => ({ target, count: combo.count })), ufo: { active: this.ufo.active, owner: this.ufo.owner, age: Number(this.ufo.elapsed.toFixed(2)), phase: this.ufoPhase, warnings: this.ufo.warnings, hits: this.ufoTotalHits, beamTarget: this.ufo.beamTarget, beamVictims: [...this.ufoBeamVictims] } });
+    if (this.debugPowers) hud.dataset.effects = JSON.stringify({ projectiles: this.projectiles.map((projectile) => ({ kind: projectile.kind, speed: Math.round(projectile.velocity.length()), target: projectile.target, velocity: projectile.velocity.toArray().map((n) => Math.round(n)) })), fields: this.powerFields.map((field) => field.kind), plasmaHits: this.plasmaTotalHits, plasmaCombos: [...this.plasmaCombos.entries()].map(([target, combo]) => ({ target, count: combo.count })), ufo: { active: this.ufo.active, owner: this.ufo.owner, age: Number(this.ufo.elapsed.toFixed(2)), phase: this.ufoPhase, warnings: this.ufo.warnings, hits: this.ufoTotalHits, hitsByRacer: [...this.ufoHitsByRacer], beamTarget: this.ufo.beamTarget, beamVictims: [...this.ufoBeamVictims] } });
     const standings = [...this.racers].sort((a, b) => (b.lap - 1 + b.progress) - (a.lap - 1 + a.progress));
     const rank = standings.findIndex((racer) => racer.id === 0) + 1;
     const suffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th';

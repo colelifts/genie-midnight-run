@@ -2,7 +2,7 @@
 import type { CharacterId } from './characters';
 import { STITCH_UFO_INBOUND_DURATION } from './stitchUfo';
 
-type SoundName = 'go' | 'drift' | 'boost' | 'pad' | 'wish' | 'shield' | 'shot' | 'laser' | 'water' | 'cannon' | 'fire' | 'ice' | 'hit' | 'stun' | 'lap' | 'final-lap' | 'ultimate' | 'trick' | 'draft' | 'pickup' | 'cart-warning' | 'birds' | 'crate-hit' | 'market-hit' | 'boulder-hit' | 'urn-hit' | 'cart-hit' | 'field-soul' | 'field-clock' | 'field-anchor' | 'field-star' | 'field-fire' | 'plasma-shot' | 'plasma-hit' | 'ufo-arrival' | 'ufo-siren' | 'ufo-barrage' | 'ufo-lock' | 'ufo-warning' | 'ufo-beam' | 'ufo-impact' | 'pluto-tongue' | 'pluto-tongue-hit' | 'pluto-arrival' | 'pluto-glide' | 'pluto-slam';
+type SoundName = 'go' | 'drift' | 'boost' | 'pad' | 'wish' | 'shield' | 'shot' | 'laser' | 'water' | 'cannon' | 'fire' | 'ice' | 'hit' | 'stun' | 'lap' | 'final-lap' | 'ultimate' | 'trick' | 'draft' | 'pickup' | 'cart-warning' | 'birds' | 'crate-hit' | 'market-hit' | 'boulder-hit' | 'urn-hit' | 'cart-hit' | 'field-soul' | 'field-clock' | 'field-anchor' | 'field-star' | 'field-fire' | 'plasma-shot' | 'plasma-hit' | 'ufo-arrival' | 'ufo-siren' | 'ufo-barrage' | 'ufo-lock' | 'ufo-warning' | 'ufo-beam' | 'ufo-impact' | 'pluto-tongue' | 'pluto-tongue-hit' | 'pluto-arrival' | 'pluto-glide' | 'pluto-slam' | 'maleficent-curse' | 'maleficent-roar' | 'maleficent-breath' | 'maleficent-hit' | 'maleficent-hex-break';
 
 // Sources, licenses, and processing notes are documented in AUDIO_CREDITS.md.
 const ASSETS = {
@@ -20,9 +20,10 @@ const ASSETS = {
   ufoArrival: 'rampage-arrival.ogg', ufoInbound: 'rampage-inbound.ogg', ufoLock: 'rampage-lock.ogg', ufoSiren: 'ufo-siren.ogg', stitchTheme: 'stitch-ultimate-theme.ogg',
   plasmaCast: 'plasma-cast.ogg', plasmaImpact: 'plasma-impact.ogg',
   plutoBark: 'pluto-bark.ogg', plutoTongue: 'pluto-tongue.ogg', plutoPaw: 'pluto-paw.ogg', plutoGlider: 'pluto-glider.ogg',
+  maleficentCurse: 'maleficent-curse.ogg', maleficentRoar: 'maleficent-roar.ogg', maleficentBreath: 'maleficent-breath.ogg', maleficentHit: 'maleficent-hit.ogg', maleficentHexBreak: 'maleficent-hex-break.ogg',
   genieTheme: 'genie-ultimate-theme.ogg', mickeyTheme: 'mickey-ultimate-theme.ogg', elsaTheme: 'elsa-ultimate-theme.ogg', moanaTheme: 'moana-ultimate-theme.ogg', buzzTheme: 'buzz-ultimate-theme.ogg', maleficentTheme: 'maleficent-ultimate-theme.ogg', hadesTheme: 'hades-ultimate-theme.ogg', jackTheme: 'jack-ultimate-theme.ogg', mulanTheme: 'mulan-ultimate-theme.ogg',
 } as const;
-const AUDIO_REVISION = '17';
+const AUDIO_REVISION = '18';
 type AssetName = keyof typeof ASSETS;
 type Loop = { source: AudioBufferSourceNode; gain: GainNode };
 type RivalEngine = { id: number; position: { x: number; y: number; z: number }; speed: number };
@@ -581,6 +582,11 @@ export class GameAudio {
       case 'ufo-warning': this.sample('ufoLock', 0.57, 0.76); this.sample('time', 0.27, 0.77); break;
       case 'ufo-beam': this.sample('plasmaCast', 0.52, 0.58, 0, 1.1); this.sample('surge', 0.42, 0.69, 0.12, 1.45); this.sample('whoosh', 0.24, 0.7, 0.07); break;
       case 'ufo-impact': this.sample('plasmaImpact', 0.48, 0.78 + Math.random() * 0.18, 0, 0.52); this.sample('heavy', 0.28, 0.65 + Math.random() * 0.18); this.sample('cannon', 0.14, 0.75, 0.035, 0.38); break;
+      case 'maleficent-curse': this.sample('maleficentCurse', 0.6, 1); this.sample('surge', 0.14, 0.7, 0.08, 0.68); break;
+      case 'maleficent-roar': this.sample('maleficentRoar', 0.72, 1); this.sample('fire', 0.28, 0.7, 0.2, 1.25); break;
+      case 'maleficent-breath': this.sample('maleficentBreath', 0.75, 1); this.sample('fire', 0.32, 0.92, 0.04, 1); break;
+      case 'maleficent-hit': this.sample('maleficentHit', 0.52, 1); this.sample('heavy', 0.2, 1.05, 0.025, 0.25); break;
+      case 'maleficent-hex-break': this.sample('maleficentHexBreak', 0.5, 1); this.sample('spark', 0.17, 1.28); break;
       case 'pluto-tongue': this.sample('plutoTongue', 0.8, 1.03); this.sample('whoosh', 0.16, 1.45, 0.025, 0.32); break;
       case 'pluto-tongue-hit': this.sample('plutoTongue', 0.37, 0.73, 0, 0.25); this.sample('mid', 0.34, 1.22); this.sample('spark', 0.18, 1.2); break;
       case 'pluto-arrival': this.sample('plutoBark', 0.56, 0.73); this.sample('grand', 0.41, 0.79, 0.07); this.sample('whoosh', 0.25, 0.72, 0.1); break;

@@ -566,6 +566,7 @@ export class CharacterKartVisual implements RaceVisual {
   readonly group = new THREE.Group();
   readonly driver: THREE.Group;
   readonly body = new THREE.Group();
+  private readonly vehicle = new THREE.Group();
   private readonly wheels: THREE.Group[] = [];
   private readonly flames: THREE.Mesh[] = [];
   private readonly hairFlames: THREE.Mesh[] = [];
@@ -626,9 +627,9 @@ export class CharacterKartVisual implements RaceVisual {
       }
     }
     this.driver.position.set(0, 1.75, -0.52);
-    this.driver.scale.setScalar(0.82);
+    this.driver.scale.setScalar(id === 'buzz' ? 0.69 : id === 'maleficent' ? 0.9 : id === 'hades' ? 0.86 : 0.82);
     this.body.add(this.driver);
-    this.group.add(this.body);
+    this.vehicle.add(this.body);
     for (const x of [-1.44, 1.44]) for (const z of [-1.22, 1.22]) {
       const wheel = new THREE.Group();
       wheel.position.set(x, 0.7, z);
@@ -641,8 +642,10 @@ export class CharacterKartVisual implements RaceVisual {
       const cap = add(wheel, new THREE.CylinderGeometry(0.15, 0.15, 0.64, 12), trim);
       cap.rotation.z = Math.PI / 2;
       this.wheels.push(wheel);
-      this.group.add(wheel);
+      this.vehicle.add(wheel);
     }
+    this.vehicle.scale.setScalar(id === 'buzz' ? 0.9 : id === 'maleficent' ? 1.04 : id === 'hades' ? 1.02 : 1);
+    this.group.add(this.vehicle);
     for (const x of [-0.76, 0.76]) {
       const nozzle = add(this.body, new THREE.CylinderGeometry(0.27, 0.31, 0.54, 12), trim, x, 0.96, -2.03);
       nozzle.rotation.x = Math.PI / 2;

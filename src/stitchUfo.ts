@@ -36,7 +36,7 @@ interface WarningMark {
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const wrap = (value: number) => ((value % 1) + 1) % 1;
-const BOMB_RADIUS = 6.2;
+const BOMB_RADIUS = 5.0;
 export const STITCH_UFO_DURATION = 20;
 export const STITCH_UFO_INBOUND_DURATION = 5;
 const INBOUND_DURATION = STITCH_UFO_INBOUND_DURATION;
@@ -159,7 +159,7 @@ function makeWarning(position: THREE.Vector3, target: number, impactAt: number):
   shell.scale.y = 2.2;
   bolt.add(core, shell);
   bolt.visible = false;
-  return { target, position: position.clone(), impactAt, lockAt: impactAt - 0.46, locked: false, group, ring, materials, bolt, nextTrackAt: 0, radius: BOMB_RADIUS };
+  return { target, position: position.clone(), impactAt, lockAt: impactAt - 0.72, locked: false, group, ring, materials, bolt, nextTrackAt: 0, radius: BOMB_RADIUS };
 }
 
 export class StitchUfo {

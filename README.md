@@ -1,35 +1,29 @@
 # Genie's Midnight Run
 
-A playable browser prototype of the endless Genie-only kart race. It uses original procedural proxy geometry and original synthesized sounds; it does not contain ripped film or game assets.
+A browser kart racing prototype with ten selectable racers, three-lap races, drifting, shortcuts, track hazards, signature abilities, and ultimate powers. The Agrabah circuit includes a market, rooftops, palace garden, and desert cave. Several character and kart models were carried over from the user's earlier Godot kart project; the other visuals are original game geometry. Audio sources and licenses are listed in [AUDIO_CREDITS.md](AUDIO_CREDITS.md).
 
 ## Play online
 
-Open **https://colelifts.github.io/genie-midnight-run/** on a laptop or another device. The game is hosted on GitHub Pages; it does not depend on the developer's local server being open.
+Open **https://colelifts.github.io/genie-midnight-run/** on a laptop or another device. GitHub Pages hosts the game, so the developer's local server does not need to stay open.
 
-Every committed update pushed to `main` triggers `.github/workflows/deploy.yml`, which builds and publishes the game at the same URL. Wait for the workflow to finish before sharing an update.
+Every update pushed to `main` triggers `.github/workflows/deploy.yml`. The deployment is complete after the workflow succeeds and the public game is checked.
 
 ## Local development
 
-On Windows, double-click `play.cmd`. It installs dependencies on first run and starts a local development server. This is only for testing before publishing.
-
-Or run `npm install` followed by `npm run dev` in this folder. `npm run build` verifies TypeScript. `npm run build:pages` creates the production files for GitHub Pages in `dist/`.
+Run `npm install` once, then `npm run dev` for a local preview. Run `npm run build:pages` before publishing; it checks map geometry, collisions, handling, UFO targeting, TypeScript, and the production build.
 
 ## Controls
 
-| Action | Keyboard | Controller |
-| --- | --- | --- |
-| Accelerate / brake | W / S or Up / Down | Right / left trigger |
-| Steer | A / D or Left / Right | Left stick |
-| Drift and hop | Space | X |
-| Three Wishes | Hold E, release on Boost, Shield, or Shot | Hold B, release |
-| Quick-test wishes | 1 Boost, 2 Shield, 3 Shot | — |
-| Cosmic Showstopper | Q | Y |
-| Pause | Escape | — |
+| Action | Keyboard |
+| --- | --- |
+| Accelerate / brake | W / S or Up / Down |
+| Steer | A / D or Left / Right |
+| Drift and hop | Space |
+| Signature ability | E |
+| Ultimate | Q when charged |
+| Wonder Orb item | R |
+| Pause | Escape |
 
-Wishes have no cooldown in this test build. The Ultimate can be used again immediately after its five-second effect ends. During the Ultimate, Genie is faster and shielded; a kart he bumps is stunned for 1.25 seconds with circling birds and stars. Each opponent can be stunned once per Ultimate activation. The race has no finish condition, so laps continue until you pause or close the page.
-
-## Course
-
-The Agrabah circuit has a market alley and an optional rooftop route with magic-carpet boosts, palace-garden curves, and a desert cave. Market carts, breakable crates, and moving boulders are the current obstacles. Gold wish sparks provide a small boost, with a 12% chance for Genie's passive to upgrade it into a longer boost and brief shield.
+Genie and Buzz can hold E to aim or select their signature power. The character select screen shows each racer's passive, E ability, and Q ultimate. The ultimate powers last about 18–20 seconds and have their own music.
 
 Append `?demo=1` to the URL to watch an automatic drive around the course for inspection.

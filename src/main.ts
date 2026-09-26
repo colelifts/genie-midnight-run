@@ -9,6 +9,7 @@ import { ImportedKartVisual, loadImportedKarts } from './importedKart';
 import { CHARACTERS, CHARACTER_BY_ID, type CharacterId } from './characters';
 import { KartVisual, makeProjectile } from './kart';
 import { StitchUfo, STITCH_UFO_DURATION, STITCH_UFO_INBOUND_DURATION } from './stitchUfo';
+import { PlutoUltimate, PlutoTongue, PLUTO_ULTIMATE_DURATION } from './pluto';
 import { RacerShowcase } from './showcase';
 import { ITEMS, rollItem, type ItemId } from './items';
 import { BOOST_PAD_LAYOUT, GARDEN_ROUTE_END, MARKET_CROSSING_PROGRESS, MARKET_CROSSING_TRAVEL, marketCartState, PICKUP_LAYOUT, RaceTrack, START_GRID_BASE_PROGRESS, START_GRID_LANES, startGridProgress, touchesBoostPad, type RoadHit, type RoadPoint, type RouteName } from './track';
@@ -43,6 +44,7 @@ const ultimateAnnouncement = el<HTMLDivElement>('ultimate-announcement');
 const ultimateVeil = el<HTMLDivElement>('ultimate-veil');
 const stitchAlert = el<HTMLDivElement>('stitch-ufo-alert');
 const stitchIntro = el<HTMLDivElement>('stitch-ufo-intro');
+const plutoAlert = el<HTMLDivElement>('pluto-alert');
 const atmosphereShade = el<HTMLDivElement>('atmosphere-shade');
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
@@ -287,6 +289,9 @@ class GenieRace {
   readonly plasmaVolleys: { owner: number; target: number; cast: number; remaining: number; timer: number }[] = [];
   readonly plasmaCombos = new Map<number, { cast: number; count: number; last: number }>();
   readonly ufo: StitchUfo;
+  readonly pluto: PlutoUltimate;
+  readonly plutoTongue: PlutoTongue;
+  private plutoGliderStarted = false;
   private plasmaCast = 0;
   private plasmaTotalHits = 0;
   private ufoTotalHits = 0;
@@ -383,6 +388,8 @@ class GenieRace {
     this.makeStars();
     this.track = new RaceTrack(this.scene);
     this.ufo = new StitchUfo(this.scene, this.track);
+    this.pluto = new PlutoUltimate(this.scene, this.track);
+    this.plutoTongue = new PlutoTongue(this.scene);
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
     for (const point of this.track.samples) {
       minX = Math.min(minX, point.position.x);
@@ -419,6 +426,7 @@ class GenieRace {
         projectiles: this.projectiles.length,
         plasmaVolleys: this.plasmaVolleys.length,
         ufo: { active: this.ufo.active, owner: this.ufo.owner, phase: this.ufoPhase, age: Math.round(this.ufo.elapsed * 10) / 10, warnings: this.ufo.warnings },
+        pluto: { active: this.pluto.active, owner: this.pluto.owner, age: Math.round(this.pluto.elapsed * 10) / 10, hazards: this.pluto.hazards, tongues: this.plutoTongue.count },
         powerFields: this.powerFields.length,
         audio: this.audio.getStatus(),
       }),
@@ -746,6 +754,10 @@ class GenieRace {
 
   private resetRace() {
     this.ufo.reset();
+    this.pluto.reset();
+    this.plutoTongue.reset();
+    this.plutoGliderStarted = false;
+    plutoAlert.classList.add('hidden');
     this.plasmaVolleys.length = 0;
     this.plasmaCombos.clear();
     this.plasmaTotalHits = this.ufoTotalHits = 0;
@@ -810,6 +822,8 @@ class GenieRace {
       racer.visual.group.rotation.y = racer.yaw;
       racer.visual.setShield(false);
       racer.visual.setUltimate(false);
+      racer.visual.setPlutoPresent?.(true);
+      racer.visual.setGlider?.(false);
       racer.visual.setStunned(false);
     });
     this.cameraYaw = this.racers[0].yaw;
@@ -1029,6 +1043,15 @@ class GenieRace {
 
   private useSignature(racer: Racer) {
     if (this.mode !== 'race' || racer.stunTime > 0 || racer.signatureCooldown > 0) return;
+    let plutoTarget = -1;
+    if (racer.character === 'mickey') {
+      plutoTarget = this.racers.filter((other) => other.id !== racer.id && other.stunTime <= 0 && other.position.distanceTo(racer.position) <= 52)
+        .sort((a, b) => a.position.distanceToSquared(racer.position) - b.position.distanceToSquared(racer.position))[0]?.id ?? -1;
+      if (plutoTarget < 0) {
+        if (racer.id === 0) this.showBanner('PLUTO · NO RACER IN RANGE', 0.85);
+        return;
+      }
+    }
     if (racer.character === 'genie' && racer.id === 0) { this.beginWish(); return; }
     if (racer.character === 'buzz' && racer.id === 0) { this.beginLaserLock(); return; }
     if (racer.character === 'maleficent' && racer.ultimateTime > 0) {
@@ -1055,8 +1078,8 @@ class GenieRace {
         this.useWish(racer, 'boost');
         break;
       case 'mickey':
-        if (braking) this.dropField(racer, 'star', 0xffda6f, 4.5, 8, -3.2);
-        else this.launchPower(racer, 'star', 0xffd866, 42, 2.8);
+        this.plutoTongue.fire(racer.id, plutoTarget, this.racers);
+        this.makeFlash(racer.position.clone().add(new THREE.Vector3(0, 2.8, 0)), 0xff829e, 3.2, 0.22);
         break;
       case 'stitch':
         this.firePlasmaBurst(racer);
@@ -1161,8 +1184,9 @@ class GenieRace {
   private activateUltimate(racer: Racer) {
     if (this.mode !== 'race' || racer.ultimateTime > 0 || racer.stunTime > 0 || racer.ultimateMeter < 100) return;
     if (racer.character === 'stitch' && !this.ufo.start(racer.id, this.racers)) return;
+    if (racer.character === 'mickey' && !this.pluto.start(racer.id)) return;
     racer.ultimateMeter = 0;
-    racer.ultimateTime = racer.character === 'stitch' ? STITCH_UFO_DURATION : racer.character === 'genie' ? 5 : 4.6;
+    racer.ultimateTime = racer.character === 'stitch' ? STITCH_UFO_DURATION : PLUTO_ULTIMATE_DURATION;
     if (racer.character !== 'stitch') {
       racer.shieldTime = Math.max(racer.shieldTime, racer.ultimateTime);
       racer.boostTime = Math.max(racer.boostTime, racer.ultimateTime);
@@ -1195,9 +1219,15 @@ class GenieRace {
     this.makePulse(racer.position, def.accent, 0.7, 5.8);
     this.makeFlash(racer.position.clone().add(new THREE.Vector3(0, 2.2, 0)), def.accent, 7, 0.55);
     this.burst(racer.position.clone().add(new THREE.Vector3(0, 1.7, 0)), def.color, def.accent, 36);
-    if (racer.character === 'mickey') this.pushWave(racer, 13, 0xffd866);
+    if (racer.character === 'mickey') {
+      this.plutoGliderStarted = false;
+      racer.visual.setPlutoPresent?.(false);
+      racer.visual.setGlider?.(false);
+      plutoAlert.textContent = 'PLUTO IS COMING · WATCH THE ROAD';
+      plutoAlert.classList.remove('hidden');
+    }
     if (racer.character === 'mulan') this.launchPower(racer, 'dragon', 0x74e3cf, 54, 5);
-    if (racer.character === 'stitch' || racer.id === 0) this.audio.playUltimate(racer.character);
+    if (racer.character === 'stitch' || racer.character === 'mickey' || racer.id === 0) this.audio.playUltimate(racer.character);
     else this.audio.playAt('ultimate', racer.position);
   }
 
@@ -1278,6 +1308,65 @@ class GenieRace {
       stitchAlert.textContent = threat ? 'PLASMA LOCKED · EVADE!' : phase === 'beam' ? this.ufo.beamTarget === 0 ? 'LEADER BEAM · DODGE!' : 'LEADER BEAM FIRING' : phase === 'sweep' ? this.ufo.beamTarget === 0 ? 'BEAM LOCKING ON YOU' : 'BEAM LOCKING ON LEADER' : phase === 'inbound' ? 'EXPERIMENT 626 · INBOUND' : phase === 'locked' ? 'PLASMA TARGETS LOCKED' : 'UFO TARGETING THE TRACK';
       stitchAlert.dataset.phase = phase;
       stitchAlert.classList.toggle('hidden', this.stitchIntroTime > 0);
+    }
+  }
+
+  private updatePluto(dt: number) {
+    const tongueHits = this.plutoTongue.update(dt, this.racers);
+    for (const hit of tongueHits) {
+      const target = this.racers[hit.target];
+      const owner = this.racers[hit.owner];
+      if (!target || !owner || target.hitCooldown > 0) continue;
+      this.stun(target, 0.9);
+      target.speed *= 0.75;
+      owner.boostTime = Math.max(owner.boostTime, 1.15);
+      owner.ultimateMeter = Math.min(100, owner.ultimateMeter + 7);
+      this.makePulse(hit.position, 0xff759d, 0.42, 3.4);
+      this.makeFlash(hit.position, 0xffc3d1, 4.5, 0.3);
+      this.burst(hit.position, 0xff739e, 0xffdb8b, 26);
+      this.audio.playAt('pluto-tongue-hit', hit.position);
+      if (target.id === 0) this.showBanner('PLUTO LICKED YOU!', 0.95);
+      if (owner.id === 0) this.showBanner('PLUTO HIT · GOOD BOY BOOST!', 1.0);
+    }
+    if (!this.pluto.active) return;
+    const owner = this.racers[this.pluto.owner];
+    const ageBefore = this.pluto.elapsed;
+    const impacts = this.pluto.update(dt, this.racers);
+    if (owner && !this.plutoGliderStarted && ageBefore < 3.85 && this.pluto.elapsed >= 3.85) {
+      this.plutoGliderStarted = true;
+      this.startJump(owner, 4.0, 8.0);
+      owner.trickReady = false;
+      owner.boostTime = Math.max(owner.boostTime, 5.5);
+      this.audio.playAt('pluto-glide', owner.position);
+      if (owner.id === 0) this.showBanner('MAGIC GLIDER · STEER THROUGH THE SKY', 1.7);
+    }
+    for (const impact of impacts) {
+      this.makePulse(impact.position, 0xffbd74, 0.85, 8.2);
+      this.makeFlash(impact.position.clone().add(new THREE.Vector3(0, 2.2, 0)), 0xffd78a, 11, 0.5);
+      this.burst(impact.position.clone().add(new THREE.Vector3(0, 1.5, 0)), 0xf6b476, 0xe7c696, 60);
+      this.audio.playAt('pluto-slam', impact.position);
+    }
+    for (const racer of this.racers) {
+      if (racer.id === this.pluto.owner || racer.jumpTime > 0 && racer.jumpPower > 2) continue;
+      const mark = this.pluto.hazardAt(racer);
+      if (!mark) continue;
+      const road = this.track.nearest(racer.position, racer.progress);
+      const direction = mark.lane === 0 ? 1 : mark.lane === 2 ? -1 : road.lateral < 0 ? -1 : 1;
+      racer.position.addScaledVector(mark.right, direction * Math.min(2.3, dt * 28));
+      racer.speed = Math.min(racer.speed, raceSpeed(16));
+      if (!mark.hit.has(racer.id)) {
+        mark.hit.add(racer.id);
+        this.stun(racer, 0.85);
+        this.makePulse(racer.position, 0xff8155, 0.5, 3.8);
+        if (racer.id === 0) this.showBanner('BROKEN ROAD · FIND AN OPEN LANE!', 1.2);
+      }
+    }
+    const age = this.pluto.elapsed;
+    plutoAlert.textContent = age < 3.85 ? 'GIANT PLUTO INBOUND · WATCH THE TRACK' : age < 5.5 ? 'PAW SLAM · MOVE OUT OF THE GOLD LANE' : age < 11.8 ? 'BROKEN ROAD · SECOND STRIKE COMING' : 'PAW SLAM · FIND A CLEAR LINE';
+    if (!this.pluto.active) {
+      plutoAlert.classList.add('hidden');
+      owner?.visual.setPlutoPresent?.(true);
+      owner?.visual.setGlider?.(false);
     }
   }
 
@@ -1707,7 +1796,9 @@ class GenieRace {
       this.updateFlashes(dt);
       this.updateDashDragons(dt);
       this.audio.setListener(this.racers[0].position.x, this.racers[0].position.y, this.racers[0].position.z, this.racers[0].yaw);
-      this.audio.update(this.racers[0].speed, this.racers[0].drifting, this.racers[0].ultimateTime > 0, this.racers[0].boostTime > 0, this.mode === 'race', this.track.zone(this.racers[0].progress), this.racers[0].lap >= 3, this.track.fountainPosition, ultimateAtmosphere, this.ufo.elapsed);
+      const themeRacer = this.racers.find((racer) => racer.id === 0 && racer.ultimateTime > 0 && racer.character !== 'stitch')
+        ?? this.racers.find((racer) => racer.ultimateTime > 0 && racer.character !== 'stitch');
+      this.audio.update(this.racers[0].speed, this.racers[0].drifting, this.racers[0].ultimateTime > 0, this.racers[0].boostTime > 0, this.mode === 'race', this.track.zone(this.racers[0].progress), this.racers[0].lap >= 3, this.track.fountainPosition, ultimateAtmosphere, this.ufo.elapsed, themeRacer?.character ?? null, themeRacer ? PLUTO_ULTIMATE_DURATION - themeRacer.ultimateTime : 0);
       this.audio.updateRivals(this.racers, this.mode === 'race');
       if (this.stitchIntroTime > 0) {
         this.stitchIntroTime -= dt;
@@ -1779,6 +1870,7 @@ class GenieRace {
     this.checkObstacleCollisions();
     const projectileKnockback = this.updateProjectiles(dt);
     this.updateStitchUfo(dt);
+    this.updatePluto(dt);
     // Racer bumps and powers can move karts after their individual road checks.
     for (const racer of this.racers) this.keepOnCourse(racer);
     if (projectileKnockback) this.checkObstacleCollisions();
@@ -1810,7 +1902,11 @@ class GenieRace {
       racer.visual.setGroundOffset(this.track.nearest(racer.position, racer.progress).point.position.y - racer.position.y);
       racer.visual.setShield(racer.shieldTime > 0 && racer.ultimateTime <= 0);
       racer.visual.setOceanBarrier?.(racer.oceanBarrierTime > 0);
-      racer.visual.setUltimate(racer.ultimateTime > 0 && racer.character !== 'stitch');
+      racer.visual.setUltimate(racer.ultimateTime > 0 && racer.character !== 'stitch' && racer.character !== 'mickey');
+      if (racer.character === 'mickey') {
+        racer.visual.setPlutoPresent?.(!(this.pluto.active && this.pluto.owner === racer.id));
+        racer.visual.setGlider?.(racer.jumpTime > 0 && racer.jumpPower > 2);
+      }
       racer.visual.setStunned(racer.stunTime > 0);
       racer.visual.update(dt, racer.speed, racer.steerVisual, racer.drifting, racer.boostTime > 0, racer.stunTime > 0);
     }
@@ -1963,6 +2059,8 @@ class GenieRace {
       const dangerLane = ufoThreat.clone().sub(target.position).dot(target.right);
       if (Math.abs(desiredLane - dangerLane) < 7.5) desiredLane = clamp(dangerLane + (desiredLane < dangerLane ? -9 : 9), -laneLimit, laneLimit);
     }
+    const plutoLane = this.pluto.avoidLane(racer, route);
+    if (plutoLane !== null && racer.id !== this.pluto.owner) desiredLane = clamp(plutoLane, -laneLimit, laneLimit);
     racer.aiLine += clamp(desiredLane - racer.aiLine, -dt * 14, dt * 14);
     const direction = target.position.clone().addScaledVector(target.right, racer.aiLine).sub(racer.position);
     const targetYaw = Math.atan2(direction.x, direction.z);
@@ -2109,7 +2207,7 @@ class GenieRace {
     const stage = driftBoostStage(charge);
     if (stage === 0) return;
     racer.boostTime = Math.max(racer.boostTime, [0, 0.65, 1.2, 1.8][stage] * (racer.character === 'mulan' ? 1.28 : 1));
-    racer.ultimateMeter = Math.min(100, racer.ultimateMeter + (8 + stage * 5) * (racer.character === 'mickey' ? 1.45 : 1));
+    racer.ultimateMeter = Math.min(100, racer.ultimateMeter + 8 + stage * 5);
     const stats = CHARACTER_BY_ID[racer.character];
     const speedCap = raceSpeed(racer.padBoostTime > 0 ? 53 : racer.ultimateTime > 0 && racer.character !== 'stitch' ? 43 : racer.id === 0 ? 40 : 37) * stats.speed;
     racer.speed = Math.max(racer.speed, Math.min(speedCap, racer.speed + raceSpeed([0, 3.3, 5.2, 7.3][stage]) * stats.speed));
@@ -2254,27 +2352,27 @@ class GenieRace {
     const position = racer.position.clone().add(new THREE.Vector3(0, 1.6, 0));
     this.makeFlash(position, def.accent, 3.3, 0.25);
     switch (racer.character) {
-      case 'genie': racer.powerTick = 0.55; break;
-      case 'mickey': this.makePulse(racer.position, 0xffdb6e, 0.5, 2.3); racer.powerTick = 0.75; break;
+      case 'genie': racer.powerTick = 0.95; break;
+      case 'mickey': this.makePulse(racer.position, 0xffdb6e, 0.5, 2.3); racer.powerTick = 2.2; break;
       case 'stitch': racer.powerTick = 1; break;
       case 'elsa':
         this.dropField(racer, 'ice', 0xa9f2ff, 4, 5, -2.8);
         for (const other of this.racers) if (other.id !== racer.id && other.position.distanceTo(racer.position) < 9) other.wobbleTime = Math.max(other.wobbleTime, 0.7);
-        racer.powerTick = 0.58;
+        racer.powerTick = 2.1;
         break;
-      case 'moana': this.pushWave(racer, 8, 0x6fece5); racer.powerTick = 0.68; break;
-      case 'buzz': this.launchPower(racer, 'laser', 0xa6ff76, 58, 1.25); racer.powerTick = 0.9; break;
+      case 'moana': this.pushWave(racer, 8, 0x6fece5); racer.powerTick = 2.0; break;
+      case 'buzz': this.launchPower(racer, 'laser', 0xa6ff76, 58, 1.25); racer.powerTick = 2.3; break;
       case 'maleficent':
         this.dropField(racer, 'dragonfire', 0xa1f576, 4.5, 6, -3);
-        racer.powerTick = 0.68;
+        racer.powerTick = 2.2;
         break;
-      case 'hades': this.dropField(racer, 'soul', 0x77b6ff, 4.1, 5.2, -2.7); racer.powerTick = 0.52; break;
+      case 'hades': this.dropField(racer, 'soul', 0x77b6ff, 4.1, 5.2, -2.7); racer.powerTick = 2.1; break;
       case 'jack':
         this.launchPower(racer, 'cannon', 0xffd58d, 34, 1.8, -1, -2);
         this.launchPower(racer, 'cannon', 0xffd58d, 34, 1.8, -1, 2);
-        racer.powerTick = 1.05;
+        racer.powerTick = 2.8;
         break;
-      case 'mulan': this.makePulse(racer.position, 0x79e7d5, 0.45, 2.5); racer.powerTick = 0.7; break;
+      case 'mulan': this.makePulse(racer.position, 0x79e7d5, 0.45, 2.5); racer.powerTick = 1.8; break;
     }
   }
 
@@ -2311,6 +2409,11 @@ class GenieRace {
     const rank = player.finishPlace;
     this.mode = 'finished';
     this.ufo.reset();
+    this.pluto.reset();
+    this.plutoTongue.reset();
+    plutoAlert.classList.add('hidden');
+    player.visual.setPlutoPresent?.(true);
+    player.visual.setGlider?.(false);
     this.ufoPhase = 'none';
     stitchAlert.classList.add('hidden');
     stitchIntro.classList.add('hidden');

@@ -553,6 +553,8 @@ export interface RaceVisual {
   readonly driver: THREE.Object3D;
   setShield(active: boolean): void;
   setOceanBarrier?(active: boolean): void;
+  setPlutoPresent?(active: boolean): void;
+  setGlider?(active: boolean): void;
   setUltimate(active: boolean): void;
   setStunned(active: boolean): void;
   setGroundOffset(offset: number): void;

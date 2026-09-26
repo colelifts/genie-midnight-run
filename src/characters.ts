@@ -32,9 +32,9 @@ export const CHARACTERS: CharacterDefinition[] = [
   {
     id: 'mickey', name: 'Mickey Mouse', title: 'Balanced Magic', icon: '★', color: 0xe64453, accent: 0xffd66f, kartColor: 0xc63543,
     speed: 1, acceleration: 1.02, handling: 1.02, weight: 0.95,
-    passiveName: 'Magic Momentum', passive: 'Drift boosts charge more ultimate energy.',
-    signatureName: 'Magic Spark', signature: 'Fire a star forward, or drop it behind while braking.', signatureCooldown: 9,
-    ultimateName: "Sorcerer's Surge", ultimate: 'A star shockwave pushes nearby racers; magic shields and speeds the kart.',
+    passiveName: 'Good Boy Boost', passive: 'When Pluto lands a tongue hit, Mickey gets a short boost and more ultimate charge.',
+    signatureName: 'Pluto Tongue', signature: 'Pluto auto-aims his tongue at the nearest racer within 52 metres.', signatureCooldown: 10,
+    ultimateName: 'Pluto Paw Slam', ultimate: 'Pluto grows giant and blocks one third of the road with each of two paw strikes. Mickey glides over the first.',
   },
   {
     id: 'stitch', name: 'Stitch', title: 'Chaotic Aggressor', icon: 'ϟ', color: 0x4b86ed, accent: 0xbce7ff, kartColor: 0x344fb0,

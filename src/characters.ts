@@ -62,7 +62,7 @@ export const CHARACTERS: CharacterDefinition[] = [
     speed: 1.02, acceleration: 0.99, handling: 1.02, weight: 0.97,
     passiveName: 'Star Command', passive: 'Jumping from boost carpets improves the next laser lock.',
     signatureName: 'Laser Lock', signature: 'Hold E on a racer ahead to lock on, then release a dodgable green laser.', signatureCooldown: 11,
-    ultimateName: 'To Infinity', ultimate: 'Deploy wings, skim small hazards, and fire quick mini lasers while speeding up.',
+    ultimateName: 'To Infinity', ultimate: 'Fly over hazards as the road becomes a glowing low gravity grid. Everyone gets longer jumps; Buzz gains faster target locks and precision lasers.',
   },
   {
     id: 'maleficent', name: 'Maleficent', title: 'Dark Power', icon: '♜', color: 0x9b67d6, accent: 0x81ef80, kartColor: 0x252036,

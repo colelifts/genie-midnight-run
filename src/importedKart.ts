@@ -4,8 +4,8 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { CharacterKartVisual, type RaceVisual } from './characterKart';
 import { makePluto } from './pluto';
 
-type ImportedRacer = 'mickey' | 'stitch' | 'maleficent' | 'moana';
-type Templates = { kart: THREE.Group; stitch: THREE.Group; maleficentKart: THREE.Group; moanaKart: THREE.Group; dragon: THREE.Group };
+type ImportedRacer = 'mickey' | 'stitch' | 'maleficent' | 'moana' | 'buzz';
+type Templates = { kart: THREE.Group; stitch: THREE.Group; maleficentKart: THREE.Group; moanaKart: THREE.Group; buzzKart: THREE.Group; dragon: THREE.Group };
 
 let templates: Templates | null = null;
 let loading: Promise<boolean> | null = null;
@@ -23,9 +23,10 @@ export function loadImportedKarts(): Promise<boolean> {
     loader.loadAsync(`${import.meta.env.BASE_URL}models/stitch-driver.glb`),
     loader.loadAsync(`${import.meta.env.BASE_URL}models/maleficent-kart.glb`),
     loader.loadAsync(`${import.meta.env.BASE_URL}models/moana-kart.glb`),
+    loader.loadAsync(`${import.meta.env.BASE_URL}models/buzz-kart.glb`),
     loader.loadAsync(`${import.meta.env.BASE_URL}models/maleficent-dragon.glb`),
-  ]).then(([kart, stitch, maleficentKart, moanaKart, dragon]) => {
-    templates = { kart: kart.scene, stitch: stitch.scene, maleficentKart: maleficentKart.scene, moanaKart: moanaKart.scene, dragon: dragon.scene };
+  ]).then(([kart, stitch, maleficentKart, moanaKart, buzzKart, dragon]) => {
+    templates = { kart: kart.scene, stitch: stitch.scene, maleficentKart: maleficentKart.scene, moanaKart: moanaKart.scene, buzzKart: buzzKart.scene, dragon: dragon.scene };
     return true;
   }).catch((error) => {
     console.warn('Detailed racer models unavailable; using the built-in racers.', error);
@@ -46,6 +47,9 @@ export class ImportedKartVisual implements RaceVisual {
   private dragon: THREE.Group | null = null;
   private dragonWingL: THREE.Object3D | null = null;
   private dragonWingR: THREE.Object3D | null = null;
+  private buzzWings: THREE.Group | null = null;
+  private readonly buzzWingPanels: THREE.Group[] = [];
+  private buzzWingDeploy = 0;
   private plutoPresent = true;
   private ultimateActive = false;
   private readonly wheels: THREE.Object3D[] = [];
@@ -77,14 +81,18 @@ export class ImportedKartVisual implements RaceVisual {
       this.glider = this.makeGlider();
       this.group.add(this.glider);
     }
+    if (id === 'buzz') {
+      this.buzzWings = this.makeBuzzWings();
+      this.group.add(this.buzzWings);
+    }
   }
 
   get driver(): THREE.Object3D { return this.importedDriver ?? this.fallback.driver; }
 
   private mount() {
     if (this.model || !templates || this.disposed) return;
-    const kart = (this.id === 'maleficent' ? templates.maleficentKart : this.id === 'moana' ? templates.moanaKart : templates.kart).clone(true);
-    const mickey = kart.getObjectByName(this.id === 'maleficent' ? 'Maleficent' : this.id === 'moana' ? 'Moana' : 'Driver');
+    const kart = (this.id === 'maleficent' ? templates.maleficentKart : this.id === 'moana' ? templates.moanaKart : this.id === 'buzz' ? templates.buzzKart : templates.kart).clone(true);
+    const mickey = kart.getObjectByName(this.id === 'maleficent' ? 'Maleficent' : this.id === 'moana' ? 'Moana' : this.id === 'buzz' ? 'Buzz' : 'Driver');
     if (!mickey) return;
     if (this.id === 'stitch') {
       mickey.visible = false;
@@ -111,7 +119,7 @@ export class ImportedKartVisual implements RaceVisual {
     this.fallback.hideBaseModel();
     this.model = model;
     this.group.add(model);
-    if (this.id === 'maleficent' || this.id === 'moana') {
+    if (this.id === 'maleficent' || this.id === 'moana' || this.id === 'buzz') {
       // Preserve the GLB scene's Blender-to-Three axis transform when lifting
       // the driver out of the imported chassis for independent animation.
       this.group.attach(mickey);
@@ -139,7 +147,8 @@ export class ImportedKartVisual implements RaceVisual {
       if (this.importedDriver) this.importedDriver.visible = !active;
       this.dragon.visible = active;
       this.fallback.setUltimate(false);
-    } else this.fallback.setUltimate(active);
+    } else this.fallback.setUltimate(this.id === 'buzz' ? false : active);
+    if (this.buzzWings && active) this.buzzWings.visible = true;
   }
   setPlutoPresent(active: boolean) { this.plutoPresent = active; if (this.pluto) this.pluto.visible = active; }
   setGlider(active: boolean) { if (this.glider) this.glider.visible = active; }
@@ -160,6 +169,12 @@ export class ImportedKartVisual implements RaceVisual {
       this.pluto.rotation.z = -steer * 0.065;
     }
     if (this.glider?.visible) this.glider.rotation.z = -steer * 0.1;
+    if (this.buzzWings) {
+      this.buzzWingDeploy += ((this.ultimateActive ? 1 : 0) - this.buzzWingDeploy) * Math.min(1, dt * 5);
+      this.buzzWings.visible = this.buzzWingDeploy > 0.02;
+      for (const panel of this.buzzWingPanels) panel.scale.x = Math.max(0.02, this.buzzWingDeploy);
+      this.buzzWings.position.y = Math.sin(this.elapsed * 7) * 0.08 * this.buzzWingDeploy;
+    }
     if (this.dragon?.visible) {
       this.dragon.position.y = 1.9 + Math.sin(this.elapsed * 5.7) * 0.23;
       this.dragon.rotation.z = -steer * (drifting ? 0.09 : 0.045);
@@ -179,6 +194,7 @@ export class ImportedKartVisual implements RaceVisual {
     this.plutoPerch?.removeFromParent();
     this.glider?.removeFromParent();
     this.dragon?.removeFromParent();
+    this.buzzWings?.removeFromParent();
     this.fallback.dispose();
   }
 
@@ -210,6 +226,52 @@ export class ImportedKartVisual implements RaceVisual {
     const crest = new THREE.Mesh(new THREE.OctahedronGeometry(0.34, 0), gold);
     crest.position.y = 0.09;
     root.add(crest);
+    return root;
+  }
+
+  private makeBuzzWings() {
+    const root = new THREE.Group();
+    root.visible = false;
+    const enamel = new THREE.MeshStandardMaterial({ color: 0xe5f3f0, metalness: 0.34, roughness: 0.26, side: THREE.DoubleSide, emissive: 0x385e72, emissiveIntensity: 0.21 });
+    const green = new THREE.MeshStandardMaterial({ color: 0x83db53, metalness: 0.23, roughness: 0.32, side: THREE.DoubleSide, emissive: 0x438f35, emissiveIntensity: 0.27 });
+    const glow = new THREE.MeshBasicMaterial({ color: 0xb4faff, toneMapped: false });
+    for (const side of [-1, 1]) {
+      const panel = new THREE.Group();
+      panel.position.set(side * 0.77, 1.42, -0.88);
+      const outline = new THREE.Shape();
+      outline.moveTo(0, -0.5);
+      outline.lineTo(side * 1.4, -0.75);
+      outline.lineTo(side * 3.12, -0.28);
+      outline.lineTo(side * 3.25, 0.35);
+      outline.lineTo(side * 1.1, 0.18);
+      outline.lineTo(0, 0.4);
+      outline.closePath();
+      const wing = new THREE.Mesh(new THREE.ShapeGeometry(outline), enamel);
+      wing.rotation.x = 0.68;
+      panel.add(wing);
+      const shell = new THREE.Mesh(new THREE.BoxGeometry(2.55, 0.16, 1.04), enamel);
+      shell.position.set(side * 1.58, 0.14, -0.18);
+      shell.rotation.z = side * 0.15;
+      shell.rotation.y = side * -0.11;
+      panel.add(shell);
+      const inset = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.08, 0.38), green);
+      inset.position.set(side * 1.54, 0.28, -0.11);
+      inset.rotation.y = side * -0.19;
+      panel.add(inset);
+      const edge = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([
+        new THREE.Vector3(side * 0.25, 0.04, -0.5),
+        new THREE.Vector3(side * 1.6, 0.06, -0.73),
+        new THREE.Vector3(side * 3.13, 0.06, -0.27),
+      ]), 20, 0.07, 7, false), glow);
+      panel.add(edge);
+      for (let n = 0; n < 3; n++) {
+        const lamp = new THREE.Mesh(new THREE.OctahedronGeometry(0.11, 0), glow);
+        lamp.position.set(side * (1.15 + n * 0.68), 0.12, -0.28 + n * 0.12);
+        panel.add(lamp);
+      }
+      root.add(panel);
+      this.buzzWingPanels.push(panel);
+    }
     return root;
   }
 }

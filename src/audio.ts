@@ -2,7 +2,7 @@
 import type { CharacterId } from './characters';
 import { STITCH_UFO_INBOUND_DURATION } from './stitchUfo';
 
-type SoundName = 'go' | 'drift' | 'boost' | 'pad' | 'wish' | 'shield' | 'shot' | 'laser' | 'water' | 'moana-current' | 'cannon' | 'fire' | 'ice' | 'hit' | 'stun' | 'lap' | 'final-lap' | 'ultimate' | 'trick' | 'draft' | 'pickup' | 'cart-warning' | 'birds' | 'crate-hit' | 'market-hit' | 'boulder-hit' | 'urn-hit' | 'cart-hit' | 'field-soul' | 'field-clock' | 'field-anchor' | 'field-star' | 'field-fire' | 'plasma-shot' | 'plasma-hit' | 'ufo-arrival' | 'ufo-siren' | 'ufo-barrage' | 'ufo-lock' | 'ufo-warning' | 'ufo-beam' | 'ufo-impact' | 'pluto-tongue' | 'pluto-tongue-hit' | 'pluto-arrival' | 'pluto-glide' | 'pluto-slam' | 'maleficent-curse' | 'maleficent-roar' | 'maleficent-breath' | 'maleficent-hit' | 'maleficent-hex-break';
+type SoundName = 'go' | 'drift' | 'boost' | 'pad' | 'wish' | 'shield' | 'shot' | 'laser' | 'buzz-lock' | 'buzz-laser' | 'water' | 'moana-current' | 'cannon' | 'fire' | 'ice' | 'hit' | 'stun' | 'lap' | 'final-lap' | 'ultimate' | 'trick' | 'draft' | 'pickup' | 'cart-warning' | 'birds' | 'crate-hit' | 'market-hit' | 'boulder-hit' | 'urn-hit' | 'cart-hit' | 'field-soul' | 'field-clock' | 'field-anchor' | 'field-star' | 'field-fire' | 'plasma-shot' | 'plasma-hit' | 'ufo-arrival' | 'ufo-siren' | 'ufo-barrage' | 'ufo-lock' | 'ufo-warning' | 'ufo-beam' | 'ufo-impact' | 'pluto-tongue' | 'pluto-tongue-hit' | 'pluto-arrival' | 'pluto-glide' | 'pluto-slam' | 'maleficent-curse' | 'maleficent-roar' | 'maleficent-breath' | 'maleficent-hit' | 'maleficent-hex-break';
 
 // Sources, licenses, and processing notes are documented in AUDIO_CREDITS.md.
 const ASSETS = {
@@ -16,6 +16,7 @@ const ASSETS = {
   ice: 'ice-crackle.mp3',
   elsaWave: 'elsa-freeze-wave.ogg', elsaTrail: 'elsa-frost-trail.ogg',
   moanaTide: 'moana-tide-rise.ogg', moanaWave: 'moana-wave-cast.ogg', moanaCurrent: 'moana-current-splash.ogg',
+  buzzLaunch: 'buzz-orbital-launch.ogg', buzzLock: 'buzz-target-lock.ogg', buzzLaser: 'buzz-laser-pulse.ogg',
   crateCrack: 'crate-crack.mp3', woodHit: 'wood-hit.mp3', stoneImpact: 'stone-impact.mp3',
   urnShatter: 'urn-shatter.mp3', cartClank: 'cart-clank.mp3',
   wind: 'wind-ambience.mp3', fountain: 'fountain-ambience.mp3',
@@ -25,7 +26,7 @@ const ASSETS = {
   maleficentCurse: 'maleficent-curse.ogg', maleficentRoar: 'maleficent-roar.ogg', maleficentBreath: 'maleficent-breath.ogg', maleficentHit: 'maleficent-hit.ogg', maleficentHexBreak: 'maleficent-hex-break.ogg',
   genieTheme: 'genie-ultimate-theme.ogg', mickeyTheme: 'mickey-ultimate-theme.ogg', elsaTheme: 'elsa-ultimate-theme.ogg', moanaTheme: 'moana-ultimate-theme.ogg', buzzTheme: 'buzz-ultimate-theme.ogg', maleficentTheme: 'maleficent-ultimate-theme.ogg', hadesTheme: 'hades-ultimate-theme.ogg', jackTheme: 'jack-ultimate-theme.ogg', mulanTheme: 'mulan-ultimate-theme.ogg',
 } as const;
-const AUDIO_REVISION = '20';
+const AUDIO_REVISION = '21';
 type AssetName = keyof typeof ASSETS;
 type Loop = { source: AudioBufferSourceNode; gain: GainNode };
 type RivalEngine = { id: number; position: { x: number; y: number; z: number }; speed: number };
@@ -556,6 +557,8 @@ export class GameAudio {
       case 'shield': this.sample('surge', 0.35, 1.13); this.sample('light', 0.15, 1.08); break;
       case 'shot': this.sample('time', 0.32, 1.24); this.sample('spark', 0.13, 1.7, 0.06); break;
       case 'laser': this.sample('laser', 0.38, 1); this.sample('whoosh', 0.13, 1.3); break;
+      case 'buzz-lock': this.sample('buzzLock', 0.46, 1); break;
+      case 'buzz-laser': this.sample('buzzLaser', 0.57, 1); break;
       case 'plasma-shot': this.sample('plasmaCast', 0.27, 1.12 + Math.random() * 0.12, 0, 0.26); break;
       case 'plasma-hit': this.sample('plasmaImpact', 0.46, 1.02, 0, 0.55); this.sample('spark', 0.15, 1.38); break;
       case 'water': this.sample('moanaWave', 0.61, 1); this.sample('water', 0.16, 1.16); break;
@@ -631,6 +634,7 @@ export class GameAudio {
     if (character === 'mickey') { this.play('pluto-tongue'); return; }
     if (character === 'elsa') { this.sample('elsaTrail', 0.62, 1); this.sample('ice', 0.19, 1.18, 0.05, 0.54); return; }
     if (character === 'moana') { this.sample('moanaWave', 0.66, 1); this.sample('water', 0.18, 1.1, 0.08); return; }
+    if (character === 'buzz') { this.play('buzz-laser'); return; }
     const palette: Record<CharacterId, [AssetName, number, number]> = {
       genie: ['grand', 0.38, 1.08], mickey: ['spark', 0.36, 1.28], stitch: ['plasmaCast', 0.52, 1.02],
       elsa: ['ice', 0.4, 1], moana: ['whoosh', 0.4, 0.88], buzz: ['time', 0.42, 1.7],
@@ -638,7 +642,7 @@ export class GameAudio {
     };
     const [name, volume, rate] = palette[character];
     this.sample(name, volume, rate);
-    if (character === 'buzz' || character === 'maleficent') this.sample('whoosh', 0.19, rate * 0.82, 0.055);
+    if (character === 'maleficent') this.sample('whoosh', 0.19, rate * 0.82, 0.055);
   }
 
   playUltimate(character: CharacterId) {
@@ -661,12 +665,17 @@ export class GameAudio {
       if (this.context) this.duckUntil = this.context.currentTime + 2.1;
       return;
     }
+    if (character === 'buzz') {
+      this.sample('buzzLaunch', 0.86, 1);
+      this.sample('buzzLock', 0.37, 0.84, 0.74);
+      if (this.context) this.duckUntil = this.context.currentTime + 2.1;
+      return;
+    }
     const dark = character === 'maleficent' || character === 'hades';
-    const quick = character === 'buzz' || character === 'mulan';
+    const quick = character === 'mulan';
     this.sample('whoosh', 0.48, quick ? 1.24 : dark ? 0.68 : 0.92);
     this.sample('grand', 0.53, dark ? 0.71 : quick ? 1.28 : 1, 0.06);
     this.sample('heavy', 0.32, 0.82, 0.12);
-    if (character === 'buzz') this.sample('laser', 0.32, 0.8, 0.12);
     if (character === 'hades' || character === 'maleficent') this.sample('fire', 0.26, dark ? 0.83 : 1, 0.12, 1.3);
     if (character === 'jack') this.sample('cannon', 0.32, 0.9, 0.12, 1.5);
     if (this.context) this.duckUntil = this.context.currentTime + 0.65;

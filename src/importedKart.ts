@@ -111,7 +111,7 @@ export class ImportedKartVisual implements RaceVisual {
     this.fallback.hideBaseModel();
     this.model = model;
     this.group.add(model);
-    if (this.id === 'maleficent') {
+    if (this.id === 'maleficent' || this.id === 'moana') {
       // Preserve the GLB scene's Blender-to-Three axis transform when lifting
       // the driver out of the imported chassis for independent animation.
       this.group.attach(mickey);

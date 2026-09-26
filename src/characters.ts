@@ -48,7 +48,7 @@ export const CHARACTERS: CharacterDefinition[] = [
     speed: 0.99, acceleration: 1, handling: 1.08, weight: 0.94,
     passiveName: 'Frozen Grip', passive: 'Ice has less effect on Elsa’s handling.',
     signatureName: 'Frost Trail', signature: 'Leave slick ice that slides rivals outward and gives Elsa a small speed lift while she rides it.', signatureCooldown: 11,
-    ultimateName: 'Into the Storm', ultimate: 'Ride a fast snowstorm that chills nearby rivals and paints the road with ice.',
+    ultimateName: 'Into the Storm', ultimate: 'Freeze the entire circuit. Elsa gains grip and speed while rivals slide on frosted roads. Leave extra ice patches in your wake.',
   },
   {
     id: 'moana', name: 'Moana', title: 'Momentum Wayfinder', icon: '≈', color: 0x35c9be, accent: 0xffd58b, kartColor: 0x705b42,

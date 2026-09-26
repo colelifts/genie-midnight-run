@@ -154,16 +154,45 @@ function figure(id: CharacterId) {
     add(root, new THREE.TubeGeometry(grin, 10, 0.035, 6, false), eye);
     ball(root, 0.55, paint(0x9bc2e5), 0, 1.2, 0.45).scale.set(0.65, 0.75, 0.22);
   } else if (id === 'elsa') {
-    ball(root, 0.7, hair, 0, 2.66, -0.19).scale.set(0.98, 0.75, 0.7);
-    branch(root, new THREE.Vector3(-0.39, 2.82, 0.22), new THREE.Vector3(0.26, 2.65, 0.48), 0.12, hair);
-    const braid = new THREE.CatmullRomCurve3([new THREE.Vector3(0.32, 2.65, -0.4), new THREE.Vector3(0.6, 2.28, -0.46), new THREE.Vector3(0.74, 1.84, -0.15), new THREE.Vector3(0.78, 1.45, 0.27)]);
-    add(root, new THREE.TubeGeometry(braid, 18, 0.19, 8, false), hair);
-    const cape = cone(root, 0.84, 1.6, paint(0xbdeefa, 0.08, 0.68), 0, 0.95, -0.47);
-    cape.scale.z = 0.42;
-    for (let n = 0; n < 3; n++) {
-      const crystal = cone(root, 0.2, 0.45, glow(0xe5ffff, 0.75), (n - 1) * 0.42, 1.36, 0.54);
-      crystal.rotation.z = (n - 1) * 0.22;
+    const frostFabric = paint(0x8bd7ed, 0.22, 0.35);
+    const silver = paint(0xf0fcff, 0.55, 0.26);
+    const iceGem = glow(0xc5faff, 0.93);
+    const dress = cone(root, 0.8, 1.15, frostFabric, 0, 0.76, -0.14, 24);
+    dress.rotation.z = Math.PI;
+    dress.scale.z = 0.7;
+    const corset = ball(root, 0.54, frostFabric, 0, 1.29, 0.49);
+    corset.scale.set(0.95, 0.94, 0.17);
+    for (const side of [-1, 1]) {
+      branch(root, new THREE.Vector3(side * 0.36, 1.68, 0.46), new THREE.Vector3(0, 1.13, 0.58), 0.037, silver);
+      ball(root, 0.15, silver, side * 0.61, 1.61, 0.22).scale.set(1.15, 0.36, 0.75);
+      branch(root, new THREE.Vector3(side * 0.18, 2.97, 0.13), new THREE.Vector3(side * 0.46, 2.81, -0.08), 0.065, hair);
     }
+    ball(root, 0.7, hair, 0, 2.66, -0.18).scale.set(0.98, 0.75, 0.7);
+    branch(root, new THREE.Vector3(-0.39, 2.84, 0.2), new THREE.Vector3(0.3, 2.69, 0.46), 0.14, hair);
+    const braidPath = [
+      new THREE.Vector3(0.29, 2.64, -0.45), new THREE.Vector3(0.48, 2.44, -0.57),
+      new THREE.Vector3(0.61, 2.23, -0.58), new THREE.Vector3(0.72, 2.02, -0.47),
+      new THREE.Vector3(0.76, 1.82, -0.28), new THREE.Vector3(0.72, 1.61, -0.04),
+    ];
+    for (let n = 0; n < braidPath.length; n++) {
+      const link = ball(root, 0.22 - n * 0.018, n % 2 ? silver : hair, braidPath[n].x, braidPath[n].y, braidPath[n].z);
+      link.scale.set(0.92, 0.76, 1.13);
+    }
+    const capeShape = new THREE.BufferGeometry();
+    capeShape.setAttribute('position', new THREE.Float32BufferAttribute([
+      -0.45, 1.72, -0.42, 0.45, 1.72, -0.42,
+      -0.72, 0.72, -0.98, 0.72, 0.72, -0.98,
+      -0.9, 0.37, -1.16, 0.9, 0.37, -1.16,
+    ], 3));
+    capeShape.setIndex([0, 2, 1, 1, 2, 3, 2, 4, 3, 3, 4, 5]);
+    capeShape.computeVertexNormals();
+    const cape = add(root, capeShape, new THREE.MeshStandardMaterial({ color: 0xc2efff, emissive: 0x226a9c, emissiveIntensity: 0.22, transparent: true, opacity: 0.74, depthWrite: false, side: THREE.DoubleSide, metalness: 0.18, roughness: 0.33 }));
+    cape.castShadow = false;
+    for (let n = 0; n < 3; n++) {
+      const crystal = cone(root, 0.15, 0.42, iceGem, (n - 1) * 0.32, 1.43, 0.62, 6);
+      crystal.rotation.z = (n - 1) * 0.2;
+    }
+    ball(root, 0.14, iceGem, 0, 1.64, 0.62).scale.set(1.35, 1.65, 0.48);
   } else if (id === 'moana') {
     const ocean = paint(0x3dafa7, 0.08, 0.47);
     const coral = paint(0xc94f44, 0.04, 0.72);
@@ -364,11 +393,23 @@ function kartDecorations(id: CharacterId, body: THREE.Group, primary: THREE.Mate
     }
     box(body, 2.45, 0.19, 0.36, primary, 0, 1.65, -1.41);
   } else if (id === 'elsa') {
+    const crystalMetal = paint(0xd9f9ff, 0.61, 0.21);
     for (const side of [-1, 1]) {
       const runner = branch(body, new THREE.Vector3(side * 1.18, 0.4, -1.65), new THREE.Vector3(side * 1.18, 0.4, 2), 0.12, accent);
       runner.castShadow = true;
       const crystal = cone(body, 0.37, 0.8, glow(0xbefaff, 0.83), side * 0.75, 1.4, 1.35, 5);
       crystal.rotation.z = side * 0.3;
+      branch(body, new THREE.Vector3(side * 1.08, 1.08, -1.45), new THREE.Vector3(side * 1.08, 1.08, 1.2), 0.055, crystalMetal);
+      for (let i = 0; i < 3; i++) {
+        const shard = cone(body, 0.14, 0.42 + i * 0.1, glow(0xc6f7ff, 0.78), side * 1.04, 1.45, -1.25 + i * 0.83, 5);
+        shard.rotation.z = side * 0.24;
+      }
+    }
+    const hoodGem = ball(body, 0.26, glow(0xe6ffff, 0.94), 0, 1.51, 1.3);
+    hoodGem.scale.set(1, 0.3, 1);
+    for (let n = 0; n < 6; n++) {
+      const angle = n * Math.PI / 3;
+      branch(body, new THREE.Vector3(Math.sin(angle) * 0.26, 1.52, 1.3 + Math.cos(angle) * 0.26), new THREE.Vector3(Math.sin(angle) * 0.69, 1.52, 1.3 + Math.cos(angle) * 0.69), 0.042, crystalMetal);
     }
   } else if (id === 'moana') {
     const water = paint(0x3bbcb4, 0.32, 0.38);

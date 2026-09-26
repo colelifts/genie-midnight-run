@@ -537,6 +537,18 @@ export class RaceTrack {
     scene.add(this.group);
   }
 
+  setFreeze(strength: number) {
+    const ice = Math.max(0, Math.min(1, strength));
+    stone.color.setHex(0xc48b66).lerp(new THREE.Color(0xa0c8d5), ice);
+    stoneLight.color.setHex(0xd7a476).lerp(new THREE.Color(0xc7e2e8), ice);
+    stoneDark.color.setHex(0x865e59).lerp(new THREE.Color(0x7798aa), ice);
+    sand.color.setHex(0xb77b5c).lerp(new THREE.Color(0xabb8bf), ice * 0.72);
+    roadMat.color.setHex(0xffffff).lerp(new THREE.Color(0xd4f0f8), ice);
+    gardenRoadMat.color.setHex(0xe6d5ba).lerp(new THREE.Color(0xcceaf1), ice);
+    stone.emissive.setHex(0x376a88).multiplyScalar(ice * 0.1);
+    stoneLight.emissive.setHex(0x376a88).multiplyScalar(ice * 0.1);
+  }
+
   private makeSamples() {
     for (let i = 0; i < 640; i++) {
       const progress = i / 640;

@@ -11,6 +11,7 @@ import { KartVisual, makeProjectile } from './kart';
 import { StitchUfo, STITCH_UFO_DURATION, STITCH_UFO_INBOUND_DURATION } from './stitchUfo';
 import { PlutoUltimate, PlutoTongue, PLUTO_ULTIMATE_DURATION } from './pluto';
 import { DragonBreath, DRAGON_FIRE_RANGE, DRAGON_ULTIMATE_DURATION } from './maleficentPower';
+import { ElsaStorm } from './elsaStorm';
 import { RacerShowcase } from './showcase';
 import { ITEMS, rollItem, type ItemId } from './items';
 import { BOOST_PAD_LAYOUT, GARDEN_ROUTE_END, MARKET_CROSSING_PROGRESS, MARKET_CROSSING_TRAVEL, marketCartState, PICKUP_LAYOUT, RaceTrack, START_GRID_BASE_PROGRESS, START_GRID_LANES, startGridProgress, touchesBoostPad, type RoadHit, type RoadPoint, type RouteName } from './track';
@@ -297,6 +298,7 @@ class GenieRace {
   readonly pluto: PlutoUltimate;
   readonly plutoTongue: PlutoTongue;
   readonly dragonBreath: DragonBreath;
+  readonly elsaStorm: ElsaStorm;
   private plutoGliderStarted = false;
   private plasmaCast = 0;
   private plasmaTotalHits = 0;
@@ -309,8 +311,10 @@ class GenieRace {
   private skyCalm!: Float32Array;
   private skyStorm!: Float32Array;
   private skyDragon!: Float32Array;
+  private skyElsa!: Float32Array;
   private stormBlend = 0;
   private dragonBlend = 0;
+  private elsaBlend = 0;
   private ambientUltBlend = 0;
   private stitchIntroTime = 0;
   private ufoPhase = 'none';
@@ -417,6 +421,7 @@ class GenieRace {
     this.pluto = new PlutoUltimate(this.scene, this.track);
     this.plutoTongue = new PlutoTongue(this.scene);
     this.dragonBreath = new DragonBreath(this.scene);
+    this.elsaStorm = new ElsaStorm(this.scene, this.track);
     const aimMaterial = new THREE.MeshBasicMaterial({ color: 0xcaff89, transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
     for (const radius of [1.2, 3.1]) {
       const ring = new THREE.Mesh(new THREE.TorusGeometry(radius, radius === 1.2 ? 0.09 : 0.16, 6, 48), aimMaterial);
@@ -469,6 +474,7 @@ class GenieRace {
         plasmaVolleys: this.plasmaVolleys.length,
         ufo: { active: this.ufo.active, owner: this.ufo.owner, phase: this.ufoPhase, age: Math.round(this.ufo.elapsed * 10) / 10, warnings: this.ufo.warnings },
         pluto: { active: this.pluto.active, owner: this.pluto.owner, age: Math.round(this.pluto.elapsed * 10) / 10, hazards: this.pluto.hazards, tongues: this.plutoTongue.count },
+        elsa: { active: this.elsaStorm.active, owner: this.elsaStorm.owner, blend: Math.round(this.elsaStorm.blend * 100) / 100, frozenSections: this.elsaStorm.frozenSections },
         powerFields: this.powerFields.length,
         audio: this.audio.getStatus(),
       }),
@@ -507,8 +513,12 @@ class GenieRace {
     const dragonHorizon = new THREE.Color(0x35402c);
     const dragonMiddle = new THREE.Color(0x253e3f);
     const dragonZenith = new THREE.Color(0x100c27);
+    const elsaHorizon = new THREE.Color(0x446a91);
+    const elsaMiddle = new THREE.Color(0x294770);
+    const elsaZenith = new THREE.Color(0x0f1c43);
     const stormColors: number[] = [];
     const dragonColors: number[] = [];
+    const elsaColors: number[] = [];
     for (let i = 0; i < positions.count; i++) {
       const up = Math.max(0, positions.getY(i) / 540);
       const color = up < 0.32 ? horizon.clone().lerp(middle, up / 0.32) : middle.clone().lerp(zenith, Math.min(1, (up - 0.32) / 0.68));
@@ -517,12 +527,15 @@ class GenieRace {
       stormColors.push(storm.r, storm.g, storm.b);
       const dragon = up < 0.32 ? dragonHorizon.clone().lerp(dragonMiddle, up / 0.32) : dragonMiddle.clone().lerp(dragonZenith, Math.min(1, (up - 0.32) / 0.68));
       dragonColors.push(dragon.r, dragon.g, dragon.b);
+      const elsa = up < 0.32 ? elsaHorizon.clone().lerp(elsaMiddle, up / 0.32) : elsaMiddle.clone().lerp(elsaZenith, Math.min(1, (up - 0.32) / 0.68));
+      elsaColors.push(elsa.r, elsa.g, elsa.b);
     }
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     this.skyColors = geometry.getAttribute('color') as THREE.BufferAttribute;
     this.skyCalm = new Float32Array(colors);
     this.skyStorm = new Float32Array(stormColors);
     this.skyDragon = new Float32Array(dragonColors);
+    this.skyElsa = new Float32Array(elsaColors);
     const sky = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, depthWrite: false, fog: false }));
     sky.renderOrder = -100;
     this.scene.add(sky);
@@ -544,19 +557,21 @@ class GenieRace {
     this.scene.add(moon);
   }
 
-  private setAtmosphere(storm: number, dragon: number) {
+  private setAtmosphere(storm: number, dragon: number, elsa: number) {
     this.stormBlend = storm;
     this.dragonBlend = dragon;
+    this.elsaBlend = elsa;
     const values = this.skyColors.array as Float32Array;
-    const total = Math.max(1, storm + dragon);
-    for (let i = 0; i < values.length; i++) values[i] = this.skyCalm[i] * Math.max(0, 1 - storm - dragon) + this.skyStorm[i] * storm / total + this.skyDragon[i] * dragon / total;
+    const total = Math.max(1, storm + dragon + elsa);
+    for (let i = 0; i < values.length; i++) values[i] = this.skyCalm[i] * Math.max(0, 1 - storm - dragon - elsa) + (this.skyStorm[i] * storm + this.skyDragon[i] * dragon + this.skyElsa[i] * elsa) / total;
     this.skyColors.needsUpdate = true;
-    (this.scene.fog as THREE.Fog).color.copy(new THREE.Color(0x3a3158).lerp(new THREE.Color(0x302841), storm).lerp(new THREE.Color(0x29233c), dragon));
-    this.sunlight.color.copy(new THREE.Color(0xffc480).lerp(new THREE.Color(0xc2b8ef), storm).lerp(new THREE.Color(0x9af58d), dragon));
-    this.ambientLight.color.copy(new THREE.Color(0xa9b9fa).lerp(new THREE.Color(0x9e91dc), dragon));
-    this.ambientLight.groundColor.copy(new THREE.Color(0x875263).lerp(new THREE.Color(0x352653), dragon));
-    this.moonFill.color.copy(new THREE.Color(0x809cff).lerp(new THREE.Color(0x9fffad), dragon));
-    this.renderer.toneMappingExposure = 1.34 - storm * 0.15 - dragon * 0.09;
+    (this.scene.fog as THREE.Fog).color.copy(new THREE.Color(0x3a3158).lerp(new THREE.Color(0x302841), storm).lerp(new THREE.Color(0x29233c), dragon).lerp(new THREE.Color(0x4d6d91), elsa));
+    this.sunlight.color.copy(new THREE.Color(0xffc480).lerp(new THREE.Color(0xc2b8ef), storm).lerp(new THREE.Color(0x9af58d), dragon).lerp(new THREE.Color(0xd5f6ff), elsa));
+    this.ambientLight.color.copy(new THREE.Color(0xa9b9fa).lerp(new THREE.Color(0x9e91dc), dragon).lerp(new THREE.Color(0xd7f5ff), elsa));
+    this.ambientLight.groundColor.copy(new THREE.Color(0x875263).lerp(new THREE.Color(0x352653), dragon).lerp(new THREE.Color(0x8faec5), elsa));
+    this.moonFill.color.copy(new THREE.Color(0x809cff).lerp(new THREE.Color(0x9fffad), dragon).lerp(new THREE.Color(0xe3ffff), elsa));
+    this.renderer.toneMappingExposure = 1.34 - storm * 0.15 - dragon * 0.09 - elsa * 0.05;
+    this.track.setFreeze(elsa);
   }
 
   private raceStarts() {
@@ -837,6 +852,7 @@ class GenieRace {
     this.pluto.reset();
     this.plutoTongue.reset();
     this.dragonBreath.reset();
+    this.elsaStorm.reset();
     this.plutoGliderStarted = false;
     plutoAlert.classList.add('hidden');
     this.plasmaVolleys.length = 0;
@@ -852,7 +868,7 @@ class GenieRace {
     this.stitchIntroTime = 0;
     this.ambientUltBlend = 0;
     atmosphereShade.style.opacity = '0';
-    this.setAtmosphere(0, 0);
+    this.setAtmosphere(0, 0, 0);
     this.dragonAimReticle.visible = false;
     this.mouseAimActive = false;
     this.lapClock = 0;
@@ -1324,6 +1340,7 @@ class GenieRace {
     if (racer.character === 'mickey' && !this.pluto.start(racer.id, this.plutoPreview ? 0 : -1)) return;
     racer.ultimateMeter = 0;
     racer.ultimateTime = racer.character === 'stitch' ? STITCH_UFO_DURATION : racer.character === 'maleficent' ? DRAGON_ULTIMATE_DURATION : PLUTO_ULTIMATE_DURATION;
+    if (racer.character === 'elsa') this.elsaStorm.start(racer.id, racer.progress, racer.ultimateTime);
     if (racer.character !== 'stitch') {
       racer.shieldTime = Math.max(racer.shieldTime, racer.character === 'maleficent' ? 1.15 : racer.ultimateTime);
       racer.boostTime = Math.max(racer.boostTime, racer.ultimateTime);
@@ -1368,7 +1385,7 @@ class GenieRace {
       plutoAlert.classList.remove('hidden');
     }
     if (racer.character === 'mulan') this.launchPower(racer, 'dragon', 0x74e3cf, 54, 5);
-    if (racer.character === 'stitch' || racer.character === 'mickey' || racer.id === 0) this.audio.playUltimate(racer.character);
+    if (racer.character === 'stitch' || racer.character === 'mickey' || racer.character === 'elsa' || racer.id === 0) this.audio.playUltimate(racer.character);
     else this.audio.playAt('ultimate', racer.position);
     if (racer.id === 0 && racer.character === 'maleficent') this.showBanner('MOUSE AIM · CLICK OR E TO BREATHE FIRE', 2.6);
   }
@@ -1949,7 +1966,7 @@ class GenieRace {
     if (this.mode === 'menu') this.showcase.update(dt);
     this.syncGamepad();
     if (this.mode === 'countdown') this.updateCountdown(dt);
-    if (this.mode === 'race') { this.lapClock += dt; this.raceClock += dt; this.updateRace(dt); }
+    if (this.mode === 'race') { this.lapClock += dt; this.raceClock += dt; this.updateRace(dt); this.elsaStorm.update(dt, this.racers, this.racers[0].position); }
     const ultimateAtmosphere = this.mode === 'race' ? this.ufo.active ? 'ufo' : this.racers.some((racer) => racer.ultimateTime > 0) ? 'ultimate' : 'none' : 'none';
     if (this.mode !== 'paused') {
       const targetStorm = ultimateAtmosphere === 'ufo' ? 1 : 0;
@@ -1957,14 +1974,16 @@ class GenieRace {
       const dragonOwner = this.mode === 'race' ? this.racers.find((racer) => racer.character === 'maleficent' && racer.ultimateTime > 0) : undefined;
       const targetDragon = dragonOwner ? 1 : 0;
       const nextDragon = this.dragonBlend + (targetDragon - this.dragonBlend) * (1 - Math.exp(-dt * (targetDragon ? 1.8 : 1.2)));
-      if (Math.abs(nextStorm - this.stormBlend) > 0.001 || Math.abs(nextDragon - this.dragonBlend) > 0.001) this.setAtmosphere(nextStorm, nextDragon);
+      const targetElsa = this.elsaStorm.blend;
+      const nextElsa = this.elsaBlend + (targetElsa - this.elsaBlend) * (1 - Math.exp(-dt * (targetElsa ? 3.2 : 1.8)));
+      if (Math.abs(nextStorm - this.stormBlend) > 0.001 || Math.abs(nextDragon - this.dragonBlend) > 0.001 || Math.abs(nextElsa - this.elsaBlend) > 0.001) this.setAtmosphere(nextStorm, nextDragon, nextElsa);
       if (dragonOwner) this.dragonWorldLight.position.copy(dragonOwner.position).add(new THREE.Vector3(0, 10, 0));
       this.dragonWorldLight.intensity = this.dragonBlend * 9;
       atmosphereShade.classList.toggle('siren', this.ufo.active && this.ufo.elapsed < STITCH_UFO_INBOUND_DURATION);
       const targetAmbient = ultimateAtmosphere === 'ultimate' ? 1 : 0;
       this.ambientUltBlend += (targetAmbient - this.ambientUltBlend) * (1 - Math.exp(-dt * (targetAmbient ? 3 : 1.8)));
-      this.sunlight.intensity = 2.15 - this.stormBlend * 1.03 - this.dragonBlend * 0.7 - this.ambientUltBlend * 0.19;
-      atmosphereShade.style.opacity = String(Math.min(0.5, this.stormBlend * 0.4 + this.dragonBlend * 0.14 + this.ambientUltBlend * 0.12));
+      this.sunlight.intensity = 2.15 - this.stormBlend * 1.03 - this.dragonBlend * 0.7 - this.elsaBlend * 0.65 - this.ambientUltBlend * 0.19;
+      atmosphereShade.style.opacity = String(Math.min(0.5, this.stormBlend * 0.4 + this.dragonBlend * 0.14 + this.elsaBlend * 0.09 + this.ambientUltBlend * 0.12));
     }
     if (this.mode === 'race' && !countdown.classList.contains('hidden')) {
       this.countdownElapsed += dt;
@@ -2139,7 +2158,9 @@ class GenieRace {
     const roadBefore = this.track.nearest(player.position, player.progress);
     const offRoad = !roadBefore.onRoad && player.jumpTime <= 0;
     const stats = CHARACTER_BY_ID[player.character];
-    const iceGrip = player.iceSpeedTime > 0 && !offRoad;
+    const courseIce = !offRoad ? this.elsaStorm.strengthAt(player.progress) : 0;
+    const iceGrip = (player.iceSpeedTime > 0 || player.character === 'elsa' && courseIce > 0.1) && !offRoad;
+    const icyHandling = player.character === 'elsa' ? 1 + courseIce * 0.08 : 1 - courseIce * 0.28;
     const stitchRampage = player.character === 'stitch' && player.ultimateTime > 0;
     const maxSpeed = raceSpeed(player.padBoostTime > 0 ? 53 : player.ultimateTime > 0 && !stitchRampage ? 43 : player.boostTime > 0 ? 40 : offRoad && player.featherTime <= 0 ? 20 : iceGrip ? 34 : 31) * stats.speed * (stitchRampage ? 1.05 : 1);
     const carriedOverspeed = player.speed > maxSpeed;
@@ -2170,7 +2191,7 @@ class GenieRace {
       this.releaseDrift(player);
     }
     const boostHandling = player.padBoostTime > 0 ? 1.2 : player.ultimateTime > 0 ? 1.12 : 1;
-    const heading = advanceHeading(player, { steer, speed: player.speed, handling: stats.handling * (player.wobbleTime > 0 ? 0.62 : 1) * (player.character === 'maleficent' && player.ultimateTime > 0 ? 0.78 : 1), drifting: player.drifting, driftDirection: player.driftDirection,
+    const heading = advanceHeading(player, { steer, speed: player.speed, handling: stats.handling * icyHandling * (player.wobbleTime > 0 ? 0.62 : 1) * (player.character === 'maleficent' && player.ultimateTime > 0 ? 0.78 : 1), drifting: player.drifting, driftDirection: player.driftDirection,
       boostHandling, wobble: player.wobbleTime > 0 ? Math.sin(this.elapsed * 19) * 0.22 : 0, dt });
     player.yawRate = heading.yawRate;
     player.yaw = heading.yaw;
@@ -2269,14 +2290,17 @@ class GenieRace {
     const error = angleDiff(targetYaw, racer.yaw);
     const steer = clamp(error * 2.4, -1, 1);
     racer.steerVisual = steer;
-    racer.yaw += (steer + (racer.wobbleTime > 0 ? Math.sin(this.elapsed * 17) * 0.2 : 0)) * (1.65 - Math.min(racer.speed / raceSpeed(125), 0.3)) * (racer.drifting ? 1.5 : 1) * (racer.padBoostTime > 0 ? 1.2 : 1) * CHARACTER_BY_ID[racer.character].handling * (racer.character === 'maleficent' && racer.ultimateTime > 0 ? 0.78 : 1) * dt;
-    racer.moveYaw += angleDiff(racer.yaw, racer.moveYaw) * Math.min(1, dt * 5);
+    const courseIce = this.elsaStorm.strengthAt(racer.progress);
+    const icyHandling = racer.character === 'elsa' ? 1 + courseIce * 0.08 : 1 - courseIce * 0.25;
+    racer.yaw += (steer + (racer.wobbleTime > 0 ? Math.sin(this.elapsed * 17) * 0.2 : 0)) * (1.65 - Math.min(racer.speed / raceSpeed(125), 0.3)) * (racer.drifting ? 1.5 : 1) * (racer.padBoostTime > 0 ? 1.2 : 1) * CHARACTER_BY_ID[racer.character].handling * icyHandling * (racer.character === 'maleficent' && racer.ultimateTime > 0 ? 0.78 : 1) * dt;
+    racer.moveYaw += angleDiff(racer.yaw, racer.moveYaw) * Math.min(1, dt * (5 - (racer.character === 'elsa' ? 0 : courseIce * 1.1)));
     let targetSpeed = 27.7 + Math.sin(racer.id * 1.7) * 1.8 + Math.sin(this.elapsed * 0.5 + racer.id) * 1.1;
     if (Math.abs(error) > 0.5) targetSpeed = 22;
     if (racer.boostTime > 0) targetSpeed = racer.ultimateTime > 0 && racer.character !== 'stitch' ? 41 : 37;
     if (racer.padBoostTime > 0) targetSpeed = 49;
     if (racer.ultimateTime > 0) targetSpeed = racer.character === 'stitch' ? targetSpeed * 1.05 : 41;
     if (racer.iceSpeedTime > 0 && racer.boostTime <= 0 && racer.padBoostTime <= 0 && racer.ultimateTime <= 0) targetSpeed += 3;
+    if (courseIce > 0.1) targetSpeed += racer.character === 'elsa' ? 2.5 * courseIce : -1.8 * courseIce;
     targetSpeed = raceSpeed(targetSpeed) * CHARACTER_BY_ID[racer.character].speed;
     racer.speed += (targetSpeed - racer.speed) * Math.min(1, dt * (targetSpeed > racer.speed ? (racer.curseTime > 0 ? 0.55 : 1.2) * CHARACTER_BY_ID[racer.character].acceleration : 2.2));
     racer.position.x += Math.sin(racer.moveYaw) * racer.speed * dt;
@@ -2640,6 +2664,7 @@ class GenieRace {
     this.ufo.reset();
     this.pluto.reset();
     this.plutoTongue.reset();
+    this.elsaStorm.reset();
     plutoAlert.classList.add('hidden');
     player.visual.setPlutoPresent?.(true);
     player.visual.setGlider?.(false);
@@ -3185,6 +3210,7 @@ class GenieRace {
     }));
     if (this.debugPowers) hud.dataset.effects = JSON.stringify({ projectiles: this.projectiles.map((projectile) => ({ kind: projectile.kind, speed: Math.round(projectile.velocity.length()), target: projectile.target, velocity: projectile.velocity.toArray().map((n) => Math.round(n)) })), fields: this.powerFields.map((field) => field.kind), plasmaHits: this.plasmaTotalHits, plasmaCombos: [...this.plasmaCombos.entries()].map(([target, combo]) => ({ target, count: combo.count })), ufo: { active: this.ufo.active, owner: this.ufo.owner, age: Number(this.ufo.elapsed.toFixed(2)), phase: this.ufoPhase, warnings: this.ufo.warnings, hits: this.ufoTotalHits, hitsByRacer: [...this.ufoHitsByRacer], beamTarget: this.ufo.beamTarget, beamVictims: [...this.ufoBeamVictims] } });
     if (this.debugPowers) hud.dataset.dragonFire = JSON.stringify({ marks: this.dragonBreath.fireCount, lifetimes: this.dragonBreath.fireLifetimes, atmosphere: Number(this.dragonBlend.toFixed(2)), aim: this.dragonAimPoint.toArray().map((value) => Number(value.toFixed(1))), cameraHeight: Number(this.cameraHeight.toFixed(1)) });
+    if (this.debugPowers) hud.dataset.elsaStorm = JSON.stringify({ active: this.elsaStorm.active, owner: this.elsaStorm.owner, blend: Number(this.elsaBlend.toFixed(2)), frozenSections: this.elsaStorm.frozenSections, grip: this.racers.map((racer) => Number(this.elsaStorm.strengthAt(racer.progress).toFixed(2))) });
     const standings = [...this.racers].sort((a, b) => (b.lap - 1 + b.progress) - (a.lap - 1 + a.progress));
     const rank = standings.findIndex((racer) => racer.id === 0) + 1;
     const suffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th';
@@ -3201,7 +3227,7 @@ class GenieRace {
       boostFill.style.width = `${clamp(charge / 1.9, 0, 1) * 100}%`;
       boostFill.style.background = stage === 3 ? '#d799ff' : stage === 2 ? '#ffd075' : '#65dbf9';
     } else {
-      surfaceText.textContent = player.slipCharge > 0.1 ? `DRAFTING · ${Math.round(player.slipCharge / 1.2 * 100)}%` : player.compassTime > 0 && player.compassShortcut ? `COMPASS → ${player.compassShortcut.route.toUpperCase()} SHORTCUT` : player.compassTime > 0 && player.compassTarget ? `COMPASS → ${player.compassTarget.route.toUpperCase()} SPARK` : player.iceSpeedTime > 0 ? 'FROZEN GRIP · ICE SPEED' : road.onRoad ? road.point.route === 'main' ? 'ROAD' : `${road.point.route.toUpperCase()} ROUTE` : 'OFF ROAD';
+      surfaceText.textContent = player.slipCharge > 0.1 ? `DRAFTING · ${Math.round(player.slipCharge / 1.2 * 100)}%` : player.compassTime > 0 && player.compassShortcut ? `COMPASS → ${player.compassShortcut.route.toUpperCase()} SHORTCUT` : player.compassTime > 0 && player.compassTarget ? `COMPASS → ${player.compassTarget.route.toUpperCase()} SPARK` : player.iceSpeedTime > 0 || player.character === 'elsa' && this.elsaStorm.strengthAt(player.progress) > 0.1 ? 'FROZEN GRIP · ICE SPEED' : this.elsaStorm.strengthAt(player.progress) > 0.1 ? 'FROZEN ROAD · LESS GRIP' : road.onRoad ? road.point.route === 'main' ? 'ROAD' : `${road.point.route.toUpperCase()} ROUTE` : 'OFF ROAD';
       boostFill.style.width = `${clamp(Math.max(player.boostTime / 3, player.slipCharge / 1.2), 0, 1) * 100}%`;
       boostFill.style.background = '';
     }

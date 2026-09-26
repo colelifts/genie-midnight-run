@@ -16,8 +16,9 @@ Run `npm install` once, then `npm run dev` for a local preview. Run `npm run bui
 
 | Action | Keyboard |
 | --- | --- |
-| Accelerate / brake | W / S or Up / Down |
+| Accelerate / brake | W / S |
 | Steer | A / D or Left / Right |
+| Aim projectile forward / backward | Up / Down arrows, held while firing |
 | Drift and hop | Space |
 | Signature ability | E |
 | Ultimate | Q when charged |
@@ -27,3 +28,4 @@ Run `npm install` once, then `npm run dev` for a local preview. Run `npm run bui
 Genie and Buzz can hold E to aim or select their signature power. The character select screen shows each racer's passive, E ability, and Q ultimate. The ultimate powers last about 18–20 seconds and have their own music.
 
 Append `?demo=1` to the URL to watch an automatic drive around the course for inspection.
+Append `?plutoPreview=1` to watch Mickey's ultimate from another racer's kart. The preview drives automatically; click the page to enable sound and reload it to replay.

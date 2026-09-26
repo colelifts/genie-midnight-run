@@ -135,6 +135,7 @@ export class PlutoUltimate {
   private giant: THREE.Group | null = null;
   private marks: SlamMark[] = [];
   private ownerId = -1;
+  private preferredTargetId = -1;
   private age = 0;
   private nextStrike = 0;
 
@@ -154,10 +155,11 @@ export class PlutoUltimate {
   get elapsed() { return this.age; }
   get hazards() { return this.marks.length; }
 
-  start(owner: number) {
+  start(owner: number, preferredTarget = -1) {
     if (this.active) return false;
     this.reset();
     this.ownerId = owner;
+    this.preferredTargetId = preferredTarget;
     this.age = 0;
     this.group.visible = true;
     return true;
@@ -169,7 +171,8 @@ export class PlutoUltimate {
     const enemy = racers.filter((racer) => racer.id !== caster.id)
       .map((racer) => ({ racer, distance: racer.position.distanceTo(caster.position) }))
       .sort((a, b) => a.distance - b.distance)[0]?.racer;
-    const target = enemy && enemy.position.distanceTo(caster.position) < 145 ? enemy : caster;
+    const preferred = racers[this.preferredTargetId];
+    const target = preferred && preferred.id !== caster.id ? preferred : enemy && enemy.position.distanceTo(caster.position) < 145 ? enemy : caster;
     const sample = this.track.nearest(target.position, target.progress);
     const ahead = clamp(target.speed * (STRIKE_WARNING + 0.45), 38, 75);
     const progress = wrap(sample.point.progress + ahead / this.track.length);
@@ -311,6 +314,7 @@ export class PlutoUltimate {
     }
     this.marks.length = 0;
     this.ownerId = -1;
+    this.preferredTargetId = -1;
     this.age = 0;
     this.nextStrike = 0;
     this.group.visible = false;
@@ -322,7 +326,7 @@ export interface TongueRacer { id: number; position: THREE.Vector3; moveYaw: num
 function plutoMouth(racer: TongueRacer) {
   const forward = new THREE.Vector3(Math.sin(racer.moveYaw), 0, Math.cos(racer.moveYaw));
   const right = new THREE.Vector3(forward.z, 0, -forward.x);
-  return racer.position.clone().addScaledVector(right, 1.13).addScaledVector(forward, -0.1).add(new THREE.Vector3(0, 2.3, 0));
+  return racer.position.clone().addScaledVector(right, 0.68).addScaledVector(forward, -0.84).add(new THREE.Vector3(0, 2.03, 0));
 }
 
 /** Fast visible tether, aimed when fired and following the target for a short reach. */

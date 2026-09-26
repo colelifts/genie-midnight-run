@@ -49,9 +49,9 @@ export class ImportedKartVisual implements RaceVisual {
     if (templates) this.mount();
     else void loadImportedKarts().then((ready) => { if (ready && !this.disposed) this.mount(); });
     if (id === 'mickey') {
-      void makePluto(1.62).then((pluto) => {
+      void makePluto(1.15).then((pluto) => {
         if (!pluto || this.disposed) return;
-        pluto.position.set(1.13, 0.72, -1.04);
+        pluto.position.set(0.68, 1.1, -1.34);
         pluto.rotation.y = 0;
         pluto.visible = this.plutoPresent;
         this.pluto = pluto;
@@ -110,7 +110,7 @@ export class ImportedKartVisual implements RaceVisual {
     this.model.rotation.z += (lean - this.model.rotation.z) * Math.min(1, dt * 7);
     this.model.position.y = this.fallback.body.position.y;
     if (this.pluto) {
-      this.pluto.position.y = 0.72 + Math.sin(this.elapsed * (boosting ? 10 : 4.5)) * 0.045;
+      this.pluto.position.y = 1.1 + Math.sin(this.elapsed * (boosting ? 10 : 4.5)) * 0.035;
       this.pluto.rotation.z = -steer * 0.065;
     }
     if (this.glider?.visible) this.glider.rotation.z = -steer * 0.1;
